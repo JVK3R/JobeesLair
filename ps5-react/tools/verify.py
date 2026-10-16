@@ -62,11 +62,22 @@ def main():
     assert receipt["hardware_tested"] is False
     for name, checksum in receipt["files"].items():
         assert digest(app / name) == checksum, name
+    # The payloads the app sends to the loader: the relauncher, and the updater that swaps in a new image.
+    for name in ("relauncher.elf", "updater.elf"):
+        payload = (app / name).read_bytes()
+        assert payload[:4] == b"\x7fELF" and payload[4] == 2, name
     with zipfile.ZipFile(ROOT / "dist" / (TITLE + ".zip")) as package:
         assert package.testzip() is None
         for name, checksum in receipt["files"].items():
             assert package.read(TITLE + "/" + name) == (app / name).read_bytes(), name
-    print("PASS: title metadata, icon, PS5 ELF/segments, SELF integrity, hashes and ZIP")
+        # What an installed build checks in a downloaded update.zip before it stages the image beside it
+        # (app state/auto-update.js): the title folder at the top, naming this title and version.
+        packed = json.loads(package.read(TITLE + "/sce_sys/param.json"))
+        assert packed["titleId"] == TITLE and packed["contentVersion"] == param["contentVersion"]
+        assert re.fullmatch(r"\d{2}\.\d{3}\.\d{3}", packed["contentVersion"])
+        assert package.getinfo(TITLE + "/eboot.bin").file_size > 0
+        assert {name.split("/")[0] for name in package.namelist()} == {TITLE}
+    print("PASS: title metadata, icon, PS5 ELF/segments, SELF integrity, payloads, hashes, ZIP and update layout")
 
 
 if __name__ == "__main__":

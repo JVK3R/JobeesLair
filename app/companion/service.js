@@ -190,15 +190,34 @@ import { startRemoteDownload } from './remote-download.js';
     };
   }
   // Settings' view; while it is open the server's state is read once a second (bind result, address).
+  // One reading serves every card that shows it, and a card draws again only when something in it
+  // changed: each card asking for its own copy every second re-rendered two Settings cards a second for
+  // nothing, which the console's interpreter turned into a stutter.
+  var shown = null;
+  var viewers = /* @__PURE__ */ new Set();
+  var reading = null;
+  var sameState = (a, b) => Boolean(a && b) && Object.keys(a).every((key) => a[key] === b[key]);
+  function readState() {
+    const next = companionState();
+    if (sameState(shown, next)) return;
+    shown = next;
+    for (const viewer of [...viewers]) viewer(next);
+  }
+  // `changed` (a start, a stop, a new PIN) reads it at once rather than at the next tick.
+  listeners.add(() => viewers.size && readState());
   function useCompanion() {
-    const [state, setState] = (0, useState)(companionState);
+    const [state, setState] = (0, useState)(() => shown && viewers.size ? shown : shown = companionState());
     (0, useEffect)(() => {
-      const update = () => setState(companionState());
-      listeners.add(update);
-      const id = setInterval(update, 1e3);
+      viewers.add(setState);
+      readState();
+      setState(shown);
+      if (!reading) reading = setInterval(readState, 1e3);
       return () => {
-        listeners.delete(update);
-        clearInterval(id);
+        viewers.delete(setState);
+        if (!viewers.size && reading) {
+          clearInterval(reading);
+          reading = null;
+        }
       };
     }, []);
     return state;

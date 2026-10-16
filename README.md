@@ -12,8 +12,12 @@
 
 <p align="center">
   <b>An open-source homebrew download manager for the PS5.</b><br>
-  Version 0.2.0 · Title ID <code>PPSA99058</code> · created by JVK3R<br>
+  Version 0.2.1 · Title ID <code>PPSA99058</code> · created by JVK3R<br>
   <i>Proudly created alongside AI by JVK3R</i>
+</p>
+
+<p align="center">
+  <a href="https://buymeacoffee.com/jvk3r"><img src="https://img.shields.io/badge/%E2%98%95_Support_the_project-Buy_me_a_coffee-FFDD00?style=flat-square&labelColor=1f2937" alt="Support the project: buy me a coffee (optional)"></a>
 </p>
 
 <p align="center">
@@ -24,6 +28,7 @@
   <a href="#origin-and-independence">Origin</a> ·
   <a href="#content-neutrality--dmca-notice">Content neutrality &amp; DMCA</a> ·
   <a href="#build-it-yourself">Build it yourself</a> ·
+  <a href="#support-the-project">Support</a> ·
   <a href="#credits">Credits</a>
 </p>
 
@@ -110,10 +115,16 @@ are allowed to download.**
 - **Phone companion** on port `34177`: browse and queue from your phone, watch the queue and storage
   live, manage feeds and their mirrors, and use it as a virtual remote. **You choose its 6-digit PIN
   the first time you turn it on**; it is kept on the console and only you can change it
-- **Update check**: Jobee'sLair looks at the latest release of
+- **Updates**: Jobee'sLair looks at the latest release of
   [JVK3R/JobeesLair](https://github.com/JVK3R/JobeesLair) at launch and every 24 hours, and shows a
-  badge in the header when a newer build exists. It only reports: nothing is downloaded or installed
-  for you
+  badge in the header when a newer build exists. **Download and install** fetches the release's
+  `update.zip` and `JobeesLair.exfat` in the background, while your own downloads are idle. Each file
+  is checked against GitHub's SHA-256, and `update.zip` must name this title and version. The image is
+  staged beside the installed one. **Restart to apply** closes the app; a small payload
+  (`updater.elf`) swaps the image in once ShadowMount+ has released it, then opens the app again. If
+  the new version does not start, the payload puts the old one back. With **Install updates
+  automatically** on in Settings, this happens by itself the next time the app closes
+  ([details](INSTALLATION-GUIDE.md#7-updating-and-removing))
 - **Theme profiles**: six accent colors (Electric, Crimson, Emerald, Amber, Violet, Graphite) over
   the dark base, saved separately for each PS5 user profile
 - **DualSense status light**: a slow breath in your accent when idle, green that brightens with
@@ -212,7 +223,7 @@ change the license in [LICENSE](LICENSE).
 
 ## Status
 
-Jobee'sLair 0.2.0 is the release that follows the 0.1.1 betas, whose builds were tested on a PS5
+Jobee'sLair 0.2.1 follows 0.2.0 and adds installing updates from the app. The 0.1.1 betas were tested on a PS5
 running firmware 13.60 with ShadowMount+ 1.7. Every build passes its automated tests (the app's logic suites, the framework's
 tests, and the native server and drive-probe tests under AddressSanitizer, UndefinedBehaviorSanitizer
 and ThreadSanitizer), but not every feature has been confirmed on PS5 hardware yet. Report what you
@@ -226,8 +237,8 @@ find, with your firmware and loader.
 
 | Path | What it is |
 | --- | --- |
-| `app/` | The application: JSX sources, state, assets, catalog data, and `app.json` (title ID `PPSA99058`, package version `01.002.000`, capabilities) |
-| `app/version.js` | The app version (`0.2.0`), the creator credit (`JVK3R`) and the official repository the update check reads |
+| `app/` | The application: JSX sources, state, assets, catalog data, and `app.json` (title ID `PPSA99058`, package version `01.002.001`, capabilities) |
+| `app/version.js` | The app version (`0.2.1`), the creator credit (`JVK3R`) and the official repository the update check reads |
 | `app/ui/JLMark.jsx` | The "JL" monogram as native vector paths (`.github/readme/logo.svg` is the same mark as a file) |
 | `app/state/library-count.js` | The live indexed-titles and direct-downloads counter |
 | `LICENSE` | GPL-3.0-or-later, followed by the content neutrality and DMCA notice |
@@ -261,10 +272,23 @@ The image is a plain exFAT volume whose root is the app folder, with 64 KiB clus
 `JOBEESLAIR`.
 
 To publish a build, raise the version in `app/version.js`, run the build workflow, test the draft's
-image on a console, then publish the draft with a tag of the same version (`v0.2.0`): the update check
-in installed copies compares that tag with their own version.
+image on a console, then publish the draft with a tag of the same version (`v0.2.1`): the
+update check in installed copies compares that tag with their own version. To let installed copies
+install it themselves, attach both `JobeesLair.exfat` and `update.zip` (`ps5-react/dist/PPSA99058.zip`
+renamed). GitHub publishes each asset's SHA-256, and a release without both files only offers the
+release page.
 
 </details>
+
+## Support the project
+
+Jobee'sLair is free and open source, and it stays that way. Every feature, download and update is
+there for everyone. Nothing is locked, limited or held back, and the app never asks for money: no
+pop-ups, no reminders.
+
+If you'd like to support its development and future PS5 homebrew tools, you can
+**[buy me a coffee ☕](https://buymeacoffee.com/jvk3r)**. The same link is under
+**Settings → About → Support development** in the app, as a QR code for your phone. Thank you.
 
 ## Credits
 

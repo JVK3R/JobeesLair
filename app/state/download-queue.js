@@ -129,9 +129,13 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     let active2 = null;
     // Work that is asking ShadowMount and cannot wait for a download (quietNetwork); no job starts meanwhile.
     let holds = 0;
+    // Who borrowed the network while the queue had nothing to do (lendNetwork): the app's own update
+    // download. { yield }: asked to stop and give it back when a job is queued or ShadowMount must be asked.
+    let borrower = null;
     // Whether a download holds the runtime's one network task now (ps5-react docs/NETWORKING.md).
     // A job reads "resolving" from when its file is handed to the engine until the engine's first report.
-    const transferring = () => Boolean(active2?.task && active2.transferring && ["resolving", "connecting", "downloading"].includes(active2.job.state));
+    const jobTransferring = () => Boolean(active2?.task && active2.transferring && ["resolving", "connecting", "downloading"].includes(active2.job.state));
+    const transferring = () => jobTransferring() || Boolean(borrower);
     let ticks = 0;
     let awake2 = false;
     const modified = (path) => {
@@ -1068,6 +1072,11 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       if (active2 || holds) return;
       const job2 = first?.state === "queued" ? first : jobs.find((item) => item.state === "queued");
       if (!job2) return;
+      // The gamer's download goes first: the borrower stops, and this runs again once it gave the network back.
+      if (borrower) {
+        borrower.yield();
+        return;
+      }
       active2 = { job: job2, task: null };
       void execute(job2);
     }
@@ -1321,12 +1330,17 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     }
     async function quietNetwork(reason, work) {
       holds++;
-      const held = transferring() ? active2.job : null;
+      const held = jobTransferring() ? active2.job : null;
       try {
         if (held) {
           console.log(`[download-queue] ${held.id}: paused while ShadowMount is asked (${reason}); it resumes after`);
           pauseJob(held);
           for (let tries = 0; tries < 100 && active2?.job === held; tries++) await wait(100);
+        }
+        if (borrower) {
+          console.log(`[download-queue] the network's borrower stops while ShadowMount is asked (${reason})`);
+          borrower.yield();
+          for (let tries = 0; tries < 100 && borrower; tries++) await wait(100);
         }
         return await work();
       } finally {
@@ -1947,6 +1961,28 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       isMoving: (id) => [...moves.keys()].some((job2) => job2.id === id),
       /** Whether a download holds the runtime's one network task now (state/shadowmount.js createShadowClient). */
       transferring,
+      /**
+       * Lends the runtime's one network task while the queue has nothing to do: no job running or queued, and
+       * nothing asking ShadowMount. Returns the function that gives it back, or null when the queue needs it.
+       * `onYield` is called when a job is queued (or ShadowMount must be asked): stop the transfer, then give
+       * the network back; the queue starts nothing until then.
+       */
+      lendNetwork(onYield) {
+        if (borrower || active2 || holds || jobs.some((job2) => job2.state === "queued")) return null;
+        const lease = { yield: () => {
+          try {
+            onYield();
+          } catch (error2) {
+            console.log(`[download-queue] the network's borrower did not stop: ${error2.message}`);
+          }
+        } };
+        borrower = lease;
+        return () => {
+          if (borrower !== lease) return;
+          borrower = null;
+          pump();
+        };
+      },
       /** Deletes only the archive's notes kept beside a finished job (<name>-extras); the game stays. */
       async deleteExtras(id) {
         const job2 = find(id);

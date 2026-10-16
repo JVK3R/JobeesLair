@@ -83,6 +83,12 @@ bool arrange_relaunch(char*, std::size_t) {
   return true;
 }
 
+// The preview runs from no disk image, so there is none to replace.
+bool arm_update(const char*, char* error, std::size_t size) {
+  std::snprintf(error, size, "update: the desktop preview runs from no disk image to replace");
+  return false;
+}
+
 int list_mounts(MountEntry* mounts, int max) {
 #ifndef __APPLE__
   FILE* table = setmntent("/proc/mounts", "r");

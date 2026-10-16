@@ -594,6 +594,21 @@ JSValue request_exit(JSContext* ctx, JSValueConst, int, JSValueConst* argv) {
   return host::arrange_relaunch(error, sizeof error) ? JS_TRUE : JS_NewString(ctx, error);
 }
 
+// The updater reads its control directory as one request line: absolute, without line breaks.
+JSValue update_arm(JSContext* ctx, JSValueConst, int, JSValueConst* argv) {
+  std::size_t length = 0;
+  const char* path = JS_ToCStringLen(ctx, &length, argv[0]);
+  if (!path) return JS_EXCEPTION;
+  const bool valid = length > 1 && length <= 900 && path[0] == '/' && std::strlen(path) == length &&
+                     !std::strpbrk(path, "\r\n");
+  char error[256] = "";
+  bool armed = false;
+  if (valid) armed = host::arm_update(path, error, sizeof error);
+  JS_FreeCString(ctx, path);
+  if (!valid) return JS_ThrowTypeError(ctx, "update.arm: controlDir must be an absolute path without line breaks");
+  return armed ? JS_TRUE : JS_NewString(ctx, error);
+}
+
 struct Function {
   const char* name;
   JSCFunction* call;
@@ -658,6 +673,7 @@ constexpr Function kPower[] = {{"keepAwake", power_keep_awake, 1}};
 constexpr Function kDisplay[] = {{"refreshRate", display_refresh_rate, 0}, {"setRefreshRate", display_set_refresh_rate, 1}};
 constexpr Function kText[] = {{"setLanguage", text_set_language, 1}};
 constexpr Function kRoot[] = {{"notify", notify, 2}, {"openURL", open_url, 1}, {"exit", request_exit, 1}};
+constexpr Function kUpdate[] = {{"arm", update_arm, 1}};
 } // namespace
 
 void ps5_react_install_host_api(JSContext* ctx) {
@@ -677,6 +693,7 @@ void ps5_react_install_host_api(JSContext* ctx) {
   JS_SetPropertyStr(ctx, api, "power", namespace_object(ctx, "power", kPower));
   JS_SetPropertyStr(ctx, api, "display", namespace_object(ctx, "display", kDisplay));
   JS_SetPropertyStr(ctx, api, "text", namespace_object(ctx, "text", kText));
+  JS_SetPropertyStr(ctx, api, "update", namespace_object(ctx, "update", kUpdate));
   JS_SetPropertyStr(ctx, api, "network", ps5_react_network_api(ctx));
   JS_SetPropertyStr(ctx, api, "archives", ps5_react_archive_api(ctx));
   JS_SetPropertyStr(ctx, api, "packages", ps5_react_package_api(ctx));

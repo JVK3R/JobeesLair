@@ -6,17 +6,13 @@ import { configure, getLocale, setLocale, subscribe, t } from './core.js';
 import { SOURCE_LOCALE, isRTL, matchLocale } from './locales.js';
 import en from './locales/en.json';
 import { loadList, saveList } from '../state/saved.js';
-import { DeviceInfo, FileSystem, Fonts } from '@ps5-react/core';
+import { deviceFacts } from '../state/device.js';
+import { FileSystem, Fonts } from '@ps5-react/core';
 
   configure((code) => JSON.parse(FileSystem.readFile(`${FileSystem.appDir}/i18n/locales/${code}.json`)), en);
   var SETTINGS = "settings.json";
-  var systemLanguage = () => {
-    try {
-      return DeviceInfo.get().language;
-    } catch {
-      return null;
-    }
-  };
+  // Read once (state/device.js): Settings' language card names it on every draw.
+  var systemLanguage = () => deviceFacts().language;
   var systemLocale = () => matchLocale(systemLanguage()) ?? SOURCE_LOCALE;
   var choice = loadList(SETTINGS, "settings").language ?? null;
   function applyLocale() {

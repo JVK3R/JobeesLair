@@ -61,7 +61,9 @@ jobs:
           cp -a ps5-react/dist/PPSA99058 stage
           bash packaging/stage-docs.sh stage
           sudo bash packaging/make-exfat.sh stage JobeesLair.exfat JOBEESLAIR
-          ls -l JobeesLair.exfat ps5-react/dist/
+          # The app folder as installed copies download it to check an update (app/state/auto-update.js).
+          cp ps5-react/dist/PPSA99058.zip update.zip
+          ls -l JobeesLair.exfat update.zip ps5-react/dist/
 
       - name: Upload
         uses: actions/upload-artifact@v4
@@ -69,6 +71,7 @@ jobs:
           name: JobeesLair
           path: |
             JobeesLair.exfat
+            update.zip
             ps5-react/dist/PPSA99058.receipt.json
           if-no-files-found: error
 
@@ -84,7 +87,8 @@ jobs:
           version=$(sed -n 's/.*var VERSION = "\([^"]*\)".*/\1/p' app/version.js)
           test -n "$version" || { echo "no VERSION in app/version.js" >&2; exit 1; }
           tag="v$version"
-          assets="JobeesLair.exfat"
+          # Both files: an installed copy installs a release only when it can check both.
+          assets="JobeesLair.exfat update.zip"
           draft=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
             --jq ".[] | select(.tag_name == \"$tag\") | .draft")
           case "$draft" in

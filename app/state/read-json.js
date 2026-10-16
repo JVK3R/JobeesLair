@@ -35,7 +35,8 @@
     "searches.json": isStringList,
     "themes.json": isRecord,
     "feed-mirrors.json": isRecord,
-    "update-check.json": isRecord
+    "update-check.json": isRecord,
+    "auto-update.json": isRecord
   };
 
 export { SAVED_FILES, isRecord, isStringList, readJSON };

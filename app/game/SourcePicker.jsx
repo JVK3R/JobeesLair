@@ -9,13 +9,14 @@ import { describeSource, isCdnProvider, preferredRelease, sourceSections } from 
 import { useT } from '../i18n/index.js';
 import { getGame } from '../state/catalog.js';
 import { downloadQueue } from '../state/downloads.js';
+import { deviceFacts } from '../state/device.js';
 import { backportAdvice } from '../state/firmware.js';
 import { CdnAura, CdnSpark } from '../ui/CdnAura.jsx';
 import { FocusRing } from '../ui/FocusRing.jsx';
 import { Icon } from '../ui/Icon.jsx';
 import { SideSheet } from '../ui/SideSheet.jsx';
 import { colors, radius } from '../ui/colors.js';
-import { DeviceInfo, FileSystem, Text, View, useIsFocused } from '@ps5-react/core';
+import { FileSystem, Text, View, useIsFocused } from '@ps5-react/core';
 
   var SECTION = {
     direct: { title: "sources.section.direct", icon: "download" },
@@ -35,7 +36,7 @@ import { DeviceInfo, FileSystem, Text, View, useIsFocused } from '@ps5-react/cor
           jobs = downloadQueue().snapshot();
         } catch {
         }
-        return backportAdvice({ fs: FileSystem, titleId: getGame(gameId)?.titleId ?? gameId, firmware: DeviceInfo.get().firmware, jobs });
+        return backportAdvice({ fs: FileSystem, titleId: getGame(gameId)?.titleId ?? gameId, firmware: deviceFacts().firmware, jobs });
       } catch {
         return null;
       }

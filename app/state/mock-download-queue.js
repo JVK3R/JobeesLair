@@ -106,6 +106,7 @@ import { preferredRelease } from '../game/sources.js';
       },
       isMoving: () => false,
       transferring: () => false,
+      lendNetwork: () => () => {},
       syncInstalls: async () => false,
       refreshLaunches: async () => false,
       diagnose: async () => {

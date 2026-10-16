@@ -1,7 +1,7 @@
 // Copyright (C) 2026 half144 and PS5 React contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Additional attribution term: see LICENSE-ATTRIBUTION.
-// Native API contract (ABI v19) between the hosts and `@ps5-react/core`. The input actions hosts
+// Native API contract (ABI v20) between the hosts and `@ps5-react/core`. The input actions hosts
 // pass to `__ps5ReactDispatch` are a separate contract with its own version (runtime/js/input.js).
 //
 // host_api.cpp (shared) installs `globalThis.__ps5ReactNative` through
@@ -145,6 +145,9 @@
 //   exit(relaunch)                 asks the host to close after this frame; with relaunch true it
 //                                  opens the app again once closed and returns true, or the reason
 //                                  it cannot (PS5: needs the payload loader on 127.0.0.1:9021)
+//   update.arm(controlDir)         ABI v20; true once updater.elf has the request, or the reason it
+//                                  cannot; it waits for the title to close, then carries out
+//                                  <controlDir>/apply.txt (native/ps5/payloads/updater.c)
 // Failures throw a JS Error whose message names the call, the path, and strerror.
 #pragma once
 
@@ -220,6 +223,11 @@ struct CallScope {
 // Opens the app again once it has closed: PS5 sends relauncher.elf to the payload loader, the desktop
 // preview runs itself again. False with a reason in `error` (at most `size` bytes) when it cannot.
 bool arrange_relaunch(char* error, std::size_t size);
+// ABI v20 `update.arm(controlDir)`: PS5 sends updater.elf to the payload loader with the title ID and
+// `control_dir`; once the title closes it carries out <control_dir>/apply.txt (payloads/updater.c). True
+// once the updater has the request (or one already waits); false with a reason in `error` otherwise, and
+// always on the desktop preview, which runs from no image.
+bool arm_update(const char* control_dir, char* error, std::size_t size);
 
 struct DeviceInfo {
   char model[64] = "";

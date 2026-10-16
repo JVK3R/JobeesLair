@@ -544,6 +544,23 @@ export const Packages = Object.freeze({
 });
 
 /**
+ * Replacing the app's own image, which it cannot do while it runs from it (PS5 only; it needs the payload
+ * loader on port 9021). `arm(controlDir)` sends updater.elf (native/ps5/payloads/updater.c), which waits
+ * for the title to close and then carries out `<controlDir>/apply.txt`: it swaps the staged image in,
+ * relaunches if asked, and puts the old image back when the new one does not report that it started
+ * (`<controlDir>/booted.txt`). What it did is written to `<controlDir>/result.txt`. One updater waits at
+ * a time; arming again while one waits is accepted, and it reads apply.txt only once the title closes.
+ * Returns true once the updater has the request, or the reason it could not be sent.
+ */
+export const SelfUpdate = Object.freeze({
+  arm(controlDir) {
+    if (typeof controlDir !== 'string' || !controlDir.startsWith('/') || /[\0\n\r]/.test(controlDir) || controlDir.length > 900)
+      throw new TypeError('SelfUpdate.arm: controlDir must be an absolute path of at most 900 characters, without line breaks.');
+    return host().update.arm(controlDir);
+  },
+});
+
+/**
  * UDP broadcast on the local network, for finding services that answer one (Jellyfin and Emby on
  * 7359, for instance). Replies come from anyone on the network: check what they claim before use.
  */

@@ -252,6 +252,11 @@ def main():
     run([sdk / "bin/prospero-clang", "-std=gnu11", "-O2", "-Wall", "-Wextra", "-Werror", "-o", relauncher,
          ROOT / "native/ps5/payloads/relauncher.c", "-lSceUserService", "-lSceSystemService"],
         env=env, log=BUILD / "relauncher.log")
+    # Swaps in a new image of the app once it has closed, which the app itself cannot do (SelfUpdate.arm).
+    updater = BUILD / "updater.elf"
+    run([sdk / "bin/prospero-clang", "-std=gnu11", "-O2", "-Wall", "-Wextra", "-Werror", "-o", updater,
+         ROOT / "native/ps5/payloads/updater.c", "-lSceUserService", "-lSceSystemService"],
+        env=env, log=BUILD / "updater.log")
     capture = BUILD / "browser-capture.elf"
     browser = ROOT / "native/ps5/payloads/browser"
     run([sdk / "bin/prospero-clang", "-std=gnu11", "-O2", "-Wall", "-Wextra", "-Werror", "-o", capture,
@@ -269,6 +274,7 @@ def main():
     shutil.copy2(installer, app / "pkg-installer.elf")
     run([sdk / "bin/prospero-strip", "-o", app / "rar-extract.elf", rar_extract], env=env)
     shutil.copy2(relauncher, app / "relauncher.elf")
+    shutil.copy2(updater, app / "updater.elf")
     shutil.copy2(capture, app / "browser-capture.elf")
     param = json.loads((hui / "sce_sys/param.json").read_text())
     if refresh_rate_mask(config) & 2:

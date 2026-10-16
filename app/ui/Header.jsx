@@ -12,7 +12,7 @@ import { focusEnd, useLocale, useT } from '../i18n/index.js';
 import { NO_FILTERS, activeCount, genreLabel, genres, getGame } from '../state/catalog.js';
 import { useIsImmersive, useNavActions, useNavState } from '../state/nav.jsx';
 import { useWishlist } from '../state/store.jsx';
-import { openUpdateDialog, useUpdate } from '../state/update.js';
+import { openUpdateDialog, useInstall, useUpdate } from '../state/update.js';
 import { ButtonGlyph } from './ButtonHints.jsx';
 import { DownloadToast } from './DownloadToast.jsx';
 import { DownloadsBadge } from './DownloadsBadge.jsx';
@@ -35,6 +35,17 @@ import { colors, radius } from './colors.js';
   // Glass: graphite, lighter at its top edge as if lit from above.
 
   var BADGE = /* @__PURE__ */ (0, jsx)(DownloadsBadge, {});
+  // The newer release's badge: its version, how far its download is (in whole percent, so the dock redraws
+  // a hundred times at most), or that a restart installs it. Only this item follows the progress.
+  function UpdateNavItem({ update, down }) {
+    const t2 = useT();
+    const install = useInstall();
+    const mine = install.version === update.version;
+    const percent = install.total ? Math.floor(Math.min(1, install.written / install.total) * 100) : 0;
+    const label = !mine ? t2("update.badge", { version: update.version }) : ["ready", "armed"].includes(install.phase) ? t2("update.badgeReady") : ["waiting", "downloading", "checking"].includes(install.phase) ? t2("update.badgeProgress", { version: update.version, percent: String(percent) }) : t2("update.badge", { version: update.version });
+    const icon = mine && ["ready", "armed"].includes(install.phase) ? "restart" : "download";
+    return /* @__PURE__ */ (0, jsx)(NavItem, { focusKey: "nav:update", icon, label, onPress: openUpdateDialog, nextFocusDown: down, children: /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", top: 12, right: 14, width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.accentHi } }) });
+  }
   function Header({ children }) {
     const t2 = useT();
     const { rtl } = useLocale();
@@ -133,7 +144,7 @@ import { colors, radius } from './colors.js';
         item("favorites", { icon: "heart", label: favorites ? String(favorites) : null, onPress: on.favorites }),
         item("downloads", { icon: "download", onPress: on.downloads, children: BADGE }),
         item("files", { icon: "grid", onPress: on.files }),
-        update ? /* @__PURE__ */ (0, jsx)(NavItem, { focusKey: "nav:update", icon: "download", label: t2("update.badge", { version: update.version }), onPress: openUpdateDialog, nextFocusDown: down, children: /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", top: 12, right: 14, width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.accentHi } }) }) : null,
+        update ? /* @__PURE__ */ (0, jsx)(UpdateNavItem, { update, down }) : null,
         /* @__PURE__ */ (0, jsx)(
           NavItem,
           {

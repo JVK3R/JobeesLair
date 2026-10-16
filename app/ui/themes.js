@@ -32,13 +32,16 @@ import { Users } from '@ps5-react/core';
     }
   }
   var user = userKey();
-  function userName() {
+  // Asked once too: Settings' theme card names the user on every draw, and each focus move along its
+  // swatches draws it again (a user-service call on the render thread each time).
+  var name = (() => {
     try {
       return Users.getForeground()?.name || null;
     } catch {
       return null;
     }
-  }
+  })();
+  var userName = () => name;
   var profiles = loadList(FILE, "themes");
   var active = presetOf(profiles[user]).id;
   var listeners = /* @__PURE__ */ new Set();

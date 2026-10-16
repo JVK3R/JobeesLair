@@ -3,7 +3,7 @@
 // Additional attribution term: see LICENSE-ATTRIBUTION.
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {acquireImage, Archives, BrowserCapture, Controller, Downloads, FileSystem, Http, LocalNetwork, Power, Sound} from './native.js';
+import {acquireImage, Archives, BrowserCapture, Controller, Downloads, FileSystem, Http, LocalNetwork, Power, SelfUpdate, Sound} from './native.js';
 import {setFrameBatcher} from './frame.js';
 
 test('native network tasks deliver progress, release listeners and stop polling', async () => {
@@ -130,6 +130,20 @@ test('copyAsync passes its options, reports copying and verifying, cancels throu
   } finally {
     globalThis.setInterval = originalInterval;
     globalThis.clearInterval = originalClear;
+    delete globalThis.__ps5ReactNative;
+  }
+});
+
+test('SelfUpdate.arm hands the control directory to the host and returns its answer; a path it cannot send is refused', () => {
+  const asked = [];
+  globalThis.__ps5ReactNative = {update: {arm: dir => (asked.push(dir), dir === '/data/JobeesLair/update' ? true : 'update: no payload loader')}};
+  try {
+    assert.equal(SelfUpdate.arm('/data/JobeesLair/update'), true);
+    assert.equal(SelfUpdate.arm('/data/other'), 'update: no payload loader', 'the reason, for the app to show');
+    for (const bad of ['relative/dir', '/data/a\nb', '/data/\0', 42, '/' + 'x'.repeat(900)])
+      assert.throws(() => SelfUpdate.arm(bad), TypeError);
+    assert.deepEqual(asked, ['/data/JobeesLair/update', '/data/other'], 'refused paths never reach the host');
+  } finally {
     delete globalThis.__ps5ReactNative;
   }
 });

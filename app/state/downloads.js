@@ -15,6 +15,7 @@ import { createShadowClient, createShadowMountProbe } from './shadowmount.js';
 import { createMountMonitor, mountMonitor } from './mount-monitor.js';
 import { createPlaytime, playtimeStore } from './playtime.js';
 import { parseStamp } from './clock.js';
+import { deviceFacts } from './device.js';
 import { Archives, DeviceInfo, DownloadFormats, Downloads, FileSystem, Http, Linking, Notifications, Packages, Platform, Power } from '@ps5-react/core';
 
   var instance;
@@ -51,7 +52,7 @@ import { Archives, DeviceInfo, DownloadFormats, Downloads, FileSystem, Http, Lin
     sources: createSourceResolver({ http: Http }),
     packages: Packages,
     releasesOf: (id) => getGame(id)?.releases || [],
-    firmware: () => DeviceInfo.get().firmware,
+    firmware: () => deviceFacts().firmware,
     playtime
   }));
   var shadowMountUp = Platform.OS === "ps5" ? createShadowMountProbe({ http: Http, now: Date.now }) : async () => true;

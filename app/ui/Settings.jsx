@@ -9,6 +9,7 @@
 
 import '../assets/Exo2.ttf';
 import '../assets/JetBrainsMono-Regular.ttf';
+import supportQr from '../assets/support-qr.png';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useState } from 'react';
 import { CREATOR, choosePin, setCompanion, useCompanion } from '../companion/service.js';
@@ -21,7 +22,7 @@ import { useDrives } from '../state/drives.js';
 import { MAX_FEEDS, MAX_MIRRORS, addFeed, addMirror, refreshFeeds, removeFeed, removeMirror, useFeeds } from '../state/feeds.js';
 import { formatBytes } from '../state/size.js';
 import { isoDate } from '../state/clock.js';
-import { checkForUpdate, openUpdateDialog, useUpdate } from '../state/update.js';
+import { canInstall, checkForUpdate, openUpdateDialog, setAutoInstall, useAutoInstall, useInstall, useUpdate } from '../state/update.js';
 import { REPO, VERSION_LABEL } from '../version.js';
 import { JLMark } from './JLMark.jsx';
 import { FocusRing } from './FocusRing.jsx';
@@ -34,7 +35,7 @@ import { setNavigationHaptics, useNavigationHaptics } from './haptics.js';
 import { onStatusLight, setStatusLight, statusLightOn } from './lightBar.js';
 import { logical } from './scale.js';
 import { PRESETS, presetOf, useActiveTheme, userName } from './themes.js';
-import { FocusScope, Linking, ScrollView, Text, View, motion, useIsFocused } from '@ps5-react/core';
+import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocused } from '@ps5-react/core';
 
   var COLUMN = 852;
   var CARD = { gap: 16, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 34 };
@@ -287,16 +288,43 @@ import { FocusScope, Linking, ScrollView, Text, View, motion, useIsFocused } fro
       ...open ? steps.map(([title, detail], index) => /* @__PURE__ */ (0, jsx)(View, { focusKey: `settings:guide:${index}`, focusable: true, style: STEP, children: /* @__PURE__ */ (0, jsx)(StepFace, { index, title, detail }) }, index)) : []
     ] });
   }
-  // What the update row says: checking, a newer version, a failed check, or when it last looked.
-  function updateDetail(t2, update) {
+  // What the update row says: checking, a newer version (downloading, ready to install, or not installed),
+  // a failed check, or when it last looked.
+  function updateDetail(t2, update, install) {
     if (update.checking) return t2("settings.update.checking");
+    const version = update.update?.version;
+    if (version && install.version === version) {
+      if (["ready", "armed"].includes(install.phase)) return t2("settings.update.ready", { version });
+      if (["waiting", "downloading", "checking"].includes(install.phase))
+        return t2("settings.update.downloading", { version, percent: String(install.total ? Math.floor(Math.min(1, install.written / install.total) * 100) : 0) });
+      if (install.phase === "failed") return t2("settings.update.installFailed", { version });
+    }
     if (update.update) return t2("settings.update.available", { version: update.update.version });
     if (update.failed) return t2("settings.update.failed");
     return update.checkedAt ? t2("settings.update.current", { date: formatDate2(isoDate(update.checkedAt)) }) : t2("settings.update.never");
   }
+  // The optional donation link: a QR code for the phone and a short note, shown only when the row is
+  // opened. Nothing in the app depends on it, asks for it or reminds anyone of it.
+  var SUPPORT_URL = "https://buymeacoffee.com/jvk3r";
+  function SupportPanel() {
+    const t2 = useT();
+    return /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 28, borderRadius: radius.md, backgroundColor: colors.surface2, padding: 22 }, children: [
+      // Drawn at the image's own size (packaging/support-qr.py: 37 modules x 6 px), so no module edge blurs.
+      /* @__PURE__ */ (0, jsx)(View, { style: { borderRadius: radius.md, backgroundColor: "#ffffff", padding: 6 }, children: /* @__PURE__ */ (0, jsx)(Image, { source: supportQr, resizeMode: "contain", style: { width: 222, height: 222 } }) }),
+      /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, gap: 12 }, children: [
+        /* @__PURE__ */ (0, jsx)(Text, { style: text(21, colors.fg), children: t2("settings.support.note") }),
+        /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.support.free") }),
+        /* @__PURE__ */ (0, jsx)(Text, { style: text(19, colors.subtle), children: t2("settings.support.scan") }),
+        /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 20, lineHeight: 28, color: colors.glow }, children: SUPPORT_URL.replace("https://", "") })
+      ] })
+    ] });
+  }
   function AboutCard() {
     const t2 = useT();
     const update = useUpdate();
+    const install = useInstall();
+    const automatic = useAutoInstall();
+    const [support, setSupport] = (0, useState)(false);
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "star", title: t2("settings.card.about") }),
       /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 24 }, children: [
@@ -307,13 +335,16 @@ import { FocusScope, Linking, ScrollView, Text, View, motion, useIsFocused } fro
           /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.about.ai", { creator: CREATOR }) })
         ] })
       ] }),
-      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:update", name: t2("settings.update.row"), detail: updateDetail(t2, update), end: /* @__PURE__ */ (0, jsx)(Icon, { name: update.update ? "download" : "restart", color: update.update ? colors.glow : colors.muted }), onPress: () => update.update ? openUpdateDialog() : void checkForUpdate() }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:update", name: t2("settings.update.row"), detail: updateDetail(t2, update, install), end: /* @__PURE__ */ (0, jsx)(Icon, { name: update.update ? "download" : "restart", color: update.update ? colors.glow : colors.muted }), onPress: () => update.update ? openUpdateDialog() : void checkForUpdate() }),
+      canInstall ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:autoUpdate", name: t2("settings.update.auto"), detail: t2("settings.update.autoDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: automatic }), onPress: () => setAutoInstall(!automatic) }) : null,
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:project", name: t2("settings.about.project"), detail: `github.com/${REPO}`, end: /* @__PURE__ */ (0, jsx)(Icon, { name: "external", color: colors.muted }), onPress: () => {
         try {
           Linking.openURL(`https://github.com/${REPO}`);
         } catch {
         }
       } }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:support", name: t2("settings.support.row"), detail: t2("settings.support.detail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: support ? "chevronUp" : "chevronDown", color: colors.muted }), onPress: () => setSupport((value) => !value) }),
+      support ? /* @__PURE__ */ (0, jsx)(SupportPanel, {}) : null,
       /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.about.origin") }),
       /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.subtle), children: t2("settings.about.credits") })
     ] });

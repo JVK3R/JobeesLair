@@ -16,14 +16,35 @@ import { retiredSource, sourceKind, webURL } from './download-sources.js';
   var FORMATS = /* @__PURE__ */ new Set(["pkg", "fpkg", "binary", "ffpfsc", "ffpfs", "ffpkg", "exfat", "rar", "7z", "zip"]);
   var TITLE_ID = /^(?:CUSA|PPSA)\d{5}$/;
   var DATE = /^\d{4}-\d{2}-\d{2}$/;
-  function stableKey(value) {
+  // The hash, as steps: it yields after every `slice` characters and returns the key. A refreshed feed's
+  // text is up to 2 MiB, which the console's interpreter takes about a second to walk: stableKeyAsync
+  // gives the screen its frames in between.
+  function* hashSteps(value, slice) {
     let first = 2166136261, second = 5381;
     for (let index = 0; index < value.length; index++) {
       first = Math.imul(first ^ value.charCodeAt(index), 16777619);
       second = Math.imul(second, 33) ^ value.charCodeAt(index);
+      if ((index + 1) % slice === 0) yield;
     }
     return `${(first >>> 0).toString(16)}${(second >>> 0).toString(16)}`;
   }
+  // Runs steps to the end at once, or (with `pause`) awaits `pause()` at each step.
+  function finish(steps) {
+    for (; ; ) {
+      const step = steps.next();
+      if (step.done) return step.value;
+    }
+  }
+  async function finishPaced(steps, pause) {
+    for (; ; ) {
+      const step = steps.next();
+      if (step.done) return step.value;
+      await pause();
+    }
+  }
+  var HASH_SLICE = 32 * 1024;
+  var stableKey = (value) => finish(hashSteps(value, Infinity));
+  var stableKeyAsync = (value, pause) => finishPaced(hashSteps(value, HASH_SLICE), pause);
   var text = (value, max = 200) => typeof value === "string" ? value.replace(/[\x00-\x1f\x7f]+/g, " ").trim().slice(0, max) : "";
   var count = (value, max) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= max ? value : null;
   function httpURL(value) {
@@ -139,7 +160,8 @@ import { retiredSource, sourceKind, webURL } from './download-sources.js';
   }
   // The feed at `url`, validated: its name, games, and how many entries were dropped. Throws when the
   // document is not a feed at all.
-  function parseFeed(document2, url) {
+  // As steps, yielding after every `batch` games (parseFeedAsync paces them; parseFeed does not).
+  function* feedSteps(document2, url, batch) {
     if (!document2 || typeof document2 !== "object" || document2.version !== 1 || !Array.isArray(document2.games))
       throw new Error("Not a catalog feed: expected version 1 with a games list.");
     const key = stableKey(url);
@@ -147,6 +169,7 @@ import { retiredSource, sourceKind, webURL } from './download-sources.js';
     const seen = /* @__PURE__ */ new Set();
     const offered = document2.games.slice(0, MAX_GAMES);
     let releases = 0;
+    let done = 0;
     for (const raw of offered) {
       if (releases >= MAX_TOTAL_RELEASES) break; // the rest count as skipped
       const item = game(raw, key);
@@ -156,11 +179,16 @@ import { retiredSource, sourceKind, webURL } from './download-sources.js';
         releases += item.releases.length;
         games2.push(item);
       }
+      if (++done % batch === 0) yield;
     }
     // Addresses the publisher says the same feed is also served from, tried when this one is down.
     const mirrors = [...new Set(list(document2.mirrors, 16, httpURL))].filter((mirror) => mirror !== url).slice(0, MAX_MIRRORS);
     return { name: text(document2.name, 80) || webURL(url).host, games: games2, skipped: offered.length - games2.length, mirrors };
   }
+  var PARSE_BATCH = 40;
+  var parseFeed = (document2, url) => finish(feedSteps(document2, url, Infinity));
+  // The same, with the screen's frames in between: a refresh while the store or Settings is open.
+  var parseFeedAsync = (document2, url, pause) => finishPaced(feedSteps(document2, url, PARSE_BATCH), pause);
   // A parsed feed back in feed form, as the cache stores it: what parseFeed gives for it is the same feed.
   function feedDocument({ name, games: games2, mirrors = [] }) {
     return {
@@ -175,4 +203,4 @@ import { retiredSource, sourceKind, webURL } from './download-sources.js';
     };
   }
 
-export { MAX_GAMES, MAX_MIRRORS, feedDocument, parseFeed, stableKey };
+export { MAX_GAMES, MAX_MIRRORS, feedDocument, parseFeed, parseFeedAsync, stableKey, stableKeyAsync };

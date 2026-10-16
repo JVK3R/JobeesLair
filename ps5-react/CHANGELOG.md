@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — an app replaces its own image
+
+- Add `SelfUpdate.arm(controlDir)` (native ABI v20, `update.arm`). It sends `updater.elf`
+  (native/ps5/payloads/updater.c) to the payload loader. Once the title closes, the updater:
+  - carries out `<controlDir>/apply.txt` once ShadowMount+ has released the image;
+  - swaps the staged image in with two renames on one filesystem, then asks ShadowMount+ to rescan;
+  - relaunches the title if asked;
+  - restores the previous image when the new build does not report that it started.
+
+  `tools/test_updater.py` covers the payload against a stand-in for ShadowMount+'s API. `verify.py`
+  checks both payloads and the layout the app reads from its own ZIP. Not yet hardware-tested.
+
 ## Unreleased — copies off the render thread
 
 - Add `FileSystem.copyAsync(from, to, options)` (native ABI v19, `fs.copyAsync`, `copies.poll`,

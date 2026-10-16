@@ -1,6 +1,6 @@
 # Jobee'sLair installation guide
 
-Jobee'sLair 0.2.0 · Title ID `PPSA99058` · created by JVK3R
+Jobee'sLair 0.2.1 · Title ID `PPSA99058` · created by JVK3R
 
 This guide takes you from the `.exfat` image to a working install. It then covers pairing your
 phone with the companion (port `34177`, a PIN you choose) and adding your own JSON catalog feeds
@@ -261,15 +261,45 @@ copy, so your games do not disappear.
 **Update check:** Jobee'sLair looks at the latest release of
 [JVK3R/JobeesLair](https://github.com/JVK3R/JobeesLair) when it starts and every 24 hours while it is
 open. When a newer version exists, a **badge with the version** appears in the navigation dock;
-select it to read what changed. **Settings → About → Check for updates** asks right away. The check
-only reads the release information: Jobee'sLair never downloads or installs anything for you, and a
-failed check (no network, no release yet) changes nothing.
+select it to read what changed. **Settings → About → Check for updates** asks right away. A failed
+check (no network, no release yet) changes nothing.
 
-**Updating:** to install a new version, download its `JobeesLair.exfat` from the release page,
-close Jobee'sLair and copy the new file over the old one in the same `homebrew` folder. ShadowMount+
-installs the new image. Your settings, PIN, feeds, theme and download queue live in the console's data
-storage, outside the image, so they carry over. (They are kept in a folder named `JobeesLair`;
-earlier test builds used `overdrive`, and anything found there is still read the first time.)
+**Installing from the app (0.2.1 and later):** in the update dialog, select **Download and
+install**. Jobee'sLair downloads the release's `update.zip` and `JobeesLair.exfat` in the background:
+
+- Each file is checked against the size and SHA-256 that GitHub publishes for it.
+- `update.zip` must name this title and the release's version before the image is kept.
+- The files are staged on the same drive as the installed image, in
+  `JobeesLair/update_staging/<version>/`. For internal storage that is
+  `/data/JobeesLair/update_staging/`. The staged image is named `JobeesLair.exfat.staged`, so
+  ShadowMount+ never installs it as a second copy.
+- The download waits while your game downloads run, and gives way when you queue a new one. The
+  dock's badge shows its progress.
+
+When it is checked, the badge and the dialog say **Update ready – Restart app to apply**. Select
+**Restart to apply** and Jobee'sLair closes. The updater then:
+
+1. waits until ShadowMount+ has let go of the old image;
+2. puts the new image in its place (the old one is kept as `JobeesLair.exfat.previous`) and asks
+   ShadowMount+ to rescan;
+3. opens Jobee'sLair again.
+
+If the new version closes before it has finished starting, the updater puts the old image back and
+opens that instead, and the dialog says why.
+
+With **Settings → About → Install updates automatically** on, a new version downloads as soon as the
+check finds it, and goes in the next time you close Jobee'sLair.
+
+This needs the ELF loader on port 9021, which also gives the app its file access. It also needs
+ShadowMount+ to release images when a game closes, which is its default. With
+`persistent_image_mounts=1` the updater changes nothing and says so. The updater's log is
+`/data/JobeesLair/update/updater.log`.
+
+**Updating by hand:** download `JobeesLair.exfat` from the release page, close Jobee'sLair and copy
+the new file over the old one in the same `homebrew` folder. ShadowMount+ installs the new image.
+Either way, your settings, PIN, feeds, theme and download queue live in the console's data storage,
+outside the image, so they carry over. (They are kept in a folder named `JobeesLair`; earlier test
+builds used `overdrive`, and anything found there is still read the first time.)
 
 **Removing:** delete `JobeesLair.exfat` from the `homebrew` folder **first**, then delete the icon
 from the home screen. In the other order, ShadowMount+ finds the file again and puts the icon back.

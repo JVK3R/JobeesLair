@@ -464,6 +464,32 @@ loader on `127.0.0.1:9021`; the payload waits for the title to close, then launc
 foreground user. Without the loader it returns `false`, logs why, and the app only closes. The
 desktop preview runs itself again.
 
+`SelfUpdate.arm(controlDir)` (ABI v20) arranges for the app's own disk image to be replaced, which the
+app cannot do while it runs from that image. On PS5 it sends `updater.elf`
+(`native/ps5/payloads/updater.c`, shipped in the app folder) to the payload loader with the title ID
+and `controlDir`, an absolute path. It returns `true` once the updater has the request, or the reason
+it could not be sent. Only one updater waits at a time: it holds a loopback port, and a second one
+answers that the first is armed, which also counts as `true`. The updater:
+
+1. Waits for the title to close. It then reads `<controlDir>/apply.txt`, whose lines are `UPD1`,
+   `version=`, `target=` (the installed `.exfat`), `staged=` (the new image, on the same filesystem,
+   not named `.exfat`), `size=` and `relaunch=` (`1` or `0`). A missing file means the request was
+   withdrawn.
+2. Waits until ShadowMount+ (`127.0.0.1:10101`, `/api/v1/images`) reports the image unmounted. If it
+   stays mounted, the updater asks once for `games/unmount`. When the image is still mounted after
+   that, or ShadowMount+ does not answer, nothing is changed.
+3. Renames the target to `<target>.previous` and the staged image to the target, syncs the folder and
+   asks ShadowMount+ to `scan`.
+4. Relaunches the title if `relaunch=1`. Once the title opens, the updater waits for
+   `<controlDir>/booted.txt` to name the new version, which the new build writes as it starts. If the
+   build closes before that, or is relaunched and never opens, the updater moves it back to the staged
+   path and restores `.previous`.
+
+The updater writes its outcome to `<controlDir>/result.txt` as `outcome=` (`swapped` while it waits,
+then `applied`, `rolledback`, `refused` or `failed`), `version=` and `reason=`, and logs each step to
+`<controlDir>/updater.log`. The desktop preview runs from no image and returns its reason.
+`tools/test_updater.py` runs the payload on the desktop against a stand-in for ShadowMount+.
+
 ## Desktop preview behavior
 
 `npm run dev` and `npm run preview` implement the same API on macOS:

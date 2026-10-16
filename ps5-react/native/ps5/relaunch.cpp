@@ -23,3 +23,21 @@ bool host::arrange_relaunch(char* error, std::size_t size) {
   std::snprintf(error, size, "%s", reason.c_str());
   return false;
 }
+
+// updater.elf (native/ps5/payloads/updater.c) waits for this title to close, then carries out the
+// control directory's apply.txt. It answers "ready" once it has the request, or "armed" when another
+// updater already waits (that one reads apply.txt when the title closes, so the request still holds).
+bool host::arm_update(const char* control_dir, char* error, std::size_t size) {
+  std::string reason;
+  const int socket = payload_loader::send("updater.elf", std::string("UPD1\n") + PS5_REACT_TITLE + "\n" + control_dir + "\n",
+                                          3'000'000, "update", reason);
+  if (socket >= 0) {
+    char answer[16] = {};
+    const int count = payload_loader::receive(socket, answer, sizeof answer - 1);
+    payload_loader::close(socket);
+    if (count > 0 && (!std::strncmp(answer, "ready\n", 6) || !std::strncmp(answer, "armed\n", 6))) return true;
+    reason = "update: updater.elf did not answer";
+  }
+  std::snprintf(error, size, "%s", reason.c_str());
+  return false;
+}

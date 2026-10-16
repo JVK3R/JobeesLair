@@ -10,7 +10,7 @@
 // kept. Nothing here touches the download handlers: a feed only ever supplies catalog records.
 
 import { useEffect, useState } from 'react';
-import { MAX_MIRRORS, feedDocument, parseFeed, stableKey } from './feed-format.js';
+import { MAX_MIRRORS, feedDocument, parseFeed, parseFeedAsync, stableKey, stableKeyAsync } from './feed-format.js';
 import { isoStamp } from './clock.js';
 import { DATA_DIR, LEGACY_DATA_DIR } from './data-dir.js';
 import { webURL } from './download-sources.js';
@@ -117,6 +117,11 @@ import { FileSystem, Http } from '@ps5-react/core';
     return inflight.get(url);
   }
   var listed = (url) => feedList.get().includes(url);
+  // A refresh runs while the store or Settings is on screen, and checking a 2 MiB feed took the console's
+  // interpreter about a second per feed in one piece: the screen stopped answering (Settings froze when
+  // opened just after launch, when the feeds refresh, or on Refresh feeds). Its checking and hashing now
+  // stop for a frame every few milliseconds of work.
+  var nextFrame = () => new Promise((resolve) => setTimeout(resolve, 0));
   // One address: the parsed feed, or an error saying why not (so the next address gets its turn). It is
   // parsed as the feed's own address (`url`), so a copy from a mirror has the same release ids and
   // downloads started from either keep their identity.
@@ -130,7 +135,7 @@ import { FileSystem, Http } from '@ps5-react/core';
     } catch {
       throw new Error("Not JSON.");
     }
-    const feed = parseFeed(document2, url);
+    const feed = await parseFeedAsync(document2, url, nextFrame);
     document2 = null; // the raw document can go before the normalized copy is built
     if (!feed.games.length) throw new Error("No usable games in this feed.");
     return feed;
@@ -156,10 +161,12 @@ import { FileSystem, Http } from '@ps5-react/core';
       if (!listed(url)) return;
       const normalized = feedDocument(feed);
       const text = JSON.stringify(normalized);
-      const hash = stableKey(text);
+      const hash = await stableKeyAsync(text, nextFrame);
+      if (!listed(url)) return;
       const cache = { url, from, hash, fetchedAt: isoStamp(Date.now()), name: feed.name, games: feed.games.length, skipped: feed.skipped, mirrors: feed.mirrors };
       FileSystem.mkdir(DIR, { recursive: true });
-      FileSystem.writeFile(`${cacheFile(url)}.tmp`, JSON.stringify({ ...cache, document: normalized }));
+      // The document goes in as the text already made for the hash: one stringify of the feed, not two.
+      FileSystem.writeFile(`${cacheFile(url)}.tmp`, `${JSON.stringify(cache).slice(0, -1)},"document":${text}}`);
       FileSystem.rename(`${cacheFile(url)}.tmp`, cacheFile(url));
       meta.set(url, summary(cache));
       setIndex(url, feed.games);
