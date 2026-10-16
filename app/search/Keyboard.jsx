@@ -1,0 +1,133 @@
+// ../pub-game-store/native/search/Keyboard.jsx
+// reconstructed from the esbuild bundle in eboot.bin
+
+import '../assets/Exo2.ttf';
+import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
+import { memo, useCallback, useState } from 'react';
+import { focusEnd, useLocale, useT } from '../i18n/index.js';
+import { edit } from './edit.js';
+import { ButtonGlyph } from '../ui/ButtonHints.jsx';
+import { Icon } from '../ui/Icon.jsx';
+import { HINT, useHints } from '../ui/Legend.jsx';
+import { colors, radius } from '../ui/colors.js';
+import { FocusScope, Text, View, motion, useIsFocused } from '@ps5-react/core';
+
+  var COLUMNS2 = 6;
+  var LTR2 = { direction: "ltr" };
+  var CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".split("");
+  var MAX_QUERY = 40;
+  var TO_RESULTS = "search-results";
+  var TYPE2 = { button: "cross", label: "hints.type" };
+  var DELETE = { button: "square", label: "hints.delete" };
+  var URL_HINTS = [TYPE2, DELETE, { button: "r2", label: "hints.confirm" }, HINT.back];
+  var HINTS4 = [
+    TYPE2,
+    DELETE,
+    { button: "triangle", label: "hints.space" },
+    { button: "r2", label: "hints.search" },
+    HINT.clear,
+    HINT.back
+  ];
+  function KeyFace({ label, icon, button, url }) {
+    const focused = useIsFocused();
+    useHints(focused ? url ? URL_HINTS : HINTS4 : null);
+    return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
+      button ? /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", right: 15 }, children: /* @__PURE__ */ (0, jsx)(ButtonGlyph, { button, size: 18 }) }) : null,
+      icon ? /* @__PURE__ */ (0, jsx)(Icon, { name: icon, size: 20, color: focused ? colors.accentFg : colors.fg }) : null,
+      label ? /* @__PURE__ */ (0, jsx)(Text, { focused, style: [{ fontFamily: "Exo2", fontSize: 27, color: colors.fg, lineHeight: 36 }, focused ? { color: "#ffffff" } : null], children: label }) : null
+    ] });
+  }
+  var Key = (0, memo)(function Key2({ label, icon, button, wide, value, onKey, toResults, compact }) {
+    const { rtl } = useLocale();
+    return /* @__PURE__ */ (0, jsx)(motion.View, { onPress: () => onKey(value), ...focusEnd(rtl, toResults), style: (_state) => [
+      { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12, borderRadius: radius.sm, backgroundColor: colors.surface3 },
+      wide ? { width: 276 } : { width: 84 },
+      compact ? { height: 60 } : { height: 84 },
+      _state.focused ? { backgroundColor: colors.accent } : null
+    ], initial: false, animate: { scale: 1 }, transition: { type: "tween", duration: 0.1, ease: [0.4, 0, 0.2, 1] }, whilePress: { scale: 0.95 }, children: /* @__PURE__ */ (0, jsx)(KeyFace, { label, icon, button, url: compact }) });
+  });
+  var Keyboard = (0, memo)(function Keyboard2({ onChange, onSubmit, url = false }) {
+    const t2 = useT();
+    const { rtl } = useLocale();
+    const edge = rtl ? 0 : COLUMNS2 - 1;
+    const [upper, setUpper] = (0, useState)(false);
+    const characters = url ? [...CHARACTERS, ...":/._-?=&%+#@~".split("")] : CHARACTERS;
+    const onKey = (0, useCallback)(
+      (value) => value === "case" ? setUpper((value2) => !value2) : value === "done" ? onSubmit() : onChange((query) => edit(query, value, url ? 8192 : MAX_QUERY)),
+      [onChange, onSubmit, url]
+    );
+    const onAction = (action) => {
+      if (action === "square") onKey("delete");
+      else if (action === "triangle" && !url) onKey(" ");
+      else
+        return false;
+      return true;
+    };
+    return /* @__PURE__ */ (0, jsx)(FocusScope, { wrap: true, onAction, children: /* @__PURE__ */ (0, jsxs)(View, { style: [{ width: 564, flexDirection: "row", flexWrap: "wrap", gap: 12 }, LTR2], children: [
+      characters.map(
+        (character, i) => /* @__PURE__ */ (0, jsx)(
+          Key,
+          {
+            label: url && !upper ? character.toLowerCase() : character,
+            value: url && upper ? character : character.toLowerCase(),
+            onKey,
+            compact: url,
+            toResults: !url && i % COLUMNS2 === edge ? TO_RESULTS : void 0
+          },
+          character
+        )
+      ),
+      /* @__PURE__ */ (0, jsx)(
+        Key,
+        {
+          wide: true,
+          compact: url,
+          label: url ? upper ? t2("keyboard.lowercase") : t2("keyboard.uppercase") : t2("keyboard.space"),
+          value: url ? "case" : " ",
+          button: url ? void 0 : "triangle",
+          onKey,
+          toResults: url || !rtl ? void 0 : TO_RESULTS
+        }
+      ),
+      /* @__PURE__ */ (0, jsx)(
+        Key,
+        {
+          wide: true,
+          compact: url,
+          label: t2("keyboard.delete"),
+          icon: "delete",
+          button: "square",
+          value: "delete",
+          onKey,
+          toResults: url || rtl ? void 0 : TO_RESULTS
+        }
+      ),
+      /* @__PURE__ */ (0, jsx)(
+        Key,
+        {
+          wide: true,
+          compact: url,
+          label: t2("keyboard.clear"),
+          icon: "x",
+          button: url ? void 0 : "l2",
+          value: "clear",
+          onKey,
+          toResults: url || !rtl ? void 0 : TO_RESULTS
+        }
+      ),
+      /* @__PURE__ */ (0, jsx)(
+        Key,
+        {
+          wide: true,
+          compact: url,
+          label: t2("keyboard.done"),
+          button: "r2",
+          value: "done",
+          onKey,
+          toResults: url || rtl ? void 0 : TO_RESULTS
+        }
+      )
+    ] }) });
+  });
+
+export { Keyboard };

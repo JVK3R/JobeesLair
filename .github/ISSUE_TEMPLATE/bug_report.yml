@@ -1,0 +1,104 @@
+name: Bug report
+description: Something in Jobee'sLair doesn't work as it should.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. If Jobee'sLair doesn't show up on the home screen
+        or a new build won't install, the [Troubleshooting](https://github.com/JVK3R/JobeesLair/blob/main/INSTALLATION-GUIDE.md#8-troubleshooting)
+        section may already have the answer.
+
+  - type: input
+    id: version
+    attributes:
+      label: Jobee'sLair version
+      description: It's shown next to the logo at the top of the app.
+      placeholder: v1.0.1
+    validations:
+      required: true
+
+  - type: input
+    id: firmware
+    attributes:
+      label: PS5 firmware
+      placeholder: "4.03"
+    validations:
+      required: true
+
+  - type: input
+    id: shadowmount
+    attributes:
+      label: ShadowMount+ version
+      description: If you know it.
+      placeholder: "1.6"
+
+  - type: dropdown
+    id: location
+    attributes:
+      label: Where is Jobee'sLair installed?
+      options:
+        - USB drive (homebrew folder)
+        - Internal storage (/data/homebrew)
+        - Somewhere else
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app?
+      options:
+        - Installing or starting Jobee'sLair
+        - Discover, Browse or search
+        - Game page
+        - Downloads
+        - Files
+        - Updating Jobee'sLair
+        - Language or text
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Tell us what went wrong, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we make it happen again?
+      placeholder: |
+        1. Open Jobee'sLair
+        2. Go to ...
+        3. Press ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or video
+      description: Press the Create button on the controller to capture the screen, then drag the file here.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: If the app won't install or start, the relevant lines from `/data/shadowmount/debug.log` help a lot.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send it
+      options:
+        - label: I'm on the [latest release](https://github.com/JVK3R/JobeesLair/releases/latest).
+          required: true
+        - label: I searched the existing issues and this hasn't been reported yet.
+          required: true

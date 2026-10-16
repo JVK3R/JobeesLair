@@ -1,0 +1,7 @@
+Exo 2, by Natanael Gama, from Google Fonts (SIL Open Font License 1.1, Exo2-OFL.txt).
+https://raw.githubusercontent.com/google/fonts/main/ofl/exo2/Exo2%5Bwght%5D.ttf
+  sha256 205a448676a2586f9c57c25f3d5c58ca8db7e6cf5edf7506783a010c6fe2bfb5
+https://raw.githubusercontent.com/google/fonts/main/ofl/exo2/OFL.txt
+  sha256 7f95a8eeecc6904ffc81cd10cc8ebc7fcee72a67922924bf45f02dff03b88127
+app/assets/Exo2.ttf is its weight-500 instance; app/companion/fonts.js holds subset WOFF2 instances
+at 500 and 700. Made with fontTools (varLib.instancer, subset).

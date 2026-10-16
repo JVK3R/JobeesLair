@@ -1,0 +1,47 @@
+name: Game report
+description: A game in the store has a problem, like a download that fails or wrong details.
+title: "[Game] "
+labels: ["catalog"]
+body:
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      description: The name exactly as it appears in Jobee'sLair.
+      placeholder: Castlevania Dominus Collection
+    validations:
+      required: true
+
+  - type: dropdown
+    id: problem
+    attributes:
+      label: What's wrong?
+      options:
+        - The download fails or never starts
+        - The game doesn't install or start after downloading
+        - Wrong name, details, size or cover
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: What you saw, and any error message the app showed.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Jobee'sLair version
+      placeholder: v1.0.1
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Press the Create button on the controller to capture the screen, then drag the file here.

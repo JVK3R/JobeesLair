@@ -1,0 +1,77 @@
+# Jobee'sLair: what stays out of the repository.
+
+# Build output and downloaded build inputs
+.deps/
+.build/
+dist/
+build/
+stage/
+out/
+*.exfat
+*.exfat.*
+*.zip
+*.pkg
+*.ffpkg
+*.ffpfs
+*.ffpfsc
+*.o
+*.obj
+*.elf
+sandbox/
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+
+# Local credentials and machine settings. Nothing here belongs in a public repository.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+id_rsa*
+id_ed25519*
+secrets.*
+credentials.*
+*.secret
+# The console's own saved state, if a data folder is copied out of a sandbox or a console
+settings.json
+themes.json
+feeds.json
+feed-mirrors.json
+update-check.json
+downloads.json
+wishlist.json
+mock-downloads
+
+# Caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.cache/
+.parcel-cache/
+.eslintcache
+*.tsbuildinfo
+coverage/
+
+# Logs and temporary files
+*.log
+npm-debug.log*
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.swp
+
+# Editors and OS
+.vscode/
+.idea/
+.claude/
+.DS_Store
+Thumbs.db
+desktop.ini

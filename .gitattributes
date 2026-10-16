@@ -1,0 +1,20 @@
+# Line endings: LF everywhere, so shell scripts and Python tools run on Linux and in CI whatever the
+# machine that committed them. Binary files are never touched.
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.wav binary
+*.ogg binary
+*.mp4 binary
+*.bin binary
+*.zip binary
+*.exfat binary

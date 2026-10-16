@@ -1,0 +1,51 @@
+name: Takedown / copyright notice
+description: Report a feed manifest, mirror or catalog entry that infringes your copyright.
+title: "[Takedown] "
+labels: ["takedown"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Jobee'sLair is a user-driven tool. It hosts no game binaries or other copyrighted media, and the feeds and
+        mirrors people add are their own. This form is for **things in this repository or its releases**: a bundled
+        catalog entry, a link in the bundled data, or a feed or mirror address listed in the documentation. For a
+        file or feed hosted by a third party, also tell that host; this project cannot remove files from servers it
+        does not run. See the Content Neutrality & DMCA Notice in the README.
+
+        Issues are public. If you would rather not post your contact details here, use GitHub's own copyright
+        process (https://docs.github.com/en/site-policy/content-removal-policies/dmca-takedown-policy) and
+        name this repository.
+
+  - type: textarea
+    id: work
+    attributes:
+      label: The copyrighted work
+      description: What it is, and who owns the rights.
+    validations:
+      required: true
+
+  - type: textarea
+    id: location
+    attributes:
+      label: Where the infringing entry is
+      description: The file and title ID in this repository (for example app/data/releases/PPSA00000.json), or the exact feed or mirror address.
+    validations:
+      required: true
+
+  - type: textarea
+    id: contact
+    attributes:
+      label: Your contact details
+      description: Name, and an email address or other way to reach you or the rights holder.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: statements
+    attributes:
+      label: Statements
+      options:
+        - label: I have a good-faith belief that the use described above is not authorized by the copyright owner, its agent or the law.
+          required: true
+        - label: The information in this notice is accurate, and under penalty of perjury I am the owner of the right, or authorized to act for the owner.
+          required: true
