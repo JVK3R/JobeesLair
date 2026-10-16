@@ -303,7 +303,8 @@ import { FocusScope, Linking, ScrollView, Text, View, motion, useIsFocused } fro
         /* @__PURE__ */ (0, jsx)(JLMark, { height: 72 }),
         /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, gap: 4 }, children: [
           /* @__PURE__ */ (0, jsx)(Text, { style: text(26, colors.fg, { fontWeight: 600 }), children: t2("settings.about.version", { version: VERSION }) }),
-          /* @__PURE__ */ (0, jsx)(Text, { style: text(22, colors.glow), children: t2("settings.about.creator", { creator: CREATOR }) })
+          /* @__PURE__ */ (0, jsx)(Text, { style: text(22, colors.glow), children: t2("settings.about.creator", { creator: CREATOR }) }),
+          /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.about.ai", { creator: CREATOR }) })
         ] })
       ] }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:update", name: t2("settings.update.row"), detail: updateDetail(t2, update), end: /* @__PURE__ */ (0, jsx)(Icon, { name: update.update ? "download" : "restart", color: update.update ? colors.glow : colors.muted }), onPress: () => update.update ? openUpdateDialog() : void checkForUpdate() }),

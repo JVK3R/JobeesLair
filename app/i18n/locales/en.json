@@ -388,6 +388,7 @@
     "search.resultsFor": "Results for \u201C{query}\u201D",
     "search.tryGenre": "Check the spelling, or try a genre:",
     "settings.about": "About",
+    "settings.about.ai": "Proudly created alongside AI by {creator}",
     "settings.about.creator": "Made by {creator}",
     "settings.about.credits": "Built with PS5 React by half144 and PS5 React contributors: github.com/half144/ps5-react",
     "settings.about.origin": "Jobee'sLair was originally inspired by an open-source fork of Overdrive. It has since been redesigned from the ground up and is developed independently.",
