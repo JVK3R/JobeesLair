@@ -11,12 +11,31 @@ import { createDownloadQueue } from './download-queue.js';
 import { createSourceResolver } from './download-sources.js';
 import { createMockDownloadQueue } from './mock-download-queue.js';
 import { freeBytes, storageRoots } from './drives.js';
-import { createShadowMountProbe } from './shadowmount.js';
-import { Archives, DownloadFormats, Downloads, FileSystem, Http, Linking, Notifications, Packages, Platform, Power } from '@ps5-react/core';
+import { createShadowClient, createShadowMountProbe } from './shadowmount.js';
+import { createMountMonitor, mountMonitor } from './mount-monitor.js';
+import { createPlaytime, playtimeStore } from './playtime.js';
+import { parseStamp } from './clock.js';
+import { Archives, DeviceInfo, DownloadFormats, Downloads, FileSystem, Http, Linking, Notifications, Packages, Platform, Power } from '@ps5-react/core';
 
   var instance;
   var mocked = () => Platform.OS !== "ps5" && FileSystem.exists(`${DATA_DIR}/mock-downloads`);
   var stateDir = Platform.OS === "ps5" ? "/data/ps5-react/PPSA99058/queue" : void 0;
+  var utcOffset = (ms) => {
+    try {
+      return DeviceInfo.utcOffset(ms);
+    } catch {
+      return 0;
+    }
+  };
+  // Hours played per title, beside the queue (whose ShadowMount log reads feed it).
+  var playtime = playtimeStore(() => createPlaytime({ fs: FileSystem, file: `${stateDir ?? DATA_DIR}/playtime.json`, offsetMinutes: utcOffset }));
+  // ShadowMount's mounts and each game's health, asked in the background (never behind a download).
+  if (Platform.OS === "ps5") mountMonitor(() => createMountMonitor({
+    client: createShadowClient({ http: Http, transferring: () => downloadQueue().transferring?.() ?? false, quiet: (reason, work) => downloadQueue().quietNetwork(reason, work) }),
+    fs: FileSystem,
+    parse: (value) => parseStamp(value, utcOffset(Date.now())),
+    onLaunch: (title, at) => title !== "PPSA99058" && playtime.played(title, at)
+  }));
   var downloadQueue = () => instance ?? (instance = mocked() ? createMockDownloadQueue() : createDownloadQueue({
     fs: FileSystem,
     archives: Archives,
@@ -31,7 +50,9 @@ import { Archives, DownloadFormats, Downloads, FileSystem, Http, Linking, Notifi
     linking: Linking,
     sources: createSourceResolver({ http: Http }),
     packages: Packages,
-    releasesOf: (id) => getGame(id)?.releases || []
+    releasesOf: (id) => getGame(id)?.releases || [],
+    firmware: () => DeviceInfo.get().firmware,
+    playtime
   }));
   var shadowMountUp = Platform.OS === "ps5" ? createShadowMountProbe({ http: Http, now: Date.now }) : async () => true;
   function driveName(root2) {

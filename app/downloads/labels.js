@@ -22,6 +22,7 @@ import { COMPLETE } from '../state/download-queue.js';
     "installer-required",
     "installing",
     "installed",
+    "attention",
     "extraction-required",
     "removing"
   ]);
@@ -29,6 +30,8 @@ import { COMPLETE } from '../state/download-queue.js';
   var shownState = (job2) => job2.state === "extracting" && job2.phase === "finishing" ? "finishing" : job2.state;
   var hasStateLabel = (state) => LABELED.has(state);
   var stateLabel = (state) => t(`downloadState.${state}`);
-  var clearAction = (state) => COMPLETE.includes(state) ? "remove" : "cancel";
+  // A finished card's X deletes the game from disk (its entry alone would leave every file behind); an
+  // unfinished one's cancels it and deletes its partial files. Both arm first.
+  var clearAction = (state) => COMPLETE.includes(state) ? "deleteFromDisk" : "cancel";
 
 export { WAITING, clearAction, hasStateLabel, shownState, stateLabel };

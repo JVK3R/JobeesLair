@@ -6,6 +6,7 @@
 #include "archives.hpp"
 #include "packages.hpp"
 #include "removals.hpp"
+#include "copies.hpp"
 #include "disk_probes.hpp"
 #include "browser_capture.hpp"
 #include "http_server.hpp"
@@ -186,6 +187,7 @@ struct Host {
     http_server::stop();
   packages::stop();
   removals::stop();
+  copies::stop();
   disk_probes::stop();
   network::stop();
     video_layers::stop();

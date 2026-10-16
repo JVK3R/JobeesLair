@@ -10,7 +10,7 @@ import { Choice, TextAction } from './Choice.jsx';
 import { DISABLED, DownloadLabel, statusLine } from './DownloadLabel.jsx';
 import { MoreOptions, ProblemNote } from './DownloadProblem.jsx';
 import { canDownload, spaceAdvice, spaceNeeded } from './releases.js';
-import { fallbacks, isCdnProvider, preferredRelease } from './sources.js';
+import { describeSource, fallbacks, isCdnProvider, preferredRelease } from './sources.js';
 import { useDownload } from './useDownload.js';
 import { useFreeSpace } from './useFreeSpace.js';
 import { useShadowMount } from './useShadowMount.js';
@@ -18,10 +18,11 @@ import { formatPercent2 } from '../i18n/core.js';
 import { useT } from '../i18n/index.js';
 import { editionsOf } from '../state/catalog.js';
 import { BUSY, COMPLETE } from '../state/download-queue.js';
+import { readinessOf, readinessText } from '../state/readiness.js';
 import { downloadQueue, driveName, freeBytes, storageRoots } from '../state/downloads.js';
 import { useNavActions } from '../state/nav.jsx';
 import { formatBytes } from '../state/size.js';
-import { MARGIN2 } from '../state/space.js';
+import { MARGIN2, stillNeeded } from '../state/space.js';
 import { FocusRing } from '../ui/FocusRing.jsx';
 import { glide } from '../ui/ProgressBar.jsx';
 import { ShimmerText } from '../ui/ShimmerText.jsx';
@@ -68,13 +69,31 @@ import { colors, radius } from '../ui/colors.js';
     const lacking = download.status === "idle" && need && free[storage] !== null && free[storage] < need + MARGIN2;
     const stale = ["paused", "failed"].includes(download.status) && STALE_PARTIAL.test(cause(error2));
     const status = lacking ? "no-space" : stale ? "stale" : download.status;
+    // Not enough room, by the button's own count or the queue's (which counts the downloads queued before
+    // it): Make Room frees what the drive needs for it and its queue, then starts it.
+    const roomless = !job2 && (lacking || /Not enough space/i.test(error2));
+    const openRoom = () => {
+      const root2 = roots[storage];
+      let reserved = 0;
+      try {
+        reserved = downloadQueue().snapshot().filter((item) => item.root === root2 && (BUSY.includes(item.state) || item.state === "paused")).reduce((sum, item) => sum + stillNeeded(item), 0);
+      } catch {
+      }
+      onRequestDialog({ kind: "makeRoom", target: root2, need: (need || release?.sizeBytes || 0) + MARGIN2 + reserved, then: { game, release, root: root2, alternatives }, from: roomFocus });
+    };
     const begin = () => {
       if (stale) restart();
-      else if (!lacking) download.advance();
+      else if (lacking) openRoom();
+      else download.advance();
     };
     const { openEdition, focusLater, push } = useNavActions();
     const editions = editionsOf(game);
     const advance = () => {
+      // "Won't start": the button explains why (the last launch, from ShadowMount's logs).
+      if (job2?.state === "installed" && readinessOf(job2)?.action === "seeWhy") {
+        onRequestDialog({ kind: "diagnosis", title: game.title, jobId: job2.id });
+        return;
+      }
       if (status !== "idle" || editions.length < 2) {
         begin();
         return;
@@ -114,14 +133,19 @@ import { colors, radius } from '../ui/colors.js';
     const inProgress = BUSY.includes(status) || status === "paused";
     const sizeless = inProgress && !job2?.total;
     const amount = sizeless ? formatBytes(job2?.written || 0) : formatPercent2(Math.round(progress * 100));
-    const shown = job2 && shownState(job2) === "finishing" ? "finishing" : status;
-    const [state, line] = statusLine(stale ? download.status : shown, progress, sizeGb);
+    // Where the game stands for the gamer (state/readiness.js): an installed game reads Played or Won't start
+    // once ShadowMount's log shows a launch, and the status line names the stage, not the queue's state.
+    const ready = job2 ? readinessOf(job2) : null;
+    const settled = job2?.state === "installed" && (ready?.stage === "played" || ready?.stage === "wontStart") ? ready.stage : null;
+    const shown = settled ?? (job2 && shownState(job2) === "finishing" ? "finishing" : status);
+    const [plain, line] = statusLine(stale ? download.status : settled ? "installed" : shown, progress, sizeGb);
+    const state = ready && !stale && shown !== "finishing" ? readinessText(ready) : plain;
     const detail2 = sizeless ? t2("download.soFar", { size: formatBytes(job2?.written || 0) }) : line;
     const problem = browser ? {
       title: step ? t2("download.browser.partTitle", step) : t2("download.browser.title"),
       action: t2("download.browser.action")
     } : error2 ? explainError(error2, Boolean(job2?.release.parts)) : lacking ? { title: t2("download.noFit"), action: spaceAdvice(roots, free, storage, need) } : shadowMount || status === "installed" ? null : { title: t2("shadowMount.offTitle"), action: t2("shadowMount.offAction") };
-    const notice = job2?.message;
+    const notice = job2?.message || download.notice;
     const pick2 = (index) => {
       if (index !== selected && job2 && !written && ["awaiting-browser", "failed", "paused"].includes(job2.state)) downloadQueue().remove(job2.id);
       setSelected(index);
@@ -144,9 +168,17 @@ import { colors, radius } from '../ui/colors.js';
       label: t2("hints.delete"),
       detail: job2.artifact.destination,
       onSelect: deleteFromDisk,
-      armed: { label: t2("hints.confirmDelete"), detail: t2("files.confirmDelete", { size: formatBytes(job2.total || 0) }) }
+      armed: { label: t2("hints.confirmDelete"), detail: t2("files.confirmDelete", { size: formatBytes((COMPLETE.includes(job2.state) ? job2.total : job2.written) || 0) }) }
     };
-    const options = COMPLETE.includes(status) ? [removal, deletion] : recoverable ? [
+    // A title ShadowMount installs: what its logs say about the last launch (read-only).
+    const diagnosis = job2?.artifact.nextAction === "shadowmount" && {
+      icon: "alert",
+      label: t2("download.diagnose.label"),
+      detail: t2("download.diagnose.detail"),
+      onSelect: () => onRequestDialog({ kind: "diagnosis", title: game.title, jobId: job2.id }),
+      next: true
+    };
+    const options = COMPLETE.includes(status) ? [diagnosis, removal, deletion].filter(Boolean) : recoverable ? [
       stale ? null : {
         icon: "restart",
         label: t2("download.restart.label"),
@@ -160,7 +192,9 @@ import { colors, radius } from '../ui/colors.js';
         detail: t2("download.otherSource.detail"),
         onSelect: () => chooseSource(),
         next: true
-      } : null
+      } : null,
+      // A stopped download's partial and extracted files go too, not only its entry.
+      job2 ? deletion : null
     ].filter(Boolean) : [];
     const openOptions = () => onRequestDialog({ kind: "options", title: game.title, items: options });
     const [pulse3, setPulse] = (0, useState)(false);
@@ -170,11 +204,13 @@ import { colors, radius } from '../ui/colors.js';
     const moreFocus = `download-more:${game.id}`;
     const browserFocus = `download-continue:${game.id}`;
     const queueFocus = `download-queue:${game.id}`;
+    const roomFocus = `download-room:${game.id}`;
     const mainFocus = `download:${game.id}`;
     const disabled = DISABLED.includes(status);
     const sourceChoice = releases.length > 1 || editions.length > 1;
     const chain = [
       mainFocus,
+      roomless && release && roomFocus,
       choosing && release && sourceChoice && sourceFocus,
       !job2 && roots.length > 1 && storageFocus,
       browser && browserFocus,
@@ -226,6 +262,7 @@ import { colors, radius } from '../ui/colors.js';
         detail2 ? /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 21, color: colors.subtle, lineHeight: 30 }, children: detail2 }) : null
       ] }),
       problem ? /* @__PURE__ */ (0, jsx)(ProblemNote, { title: problem.title, action: problem.action }) : notice ? /* @__PURE__ */ (0, jsx)(Text, { style: { width: 408, fontFamily: "Exo2", fontSize: 21, color: colors.muted, numberOfLines: 3, ellipsizeMode: "tail", lineHeight: 30 }, children: notice.slice(0, 160) }) : null,
+      roomless && release ? /* @__PURE__ */ (0, jsx)(TextAction, { focusKey: roomFocus, nextFocusDown: after(roomFocus), onPress: openRoom, text: t2("download.makeRoom", { drive: driveName(roots[storage]) }) }) : null,
       choosing && release ? /* @__PURE__ */ (0, jsx)(
         Choice,
         {
@@ -236,7 +273,8 @@ import { colors, radius } from '../ui/colors.js';
             name: release.provider,
             detail: [t2("sources.cdnFastest"), release.sizeBytes && formatBytes(release.sizeBytes)].filter(Boolean).join(" \xB7 ")
           } : null,
-          text: [t2("download.source", { source: release.provider }), release.sizeBytes && formatBytes(release.sizeBytes)].filter(Boolean).join(" \xB7 ")
+          // What the gamer gets first ("Disk image · USA v1.10"), then where from and how big.
+          text: [describeSource(release).name, describeSource(release).host, release.sizeBytes && formatBytes(release.sizeBytes)].filter(Boolean).join(" \xB7 ")
         }
       ) : null,
       !job2 ? /* @__PURE__ */ (0, jsx)(

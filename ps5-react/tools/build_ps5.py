@@ -156,7 +156,7 @@ def main():
     sources = [ROOT / "native/ps5/native_host.cpp", ROOT / "native/ps5/async_log.cpp", ROOT / "native/ps5/host_platform.cpp", ROOT / "native/ps5/video_output.cpp", ROOT / "native/ps5/time_compat.c", ROOT / "native/ps5/archive_compat.c",
                ROOT / "native/ps5/filesystem_access.cpp",
                ROOT / "native/ps5/elevation_transport.cpp",
-               ROOT / "native/shared/host_api.cpp", ROOT / "native/shared/removals.cpp", ROOT / "native/shared/disk_probes.cpp", ROOT / "native/shared/network.cpp",
+               ROOT / "native/shared/host_api.cpp", ROOT / "native/shared/removals.cpp", ROOT / "native/shared/copies.cpp", ROOT / "native/shared/disk_probes.cpp", ROOT / "native/shared/network.cpp",
                ROOT / "native/shared/network_api.cpp", ROOT / "native/shared/archives.cpp", ROOT / "native/shared/archive_preflight.cpp", ROOT / "native/shared/rar5_password.cpp", ROOT / "native/shared/archive_writer.cpp", ROOT / "native/shared/archive_api.cpp", ROOT / "native/shared/browser_capture_api.cpp", ROOT / "native/shared/lan.cpp", ROOT / "native/shared/lan_api.cpp", ROOT / "native/shared/http_server.cpp", ROOT / "native/shared/http_server_api.cpp", ROOT / "native/ps5/browser_capture.cpp", ROOT / "native/shared/package_api.cpp", ROOT / "native/ps5/package_installer.cpp", ROOT / "native/ps5/payload_loader.cpp", ROOT / "native/ps5/relaunch.cpp", ROOT / "native/ps5/crash_log.cpp", ROOT / "native/ps5/utf8_locale.cpp", ROOT / "native/ps5/network_platform.cpp",
                ROOT / "native/shared/image_loader.cpp", ROOT / "native/shared/image_api.cpp",
                ROOT / "native/shared/sound_api.cpp", layout_dirs[0] / "sounds.generated.c",

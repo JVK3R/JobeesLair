@@ -37,6 +37,11 @@ import { Text, View } from '@ps5-react/core';
     "installer-required": { icon: "download", text: "download.button.installer-required" },
     installing: { icon: "download", text: "download.button.installing" },
     installed: { icon: "circleCheck", text: "download.button.installed" },
+    // An installed game's last launch, from ShadowMount's log: it started, or it did not (pressing explains).
+    played: { icon: "play", text: "download.button.played" },
+    wontStart: { icon: "alert", text: "download.button.wontStart" },
+    // ShadowMount installed it but reports a real problem (its files out of reach): pressing checks again.
+    attention: { icon: "alert", text: "download.button.attention" },
     "extraction-required": { icon: "circleCheck", text: "download.button.extraction-required" },
     removing: { icon: "delete", text: "download.button.removing" }
   };

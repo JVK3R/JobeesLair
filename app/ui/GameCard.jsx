@@ -7,7 +7,8 @@ import '../assets/Exo2.ttf';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useRef, useState } from 'react';
 import { prefetchWhenSettled } from '../game/art.js';
-import { focusEnd, latin, useLocale } from '../i18n/index.js';
+import { focusEnd, latin, useLocale, useT } from '../i18n/index.js';
+import { useCardReadiness } from '../state/readiness-store.js';
 import { genreLabel, onCdn } from '../state/catalog.js';
 import { formatSize } from '../state/size.js';
 import { useStoreActions, useWishlist } from '../state/store.jsx';
@@ -72,6 +73,20 @@ import { Text, View, motion, transitions, useIsFocused } from '@ps5-react/core';
       added.current
     ) });
   }
+  // Where the game stands for the gamer (Downloading, Getting ready, Installed, Played, Won't start), on
+  // the cover's top-left; a narrow card shows only the icon. "Won't start" is the one red badge.
+  var BADGE_INK = { accent: colors.fg, good: "#4ade80", bad: "#1c0a0a" };
+  function ReadyBadge({ id, compact }) {
+    const t2 = useT();
+    const ready = useCardReadiness(id);
+    if (!ready) return null;
+    const bad = ready.tone === "bad";
+    const ink2 = BADGE_INK[ready.tone] ?? colors.fg;
+    return /* @__PURE__ */ (0, jsxs)(View, { style: { position: "absolute", left: 12, top: 12, height: 36, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: radius.xs, backgroundColor: bad ? "#f87171" : `${colors.canvas}d9`, paddingHorizontal: 10 }, children: [
+      /* @__PURE__ */ (0, jsx)(Icon, { name: ready.icon, size: 15, color: ink2 }),
+      compact ? null : /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 18, fontWeight: 600, color: bad ? ink2 : colors.fg, numberOfLines: 1, lineHeight: 24 }, children: t2(`ready.stage.${ready.stage}`) })
+    ] });
+  }
   var boxes = /* @__PURE__ */ new Map();
   function boxOf(width, detailed) {
     const id = detailed ? -width : width;
@@ -113,6 +128,7 @@ import { Text, View, motion, transitions, useIsFocused } from '@ps5-react/core';
           children: [
             /* @__PURE__ */ (0, jsx)(Cover, { game, style: box.cover }),
             /* @__PURE__ */ (0, jsx)(WishBadge, { id: game.id }),
+            /* @__PURE__ */ (0, jsx)(ReadyBadge, { id: game.id, compact: width < 200 }),
             onCdn(game) ? /* @__PURE__ */ (0, jsx)(CdnMark, {}) : null,
             /* @__PURE__ */ (0, jsx)(CardFocus, { focused, width, height: box.height, platforms: game.platforms })
           ]

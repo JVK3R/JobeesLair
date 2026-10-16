@@ -321,7 +321,7 @@ nav{border-radius:22px 22px 0 0}nav button{border-radius:14px}
 
   // Queue: live progress and controls, and a gauge per drive.
   var ACTIVE = ["queued", "resolving", "connecting", "downloading", "verifying", "extracting", "installing", "pausing"];
-  var DONE = ["downloaded", "file-downloaded", "installed", "extracted", "installer-required", "extraction-required"];
+  var DONE = ["downloaded", "file-downloaded", "installed", "extracted", "installer-required", "extraction-required", "attention"];
   var LABELS = { pause: "Pause", resume: "Resume", cancel: "Cancel", clear: "Clear" };
   var queueBusy = false;
   function loadQueue() {

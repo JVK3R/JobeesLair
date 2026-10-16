@@ -15,6 +15,7 @@ import { AppRegistry, FocusScope, View, motion } from '@ps5-react/core';
 import { BrowsePage } from './browse/BrowsePage.jsx';
 import { DownloadsScreen } from './downloads/DownloadsScreen.jsx';
 import { FilesScreen } from './files/FilesScreen.jsx';
+import { LibraryScreen } from './library/LibraryScreen.jsx';
 import { GameScreen } from './game/index.jsx';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 import { SearchScreen } from './search/index.jsx';
@@ -42,7 +43,9 @@ import { logical } from './ui/scale.js';
     const openCard = (game) => openGame(game.id, `card:${game.id}`);
     if (screen2.name === "game") return /* @__PURE__ */ (0, jsx)(GameScreen, { game: getGame(screen2.id), download: screen2.download, onBack: pop, onOpenGame: openCard });
     if (screen2.name === "downloads") return /* @__PURE__ */ (0, jsx)(DownloadsScreen, { onBack: pop, onOpenGame: openGame });
-    if (screen2.name === "files") return /* @__PURE__ */ (0, jsx)(FilesScreen, { onBack: pop });
+    // The Files section opens on the library (the games); its files are one level down ("storage").
+    if (screen2.name === "files") return /* @__PURE__ */ (0, jsx)(LibraryScreen, { onBack: pop, onOpenGame: openGame });
+    if (screen2.name === "storage") return /* @__PURE__ */ (0, jsx)(FilesScreen, { onBack: pop });
     return /* @__PURE__ */ (0, jsx)(SearchScreen, { onBack: pop, onOpenGame: openCard });
   }
   // Pages start under the top island (Header.jsx: 24 from the top, 80 tall) with a gap, and end above
@@ -94,7 +97,7 @@ import { logical } from './ui/scale.js';
           onBrowse ? null : (
             // No background of its own: the root's canvas shows through, so a screen change does not
             // fill the whole screen twice. `screen` lets the header's Down return to where it was left.
-            /* @__PURE__ */ (0, jsx)(motion.View, { initial: { x: 56 }, animate: { x: 0 }, transition: SCREEN_FADE, style: immersive ? { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 } : top.name === "downloads" || top.name === "files" ? { position: "absolute", left: 0, right: 0, top: PAGE_TOP, bottom: PAGE_BOTTOM } : { position: "absolute", left: 0, right: 0, top: PAGE_TOP, bottom: PAGE_BOTTOM }, children: /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "screen", children: /* @__PURE__ */ (0, jsx)(Screen, { screen: top }) }) }, key)
+            /* @__PURE__ */ (0, jsx)(motion.View, { initial: { x: 56 }, animate: { x: 0 }, transition: SCREEN_FADE, style: immersive ? { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 } : top.name === "downloads" || top.name === "files" || top.name === "storage" ? { position: "absolute", left: 0, right: 0, top: PAGE_TOP, bottom: PAGE_BOTTOM } : { position: "absolute", left: 0, right: 0, top: PAGE_TOP, bottom: PAGE_BOTTOM }, children: /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "screen", children: /* @__PURE__ */ (0, jsx)(Screen, { screen: top }) }) }, key)
           ),
           immersive ? null : /* @__PURE__ */ (0, jsx)(Legend, { screen: top.name }),
           /* @__PURE__ */ (0, jsx)(UpdateDialog, {})

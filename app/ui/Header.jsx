@@ -132,7 +132,7 @@ import { colors, radius } from './colors.js';
         divider,
         item("favorites", { icon: "heart", label: favorites ? String(favorites) : null, onPress: on.favorites }),
         item("downloads", { icon: "download", onPress: on.downloads, children: BADGE }),
-        item("files", { icon: "folder", onPress: on.files }),
+        item("files", { icon: "grid", onPress: on.files }),
         update ? /* @__PURE__ */ (0, jsx)(NavItem, { focusKey: "nav:update", icon: "download", label: t2("update.badge", { version: update.version }), onPress: openUpdateDialog, nextFocusDown: down, children: /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", top: 12, right: 14, width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.accentHi } }) }) : null,
         /* @__PURE__ */ (0, jsx)(
           NavItem,

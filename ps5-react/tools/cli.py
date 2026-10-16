@@ -69,6 +69,7 @@ def desktop(app, test=False, target="ps5-react-preview", resolution=None):
         run(["python3", ROOT / "tools/test_resources.py"], log=ROOT / ".build/resource-test.log")
         run(["python3", ROOT / "tools/test_archives.py"], log=ROOT / ".build/archive-test.log")
         run(["python3", ROOT / "tools/test_removals.py"], log=ROOT / ".build/removal-test.log")
+        run(["python3", ROOT / "tools/test_copies.py"], log=ROOT / ".build/copy-test.log")
         run(["python3", ROOT / "tools/test_network.py"], log=ROOT / ".build/network-test.log")
         run(["python3", ROOT / "tools/test_images.py"], log=ROOT / ".build/image-test.log")
         run(["python3", ROOT / "tools/test_text.py"], log=ROOT / ".build/text-test.log")

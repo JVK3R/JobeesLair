@@ -4,6 +4,7 @@
 #include "host_api.hpp"
 #include "app_config.hpp"
 #include "removals.hpp"
+#include "copies.hpp"
 #include "disk_probes.hpp"
 #include "text_shaper.hpp"
 
@@ -242,6 +243,54 @@ JSValue fs_remove_async(JSContext* ctx, JSValueConst, int, JSValueConst* argv) {
   const auto id = removals::start(path.real(), error);
   if (!id) return JS_ThrowPlainError(ctx, "fs.removeAsync %s: %s", path.app(), error.c_str());
   return JS_NewUint32(ctx, id);
+}
+
+// options: {verify, resume, receipt} (copies.hpp); a missing option keeps its default.
+JSValue fs_copy_async(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
+  Path from(ctx, argv[0]);
+  if (!from) return from.error("fs.copyAsync");
+  Path to(ctx, argv[1]);
+  if (!to) return to.error("fs.copyAsync");
+  copies::Options options;
+  if (argc > 2 && JS_IsObject(argv[2])) {
+    const auto flag = [&](const char* name, bool& out) {
+      JSValue value = JS_GetPropertyStr(ctx, argv[2], name);
+      if (!JS_IsUndefined(value)) out = JS_ToBool(ctx, value) > 0;
+      JS_FreeValue(ctx, value);
+    };
+    flag("verify", options.verify);
+    flag("resume", options.resume);
+    flag("receipt", options.receipt);
+  }
+  std::string error;
+  const auto id = copies::start(from.real(), to.real(), options, error);
+  if (!id) return JS_ThrowPlainError(ctx, "fs.copyAsync %s: %s", to.app(), error.c_str());
+  return JS_NewUint32(ctx, id);
+}
+
+JSValue copies_poll(JSContext* ctx, JSValueConst, int, JSValueConst*) {
+  JSValue out = JS_NewArray(ctx);
+  std::uint32_t index = 0;
+  for (const auto& snapshot : copies::poll()) {
+    JSValue item = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, item, "id", JS_NewUint32(ctx, snapshot.id));
+    JS_SetPropertyStr(ctx, item, "state", JS_NewString(ctx, snapshot.state.c_str()));
+    JS_SetPropertyStr(ctx, item, "error", JS_NewString(ctx, snapshot.error.c_str()));
+    JS_SetPropertyStr(ctx, item, "receipt", JS_NewString(ctx, snapshot.receipt.c_str()));
+    JS_SetPropertyStr(ctx, item, "written", JS_NewFloat64(ctx, snapshot.written));
+    JS_SetPropertyStr(ctx, item, "verified", JS_NewFloat64(ctx, snapshot.verified));
+    JS_SetPropertyStr(ctx, item, "total", JS_NewFloat64(ctx, snapshot.total));
+    JS_SetPropertyStr(ctx, item, "files", JS_NewUint32(ctx, snapshot.files));
+    JS_SetPropertyUint32(ctx, out, index++, item);
+  }
+  return out;
+}
+
+JSValue copies_cancel(JSContext* ctx, JSValueConst, int, JSValueConst* argv) {
+  std::uint32_t id = 0;
+  if (JS_ToUint32(ctx, &id, argv[0])) return JS_EXCEPTION;
+  copies::cancel(id);
+  return JS_UNDEFINED;
 }
 
 JSValue mount_object(JSContext* ctx, const char* device, const char* path, const char* type);
@@ -591,11 +640,12 @@ JSValue namespace_object(JSContext* ctx, const char* space, const Function (&fun
 constexpr Function kFs[] = {
   {"readDir", fs_read_dir, 1}, {"stat", fs_stat, 1}, {"readFile", fs_read_file, 1},
   {"writeFile", fs_write_file, 4}, {"mkdir", fs_mkdir, 2}, {"remove", fs_remove, 1},
-  {"removeTree", fs_remove_tree, 1}, {"removeAsync", fs_remove_async, 1},
+  {"removeTree", fs_remove_tree, 1}, {"removeAsync", fs_remove_async, 1}, {"copyAsync", fs_copy_async, 3},
   {"rename", fs_rename, 2}, {"chmod", fs_chmod, 2}, {"mounts", fs_mounts, 0}, {"diskUsage", fs_disk_usage, 1},
   {"diskUsageAsync", fs_disk_usage_async, 1}, {"mountsAsync", fs_mounts_async, 0},
 };
 constexpr Function kRemovals[] = {{"poll", removals_poll, 0}};
+constexpr Function kCopies[] = {{"poll", copies_poll, 0}, {"cancel", copies_cancel, 1}};
 constexpr Function kDiskProbes[] = {{"poll", disk_probes_poll, 0}, {"cancel", disk_probes_cancel, 1}};
 constexpr Function kDevice[] = {{"info", device_info, 0}, {"utcOffset", device_utc_offset, 1}};
 constexpr Function kUsers[] = {{"foreground", users_foreground, 0}, {"loggedIn", users_logged_in, 0}};
@@ -619,6 +669,7 @@ void ps5_react_install_host_api(JSContext* ctx) {
   JS_SetPropertyStr(ctx, api, "platform", JS_NewString(ctx, host::platform_name()));
   JS_SetPropertyStr(ctx, api, "fs", namespace_object(ctx, "fs", kFs));
   JS_SetPropertyStr(ctx, api, "removals", namespace_object(ctx, "removals", kRemovals));
+  JS_SetPropertyStr(ctx, api, "copies", namespace_object(ctx, "copies", kCopies));
   JS_SetPropertyStr(ctx, api, "diskProbes", namespace_object(ctx, "diskProbes", kDiskProbes));
   JS_SetPropertyStr(ctx, api, "device", namespace_object(ctx, "device", kDevice));
   JS_SetPropertyStr(ctx, api, "users", namespace_object(ctx, "users", kUsers));

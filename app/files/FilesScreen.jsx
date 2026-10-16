@@ -101,10 +101,10 @@ import { FocusScope, ScrollView, Text, View, useIsFocused } from '@ps5-react/cor
       const index = shown.indexOf(focused);
       const next = shown[index + 1] ?? shown[index - 1];
       const file = focused;
-      remove(file).then(() => {
+      remove(file).then((result) => {
         focusLater(next ? fileKey(next.path) : `files-kind:${kind}`);
-        setNotice(t2("files.deleted", { name: file.game?.title ?? file.name }));
-      }, (error2) => setNotice(/ShadowMount/.test(error2.message) ? error2.message : t2("files.deleteFailed")));
+        setNotice([t2("files.deleted", { name: file.game?.title ?? file.name }), result?.note].filter(Boolean).join(". "));
+      }, (error2) => setNotice(/ShadowMount|download/i.test(error2.message) ? error2.message : t2("files.deleteFailed")));
       return true;
     };
     const back2 = () => {

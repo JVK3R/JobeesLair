@@ -63,6 +63,8 @@ import { colors } from './colors.js';
       "M6 16h.01",
       "M10 16h.01"
     ],
+    // The game library (the Files section's tab): four tiles.
+    grid: ["M4 4h6.5v6.5H4Z", "M13.5 4H20v6.5h-6.5Z", "M4 13.5h6.5V20H4Z", "M13.5 13.5H20V20h-6.5Z"],
     layers: [
       "M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z",
       "m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65",

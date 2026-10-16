@@ -89,6 +89,20 @@ export const FileSystem = {
    * gone, or if it never existed; rejects with an Error naming the path and the system error.
    * @param {string} path @returns {Promise<void>} */
   removeAsync: async path => { await networkTask(host().fs.removeAsync(path), 'fs.removeAsync', path, 'removals').done; },
+  /** Copies a file, or a directory with everything in it, on a worker thread, one copy at a time in the
+   * order asked. The copy is written as `<to>.partial`, read back and matched against its source, then
+   * renamed to `to` (which must not exist): `to` never names a partial copy. A copy that stops (cancelled,
+   * failed, the app closed) keeps `<to>.partial`; copying again with `resume` (the default) keeps its whole
+   * files and continues a cut file from its last whole 32 MiB chunk, and checks all of it again.
+   * `verify: false` compares sizes only; `receipt: true` refuses a file whose download receipt
+   * (`<from>.complete`) is not its own. Returns a task like `Downloads.enqueue`'s: `done` resolves once
+   * `to` is in place and rejects with an Error naming `to` and the reason (`AbortError` when cancelled);
+   * snapshots carry state ('copying' | 'verifying'), written, verified, total, files and receipt
+   * ('' | 'none' | 'matched').
+   * @param {string} from @param {string} to
+   * @param {{verify?: boolean, resume?: boolean, receipt?: boolean}} [options] */
+  copyAsync: (from, to, {verify = true, resume = true, receipt = false} = {}) =>
+    networkTask(host().fs.copyAsync(from, to, {verify, resume, receipt}), 'fs.copyAsync', to, 'copies'),
   /** @param {string} from @param {string} to */
   rename: (from, to) => host().fs.rename(from, to),
   /** Sets a file's or directory's permission bits, such as 0o777. */

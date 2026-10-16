@@ -22,6 +22,7 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
   var TEXT_WIDTH = 560;
   var ICON_OF = Object.fromEntries(KINDS.map((kind) => [kind.key, kind.icon]));
   function typeOf2(file) {
+    if (file.backport) return "files.type.backport";
     if (isPackage(file.name)) return "files.type.package";
     if (file.kind === "images") return "files.type.image";
     if (file.kind === "archives") return "files.type.archive";

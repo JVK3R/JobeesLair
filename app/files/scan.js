@@ -4,12 +4,14 @@
 
   var KINDS = [
     { key: "packages", icon: "package", folders: ["downloads/packages"] },
-    { key: "images", icon: "disc", folders: ["homebrew"] },
+    // downloads/images holds images still being downloaded or checked, before they move into homebrew.
+    { key: "images", icon: "disc", folders: ["homebrew", "downloads/images"] },
     { key: "archives", icon: "archive", folders: ["downloads/archives", "downloads/sets"] },
     { key: "extracted", icon: "folder", folders: ["downloads/extracted"] },
     { key: "other", icon: "file", folders: ["downloads/files"] }
   ];
-  var SIDECAR = /\.(?:complete|part|resume|tmp)$|^\.ps5-react-/;
+  // `.partial`: a copy FileSystem.copyAsync is still writing (a game moving to this drive).
+  var SIDECAR = /\.(?:complete|part|resume|tmp|partial)$|^\.ps5-react-/;
   var TITLE_ID = /\b(CUSA|PPSA)\d{5}\b/;
   var DEPTH = 4;
   var ENTRIES = 4e3;
@@ -30,15 +32,45 @@
     }
     return total;
   }
-  function scanDrive(fs, root2) {
+  // `kinds`: the folders to read (all of them by default; the library reads homebrew alone).
+  function scanDrive(fs, root2, kinds = KINDS) {
     const files = [];
-    for (const kind of KINDS) {
+    for (const kind of kinds) {
       for (const folder of kind.folders) {
         let entries2;
         try {
           entries2 = fs.readDir(`${root2}/${folder}`);
         } catch {
           continue;
+        }
+        // homebrew/backports holds one folder per title (backports ShadowMount lays over that game): each
+        // is listed on its own, so deleting one never takes the others.
+        if (folder === "homebrew") {
+          const backports = entries2.find((entry2) => entry2.isDirectory && entry2.name === "backports");
+          if (backports) {
+            entries2 = entries2.filter((entry2) => entry2 !== backports);
+            let titles = [];
+            try {
+              titles = fs.readDir(`${root2}/homebrew/backports`);
+            } catch {
+            }
+            for (const entry2 of titles) {
+              if (SIDECAR.test(entry2.name)) continue;
+              const path = `${root2}/homebrew/backports/${entry2.name}`;
+              const titleId = TITLE_ID.exec(entry2.name)?.[0] ?? null;
+              files.push({
+                kind: "other",
+                backport: true,
+                path,
+                name: entry2.name,
+                isDirectory: entry2.isDirectory,
+                modified: entry2.modified,
+                size: entry2.isDirectory ? folderSize(fs, path, DEPTH, { left: ENTRIES }) : entry2.size || 0,
+                titleId,
+                platform: titleId ? titleId.startsWith("CUSA") ? "ps4" : "ps5" : null
+              });
+            }
+          }
         }
         for (const entry2 of entries2) {
           if (SIDECAR.test(entry2.name)) continue;

@@ -41,7 +41,8 @@ import { useQueryActive, useStoreActions, useStoreState } from '../state/store.j
     const nav = useNavActions();
     const { top } = useNavState();
     const show = useShowLibrary();
-    const underneath = top.name === "downloads" || top.name === "files" ? top.name : sectionOf(store, queryActive);
+    // "storage" (Manage files) is part of the Files section, under its library.
+    const underneath = top.name === "downloads" || top.name === "files" ? top.name : top.name === "storage" ? "files" : sectionOf(store, queryActive);
     const section = top.name === "search" ? "search" : top.name === "game" ? null : underneath;
     const topName = (0, useRef)(top.name);
     topName.current = top.name;
@@ -53,7 +54,7 @@ import { useQueryActive, useStoreActions, useStoreState } from '../state/store.j
       new: () => show(NO_FILTERS, "newest"),
       favorites: () => show({ ...NO_FILTERS, wishlist: true }, "relevance"),
       downloads: () => topName.current !== "downloads" && nav.push({ name: "downloads" }, "nav:downloads"),
-      files: () => topName.current !== "files" && nav.push({ name: "files" }, "nav:files")
+      files: () => topName.current === "storage" ? nav.pop() : topName.current !== "files" && nav.push({ name: "files" }, "nav:files")
     }));
     const step = (forward) => {
       const current = top.name === "search" ? "search" : underneath;

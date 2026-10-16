@@ -22,7 +22,9 @@ import { sameRelease } from '../state/release-sets.js';
     }, [game.id, release?.id]);
     (0, useEffect)(() => {
       try {
-        if (job2?.state === "downloaded") void downloadQueue().syncInstalls(job2.id);
+        if (job2?.state === "downloaded" || job2?.state === "attention") void downloadQueue().syncInstalls(job2.id);
+        // An installed game's page asks ShadowMount's log how its last launch went (Played / Won't start).
+        else if (job2?.state === "installed") void downloadQueue().refreshLaunches?.();
       } catch {
       }
     }, [job2?.id]);
@@ -41,7 +43,7 @@ import { sameRelease } from '../state/release-sets.js';
           started.current = true;
           queue.resume(job2.id);
         } else if (job2.state === "awaiting-browser") queue.openBrowser(job2.id);
-        else if (job2.state === "downloaded") void queue.register(job2.id).catch((failure) => setError(failure.message));
+        else if (job2.state === "downloaded" || job2.state === "attention") void queue.register(job2.id).catch((failure) => setError(failure.message));
       } catch (failure) {
         setError(failure.message);
       }
@@ -66,9 +68,12 @@ import { sameRelease } from '../state/release-sets.js';
         setError(failure.message);
       }
     };
+    // What a finished delete left to say (ShadowMount uninstalls once the app closes, say).
+    const [note, setNote] = (0, useState)("");
     const deleteFromDisk = () => {
       setError("");
-      void downloadQueue().deleteFromDisk(job2.id).catch((failure) => setError(failure.message));
+      setNote("");
+      void downloadQueue().deleteFromDisk(job2.id).then((result) => setNote(result?.note || ""), (failure) => setError(failure.message));
     };
     return {
       status,
@@ -78,6 +83,7 @@ import { sameRelease } from '../state/release-sets.js';
       remove: () => action("remove"),
       deleteFromDisk,
       job: job2,
+      notice: note,
       error: error2 || job2?.error || ""
     };
   }

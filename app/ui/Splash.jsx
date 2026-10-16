@@ -16,7 +16,7 @@ import { Text, View, motion } from '@ps5-react/core';
 import { needsPin } from '../companion/service.js';
 import { formatNumber2 } from '../i18n/core.js';
 import { libraryCount } from '../state/library-count.js';
-import { TITLE_ID, VERSION } from '../version.js';
+import { TITLE_ID, VERSION_LABEL } from '../version.js';
 import { JLHalf, J_RED } from './JLMark.jsx';
 import { colors } from './colors.js';
 import { EASE_OUT } from './ease.js';
@@ -47,7 +47,7 @@ import { logical } from './scale.js';
     } catch {
     }
     return [
-      { tag: "SYSTEM", message: "MOUNTING KERNEL...", result: `v${VERSION}  ${TITLE_ID}`, tone: colors.fg },
+      { tag: "SYSTEM", message: "MOUNTING KERNEL...", result: `v${VERSION_LABEL}  ${TITLE_ID}`, tone: colors.fg },
       { tag: "AUTH", message: "VERIFYING PIN...", result: pin, tone: pin === "OK" ? GREEN : colors.muted },
       { tag: "FEED", message: "INDEXING SOURCES...", result: index, tone: colors.fg },
       { tag: "STATUS", message: "READY", result: "", tone: GREEN }

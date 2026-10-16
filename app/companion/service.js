@@ -15,7 +15,7 @@ import { downloadQueue, driveName } from '../state/downloads.js';
 import { driveSnapshot, refreshDrives } from '../state/drives.js';
 import { addFeed, addMirror, feedsSnapshot, refreshFeeds, removeFeed, removeMirror, replaceFeed } from '../state/feeds.js';
 import { loadList, saveList } from '../state/saved.js';
-import { CREATOR, VERSION } from '../version.js';
+import { CREATOR, VERSION_LABEL } from '../version.js';
 import { LocalServer } from '@ps5-react/core';
 import { createCompanionApi } from './api.js';
 import { PAGE } from './page.js';
@@ -47,7 +47,7 @@ import { startRemoteDownload } from './remote-download.js';
       if (action === "refresh") void refreshFeeds();
       else runShortcut(action);
     },
-    info: () => ({ app: "Jobee'sLair", version: VERSION, creator: CREATOR })
+    info: () => ({ app: "Jobee'sLair", version: VERSION_LABEL, creator: CREATOR })
   });
   // Every drive downloads can go to, with its space, from the cache: nothing here waits on a drive. The
   // phone asks again every few seconds, so asking the worker to look again is enough to keep it current.

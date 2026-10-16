@@ -82,8 +82,35 @@ import { preferredRelease } from '../game/sources.js';
       },
       async deleteFromDisk(id) {
         this.remove(id);
+        return { note: null };
       },
+      deleteExtras: async () => {
+      },
+      quietNetwork: async (_reason, work) => work(),
+      // A move in the preview takes two seconds and changes the drive it reads.
+      relocate(id, to, { onProgress = () => {
+      } } = {}) {
+        return new Promise((resolve) => {
+          let fraction = 0;
+          const timer = setInterval(() => {
+            fraction = Math.min(1, fraction + 0.1);
+            onProgress(fraction);
+            if (fraction < 1) return;
+            clearInterval(timer);
+            update(id, { root: to });
+            resolve({ note: null });
+          }, 200);
+        });
+      },
+      cancelMove: async () => {
+      },
+      isMoving: () => false,
+      transferring: () => false,
       syncInstalls: async () => false,
+      refreshLaunches: async () => false,
+      diagnose: async () => {
+        throw new Error("ShadowMount's logs are read on the console only.");
+      },
       get awake() {
         return jobs.some((item) => item.state === "downloading");
       }

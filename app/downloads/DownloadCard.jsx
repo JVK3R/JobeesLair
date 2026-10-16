@@ -21,6 +21,7 @@ import { isCdnProvider } from '../game/sources.js';
 import { SPAN_MAX, fitBytes } from '../i18n/fit.js';
 import { useT } from '../i18n/index.js';
 import { BUSY, COMPLETE } from '../state/download-queue.js';
+import { readinessOf, readinessText, stageLabel } from '../state/readiness.js';
 import { formatBytes } from '../state/size.js';
 import { Button2 } from '../ui/Button.jsx';
 import { CdnSpark } from '../ui/CdnAura.jsx';
@@ -38,14 +39,17 @@ import { Text, View, motion } from '@ps5-react/core';
   var primaryKey = (id) => `downloads:${id}`;
   var mono = (size, color, extra) => ({ fontFamily: "JetBrainsMono-Regular", fontSize: size, lineHeight: Math.round(size * 1.45), color, ...extra });
   var font = (size, color, extra) => ({ fontFamily: "Exo2", fontSize: size, lineHeight: Math.round(size * 1.42), color, ...extra });
-  // The card's tone: what color its stripe, chip and meter take.
-  function toneOf(state) {
-    if (COMPLETE.includes(state)) return GREEN;
-    if (state === "failed") return RED;
-    if (["paused", "pausing", "awaiting-browser"].includes(state)) return AMBER;
+  // The card's tone: what color its stripe, chip and meter take, from its readiness stage: green once it
+  // is installed or played, red only for what the gamer can act on (a stopped download, a game that won't
+  // start), amber while it waits on the gamer, the accent while it moves.
+  function toneOf(job2, ready) {
+    if (ready?.tone === "bad") return RED;
+    if (ready?.tone === "good") return GREEN;
+    if (["paused", "pausing", "awaiting-browser"].includes(job2.state)) return AMBER;
     return colors.accentHi;
   }
-  function primary({ state, error: error2 }, run, openGame) {
+  function primary({ state, error: error2 }, run, openGame, ready) {
+    if (ready?.action === "seeWhy") return { icon: "alert", label: "ready.seeWhy", onPress: () => run("seeWhy") };
     if (state === "pausing") return { icon: "pause", label: "downloads.action.pausing", onPress: () => {
     } };
     if (BUSY.includes(state)) return { icon: "pause", label: "downloads.action.pause", onPress: () => run("pause") };
@@ -54,10 +58,11 @@ import { Text, View, motion } from '@ps5-react/core';
     if (state === "failed") return { icon: "download", label: "downloads.action.retry", onPress: () => run("resume") };
     if (state === "awaiting-browser") return { icon: "play", label: "downloads.action.continueOnPage", onPress: openGame };
     if (state === "downloaded") return { icon: "circleCheck", label: "downloads.action.install", onPress: () => run("register") };
+    if (state === "attention") return { icon: "restart", label: "downloads.action.checkAgain", onPress: () => run("register") };
     return null;
   }
-  // Cancel arms on the first press (it turns into a delete for three seconds), deletes on the second.
-  // A finished job's entry is only cleared, so it goes at once.
+  // Cancel arms on the first press (it turns into a delete for three seconds), deletes on the second: an
+  // unfinished job's partial files, or a finished game from disk (ShadowMount uninstalls it first).
   function CancelButton({ id, action, run, onFocus, onBlur }) {
     const [armed, setArmed] = (0, useState)(false);
     (0, useEffect)(() => {
@@ -132,9 +137,10 @@ import { Text, View, motion } from '@ps5-react/core';
     const shown = shownState(job2);
     const complete = COMPLETE.includes(state);
     const moving = BUSY.includes(state) && state !== "pausing";
-    const tone = toneOf(state);
+    const ready = readinessOf(job2);
+    const tone = toneOf(job2, ready);
     const openGame = () => onOpenGame(job2);
-    const main = primary(job2, (name) => run(job2, name), openGame);
+    const main = primary(job2, (name) => run(job2, name), openGame, ready);
     const focusOf = (name) => ({
       onFocus: () => {
         setWithin(name);
@@ -144,7 +150,7 @@ import { Text, View, motion } from '@ps5-react/core';
     });
     const meta = [(job2.artifact.format || release.format || "").toUpperCase(), `${release.provider} ${release.version || ""}`.trim(), job2.root].filter(Boolean).join(" \xB7 ");
     const problem = job2.error && explainError(job2.error, Boolean(release.parts));
-    const note = problem ? problem.action ? t2("downloads.problem", { title: problem.title, action: problem.action }) : problem.title : state === "downloaded" ? job2.message || t2("downloads.installHint") : "";
+    const note = problem ? problem.action ? t2("downloads.problem", { title: problem.title, action: problem.action }) : problem.title : ready.action === "seeWhy" ? t2("ready.seeWhyHint") : state === "downloaded" ? job2.message || t2("downloads.installHint") : "";
     const cdn = isCdnProvider(release.provider);
     return /* @__PURE__ */ (0, jsxs)(View, { style: { width: CARD_WIDTH, flexDirection: "row", borderRadius: radius.lg, roundedClip: true, borderWidth: 1, borderColor: within ? colors.glow : colors.line, backgroundColor: within ? colors.surface2 : colors.surface }, children: [
       /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, gap: 18, padding: 28 }, children: [
@@ -154,7 +160,7 @@ import { Text, View, motion } from '@ps5-react/core';
             /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 14 }, children: [
               /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: radius.pill, backgroundColor: colors.canvas2, paddingHorizontal: 12, paddingVertical: 2 }, children: [
                 /* @__PURE__ */ (0, jsx)(View, { style: { width: 10, height: 10, borderRadius: radius.pill, backgroundColor: tone } }),
-                /* @__PURE__ */ (0, jsx)(Text, { style: mono(16, tone, { letterSpacing: 1.5 }), children: fitBytes(stateLabel(state === "pausing" ? "pausing" : shown).toUpperCase(), 96) })
+                /* @__PURE__ */ (0, jsx)(Text, { style: mono(16, tone, { letterSpacing: 1.5 }), children: fitBytes(stageLabel(ready.stage).toUpperCase(), 96) })
               ] }),
               cdn ? /* @__PURE__ */ (0, jsx)(CdnSpark, { size: 13 }) : null,
               /* @__PURE__ */ (0, jsx)(Text, { style: mono(17, colors.subtle, { flex: 1, numberOfLines: 1, ellipsizeMode: "tail" }), children: meta })
@@ -169,7 +175,7 @@ import { Text, View, motion } from '@ps5-react/core';
           moving,
           complete,
           waiting: WAITING.includes(shown),
-          label: stateLabel(shown),
+          label: shown === "finishing" ? stateLabel(shown) : readinessText(ready),
           detail: shown === "finishing" ? t2("downloads.writingToDisk") : null
         }),
         /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, children: [

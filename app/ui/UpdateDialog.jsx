@@ -8,7 +8,7 @@ import { jsx, jsxs } from 'react/jsx-runtime';
 import { useState } from 'react';
 import { useT } from '../i18n/index.js';
 import { closeUpdateDialog, useUpdate, useUpdateDialog } from '../state/update.js';
-import { VERSION } from '../version.js';
+import { VERSION_LABEL } from '../version.js';
 import { Button2 } from './Button.jsx';
 import { colors, radius } from './colors.js';
 import { FocusScope, Linking, Text, View, motion } from '@ps5-react/core';
@@ -44,7 +44,7 @@ import { FocusScope, Linking, Text, View, motion } from '@ps5-react/core';
           /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 10 }, children: [
             /* @__PURE__ */ (0, jsx)(View, { style: { alignSelf: "flex-start", borderRadius: radius.pill, backgroundColor: colors.accent, paddingHorizontal: 18, paddingVertical: 4 }, children: /* @__PURE__ */ (0, jsx)(Text, { style: sans(19, colors.accentFg, { fontWeight: 600 }), children: t2("update.available") }) }),
             /* @__PURE__ */ (0, jsx)(Text, { style: sans(60, colors.fg, { fontWeight: 600 }), children: `v${update.version}` }),
-            /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 21, lineHeight: 30, color: colors.muted }, children: `v${VERSION}  →  v${update.version}` })
+            /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 21, lineHeight: 30, color: colors.muted }, children: `v${VERSION_LABEL}  →  v${update.version}` })
           ] }),
           update.notes ? /* @__PURE__ */ (0, jsx)(Text, { style: sans(22, colors.fg, { numberOfLines: 7, ellipsizeMode: "tail", lineHeight: 33 }), children: update.notes }) : null,
           /* @__PURE__ */ (0, jsx)(Text, { style: sans(21, colors.muted), children: t2("update.howTo") }),

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — copies off the render thread
+
+- Add `FileSystem.copyAsync(from, to, options)` (native ABI v19, `fs.copyAsync`, `copies.poll`,
+  `copies.cancel`): a file or a tree copied on a worker thread (native/shared/copies.cpp) into
+  `<to>.partial`, read back against its source, then renamed to `to`. A copy cut off by a cancel, a
+  failure or the app closing resumes from its last whole 32 MiB chunk and is verified whole again;
+  `receipt: true` copies a downloaded file only when its download receipt is its own. Not yet
+  hardware-tested.
+
 ## Unreleased — comparing upscalers
 
 - `<Video compare={{upscale, split}}>` (native ABI v15, `video.setCompare`): right of `split` (0 to 1

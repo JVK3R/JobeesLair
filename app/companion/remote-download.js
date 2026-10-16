@@ -12,9 +12,9 @@ import { MARGIN2 } from '../state/space.js';
     if (!releases.length) throw new Error("This game has no download source.");
     const selected = preferredRelease(releases);
     const release = releases[selected];
-    const { group, name } = describeSource(release);
+    const { group, host } = describeSource(release);
     if (group === "unavailable") throw new Error(release.unavailableReason || "Its sources are unavailable.");
-    if (group === "browser") throw new Error(`${name} needs a check in the console's browser: start this one on the console.`);
+    if (group === "browser") throw new Error(`${host} needs a check in the console's browser: start this one on the console.`);
     const roots = storageRoots();
     if (!roots.length) throw new Error("No drive to download to.");
     // The first drive with room for it, as the game page picks; the queue still checks the space itself.
@@ -23,7 +23,7 @@ import { MARGIN2 } from '../state/space.js';
       return !need || (freeBytes(root) ?? 0) >= need + MARGIN2;
     }));
     const id = downloadQueue().enqueue(game, release, roots[index], fallbacks(releases, selected));
-    return { id, source: name, root: roots[index] };
+    return { id, source: host, root: roots[index] };
   }
 
 export { startRemoteDownload };

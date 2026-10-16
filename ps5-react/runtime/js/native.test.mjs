@@ -93,6 +93,47 @@ test('removeAsync resolves once the worker removed the path and rejects with the
   }
 });
 
+test('copyAsync passes its options, reports copying and verifying, cancels through copies.cancel and names the copy on failure', async () => {
+  let tick;
+  let snapshots = [];
+  const started = [];
+  const cancelled = [];
+  const originalInterval = globalThis.setInterval;
+  const originalClear = globalThis.clearInterval;
+  globalThis.setInterval = callback => { tick = callback; return 1; };
+  globalThis.clearInterval = () => {};
+  globalThis.__ps5ReactNative = {
+    fs: {copyAsync: (from, to, options) => started.push([from, to, options])},
+    copies: {poll: () => snapshots, cancel: id => cancelled.push(id)},
+  };
+  try {
+    const task = FileSystem.copyAsync('/data/homebrew/Game.exfat', '/mnt/usb0/homebrew/Game.exfat', {receipt: true});
+    const failing = FileSystem.copyAsync('/data/homebrew/Other.exfat', '/mnt/usb0/homebrew/Other.exfat', {verify: false, resume: false});
+    assert.deepEqual(started, [
+      ['/data/homebrew/Game.exfat', '/mnt/usb0/homebrew/Game.exfat', {verify: true, resume: true, receipt: true}],
+      ['/data/homebrew/Other.exfat', '/mnt/usb0/homebrew/Other.exfat', {verify: false, resume: false, receipt: false}],
+    ]);
+    const states = [];
+    task.subscribe(progress => states.push([progress.state, progress.written, progress.verified]));
+    snapshots = [{id: 1, state: 'copying', written: 10, verified: 0, total: 20, files: 1, receipt: 'matched', error: ''}];
+    tick();
+    snapshots = [{id: 1, state: 'verifying', written: 20, verified: 5, total: 20, files: 1, receipt: 'matched', error: ''}];
+    tick();
+    task.cancel();
+    assert.deepEqual(cancelled, [1]);
+    snapshots = [{id: 1, state: 'completed', written: 20, verified: 20, total: 20, files: 1, receipt: 'matched', error: ''},
+      {id: 2, state: 'failed', written: 0, verified: 0, total: 9, files: 1, receipt: '', error: 'write the copy: No space left on device'}];
+    tick();
+    assert.equal((await task.done).receipt, 'matched');
+    assert.deepEqual(states, [['queued', 0, undefined], ['copying', 10, 0], ['verifying', 20, 5], ['completed', 20, 20]]);
+    await assert.rejects(failing.done, {message: 'fs.copyAsync /mnt/usb0/homebrew/Other.exfat: write the copy: No space left on device'});
+  } finally {
+    globalThis.setInterval = originalInterval;
+    globalThis.clearInterval = originalClear;
+    delete globalThis.__ps5ReactNative;
+  }
+});
+
 test('diskUsageAsync and mountsAsync come from the probe worker and settle on its answers', async () => {
   let tick;
   let snapshots = [];

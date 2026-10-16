@@ -12,6 +12,8 @@ import { GameHero } from './GameHero.jsx';
 import { InstallToast, TOAST_MS } from './InstallToast.jsx';
 import { MediaGallery } from './MediaGallery.jsx';
 import { OptionsSheet } from './OptionsSheet.jsx';
+import { DiagnosisSheet } from './DiagnosisSheet.jsx';
+import { MakeRoomSheet } from '../library/MakeRoomSheet.jsx';
 import { ShotViewer } from './ShotViewer.jsx';
 import { SourcePicker } from './SourcePicker.jsx';
 import { VersionSheet } from './VersionSheet.jsx';
@@ -50,7 +52,7 @@ import { colors, radius } from '../ui/colors.js';
     const [toast, setToast] = (0, useState)(null);
     const [viewing, setViewing] = (0, useState)(null);
     const { focusLater } = useNavActions();
-    const Dialog = { source: SourcePicker, options: OptionsSheet, version: VersionSheet }[dialog?.kind] ?? URLDialog;
+    const Dialog = { source: SourcePicker, options: OptionsSheet, version: VersionSheet, diagnosis: DiagnosisSheet, makeRoom: MakeRoomSheet }[dialog?.kind] ?? URLDialog;
     const related = relatedGames(game);
     const about = game.about.filter((text) => text.trim());
     (0, useEffect)(() => {

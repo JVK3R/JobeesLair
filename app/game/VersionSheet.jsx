@@ -17,7 +17,7 @@ import { Text, View, useIsFocused } from '@ps5-react/core';
   function summary2(edition2) {
     const releases = edition2.releases || [];
     const bytes = releases[preferredRelease(releases)]?.sizeBytes;
-    const sources = sourceSections(releases).filter(({ group }) => group !== "dlc" && group !== "unavailable").reduce((sum, { items }) => sum + items.length, 0);
+    const sources = sourceSections(releases).filter(({ group }) => group !== "dlc" && group !== "backport" && group !== "unavailable").reduce((sum, { items }) => sum + items.length, 0);
     return [bytes ? formatBytes(bytes) : edition2.sizeGb ? formatSize(edition2.sizeGb) : null, t("versions.sources", { count: sources })];
   }
   function VersionFace({ edition: edition2, here, twin, recommended }) {

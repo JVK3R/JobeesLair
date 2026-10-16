@@ -12,7 +12,7 @@
 
 <p align="center">
   <b>An open-source homebrew download manager for the PS5.</b><br>
-  Version 0.1.0 · Title ID <code>PPSA99058</code> · created by JVK3R<br>
+  Version 0.2.0 · Title ID <code>PPSA99058</code> · created by JVK3R<br>
   <i>Proudly created alongside AI by JVK3R</i>
 </p>
 
@@ -81,6 +81,28 @@ are allowed to download.**
   progress meters, speed, and Pause, Resume, Retry, Install and Cancel controls
 - **Downloads straight to the console**, to internal storage or a USB or extended drive, with the
   drive's space read off the interface thread so a sleeping drive cannot freeze the screen
+- **A couch library** of the games on the console, each tile with its readiness (Installed, Played,
+  Won't start) and its **play time** ("42 hours played · Last played yesterday"), read from
+  ShadowMount+'s session log; sort by last played, most played, size or newest
+- **Make Room**: when a download doesn't fit, or from the library, a side sheet frees the drive
+  safest first: leftovers no game needs (unpacked archives, stale partial files, archive notes,
+  backports of removed games), then the games you haven't played in a while moved to another drive,
+  then only the games you tick for deleting. Bars show each drive before and after; downloads pause
+  until the drive has room and the waiting download starts once it does. Games you keep on internal
+  storage and your five most played stay put
+- **Moving games between drives** from a tile's Options: copied on a background thread, read back
+  byte for byte against the original (and its download receipt), and only then removed from where it
+  was; a move that is cut off resumes from where it stopped. ShadowMount+ is told the game's new
+  place
+- **Delete from disk** from the library, the Files screen or a game's page: a mounted image is
+  unmounted first and never deleted while mounted; the game's image or folder, its partial files,
+  extracted files, backport and `-extras` notes go; then ShadowMount+ is asked to uninstall it. While
+  Jobee'sLair is open ShadowMount+ refuses uninstalls, and the app says the tile goes once it is
+  closed. A download in progress pauses for the few seconds this takes and resumes after
+- **Deeper ShadowMount+ integration**: readiness from ShadowMount+'s own log, with **See why** for
+  a game that won't start (the log lines of its last launch); a monitor that flags a game whose file
+  ShadowMount+ can no longer reach; games moved by another tool are followed to their new place.
+  Background requests never queue behind a download and back off when ShadowMount+ stops answering
 - **Your own catalog feeds, built to survive takedowns**: add up to 4 JSON feeds from the controller
   or your phone, each with **mirror addresses** (yours, and the ones the feed lists itself). If a
   feed's domain goes down, a refresh falls back to a mirror, and the last good copy stays on the
@@ -98,7 +120,14 @@ are allowed to download.**
   download progress, amber when paused, red on errors (can be turned off in Settings)
 - **Built-in Source Addition Guide** in Settings, haptic feedback as you move, and **13 languages**
 - Made for the controller: <kbd>L1</kbd> <kbd>R1</kbd> to switch sections, <kbd>✕</kbd> to select,
-  <kbd>○</kbd> to go back, <kbd>□</kbd> to pause or resume a download, <kbd>△</kbd> for its game page
+  <kbd>○</kbd> to go back, <kbd>□</kbd> to pause or resume a download, <kbd>△</kbd> for its game page;
+  in the library <kbd>□</kbd> twice deletes a game and <kbd>Options</kbd> opens its menu (move, keep on
+  internal storage, Make Room)
+
+<p align="center">
+  <img src=".github/readme/library.png" alt="The library: wide game tiles three to a row, each with its readiness badge, drive, play time and last played" width="49%">
+  <img src=".github/readme/make-room.png" alt="Make Room: drive bars before and after, then the Reclaim, Move to another drive and Delete tiers with a tick on each row" width="49%">
+</p>
 
 <p align="center">
   <img src=".github/readme/dashboard.png" alt="The downloads dashboard: the live library counter, throughput, queue progress and job counts" width="49%">
@@ -183,8 +212,8 @@ change the license in [LICENSE](LICENSE).
 
 ## Status
 
-Jobee'sLair 0.1.0 is an early release under active development, with a new build roughly every day
-while it settles. Every build passes its automated tests (the app's logic suites, the framework's
+Jobee'sLair 0.2.0 is the release that follows the 0.1.1 betas, whose builds were tested on a PS5
+running firmware 13.60 with ShadowMount+ 1.7. Every build passes its automated tests (the app's logic suites, the framework's
 tests, and the native server and drive-probe tests under AddressSanitizer, UndefinedBehaviorSanitizer
 and ThreadSanitizer), but not every feature has been confirmed on PS5 hardware yet. Report what you
 find, with your firmware and loader.
@@ -197,8 +226,8 @@ find, with your firmware and loader.
 
 | Path | What it is |
 | --- | --- |
-| `app/` | The application: JSX sources, state, assets, catalog data, and `app.json` (title ID `PPSA99058`, package version `01.000.000`, capabilities) |
-| `app/version.js` | The app version (`0.1.0`), the creator credit (`JVK3R`) and the official repository the update check reads |
+| `app/` | The application: JSX sources, state, assets, catalog data, and `app.json` (title ID `PPSA99058`, package version `01.002.000`, capabilities) |
+| `app/version.js` | The app version (`0.2.0`), the creator credit (`JVK3R`) and the official repository the update check reads |
 | `app/ui/JLMark.jsx` | The "JL" monogram as native vector paths (`.github/readme/logo.svg` is the same mark as a file) |
 | `app/state/library-count.js` | The live indexed-titles and direct-downloads counter |
 | `LICENSE` | GPL-3.0-or-later, followed by the content neutrality and DMCA notice |
@@ -232,7 +261,7 @@ The image is a plain exFAT volume whose root is the app folder, with 64 KiB clus
 `JOBEESLAIR`.
 
 To publish a build, raise the version in `app/version.js`, run the build workflow, test the draft's
-image on a console, then publish the draft with a tag of the same version (`v0.1.1`): the update check
+image on a console, then publish the draft with a tag of the same version (`v0.2.0`): the update check
 in installed copies compares that tag with their own version.
 
 </details>

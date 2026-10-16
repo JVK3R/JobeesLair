@@ -22,7 +22,7 @@ import { MAX_FEEDS, MAX_MIRRORS, addFeed, addMirror, refreshFeeds, removeFeed, r
 import { formatBytes } from '../state/size.js';
 import { isoDate } from '../state/clock.js';
 import { checkForUpdate, openUpdateDialog, useUpdate } from '../state/update.js';
-import { REPO, VERSION } from '../version.js';
+import { REPO, VERSION_LABEL } from '../version.js';
 import { JLMark } from './JLMark.jsx';
 import { FocusRing } from './FocusRing.jsx';
 import { Icon } from './Icon.jsx';
@@ -302,7 +302,7 @@ import { FocusScope, Linking, ScrollView, Text, View, motion, useIsFocused } fro
       /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 24 }, children: [
         /* @__PURE__ */ (0, jsx)(JLMark, { height: 72 }),
         /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, gap: 4 }, children: [
-          /* @__PURE__ */ (0, jsx)(Text, { style: text(26, colors.fg, { fontWeight: 600 }), children: t2("settings.about.version", { version: VERSION }) }),
+          /* @__PURE__ */ (0, jsx)(Text, { style: text(26, colors.fg, { fontWeight: 600 }), children: t2("settings.about.version", { version: VERSION_LABEL }) }),
           /* @__PURE__ */ (0, jsx)(Text, { style: text(22, colors.glow), children: t2("settings.about.creator", { creator: CREATOR }) }),
           /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.about.ai", { creator: CREATOR }) })
         ] })
@@ -360,7 +360,7 @@ import { FocusScope, Linking, ScrollView, Text, View, motion, useIsFocused } fro
               /* @__PURE__ */ (0, jsx)(JLMark, { height: 56 }),
               /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 2 }, children: [
                 /* @__PURE__ */ (0, jsx)(Text, { style: text(46, colors.fg, { fontWeight: 600 }), children: t2("settings.title") }),
-                /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 19, lineHeight: 28, color: colors.subtle }, children: `Jobee'sLair  v${VERSION}` })
+                /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 19, lineHeight: 28, color: colors.subtle }, children: `Jobee'sLair  v${VERSION_LABEL}` })
               ] })
             ] }),
             /* @__PURE__ */ (0, jsx)(Text, { style: text(21, colors.subtle), children: t2("settings.closeHint") })

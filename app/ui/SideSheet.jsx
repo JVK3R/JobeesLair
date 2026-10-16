@@ -32,15 +32,19 @@ import { colors } from './colors.js';
       )
     ] });
   }
-  function SideSheet({ title, subtitle, onClose, children }) {
-    useHints(HINTS2);
+  // `onAction` hears the sheet's other buttons (△, ▢, L1...); `hints` replaces Select / Close (a stable array).
+  function SideSheet({ title, subtitle, onClose, onAction, hints = HINTS2, width = 810, children }) {
+    useHints(hints);
     return /* @__PURE__ */ (0, jsx)(FocusScope, { trap: true, autoFocus: true, onBack: () => {
       onClose();
       return true;
-    }, onAction: () => true, children: /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 50 }, children: /* @__PURE__ */ (0, jsxs)(
+    }, onAction: (action) => {
+      onAction?.(action);
+      return true;
+    }, children: /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 50 }, children: /* @__PURE__ */ (0, jsxs)(
       SheetPanel,
       {
-        style: { width: 810, gap: 30, paddingHorizontal: 36, paddingTop: 42, paddingBottom: 72 },
+        style: { width, gap: 30, paddingHorizontal: 36, paddingTop: 42, paddingBottom: 72 },
         initial: { opacity: 0, x: 48 },
         animate: { opacity: 1, x: 0 },
         transition: enter,

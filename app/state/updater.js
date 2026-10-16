@@ -12,15 +12,32 @@
   var DAY_MS = 24 * 60 * 60 * 1e3;
   var HOUR_MS = 60 * 60 * 1e3;
   var NOTES_MAX = 1200;
-  var TAG = /^v?(\d+(?:\.\d+){0,3})(?:[-+][0-9A-Za-z.-]+)?$/;
+  var TAG = /^v?(\d+(?:\.\d+){0,3})(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
   var numbers = (version2) => TAG.exec(String(version2 ?? ""))?.[1].split(".").map(Number) ?? null;
-  // Whether version `a` is newer than `b` ("v0.1.1" over "0.1.0"); anything that is not a version is not newer.
+  var prerelease = (version2) => TAG.exec(String(version2 ?? ""))?.[2] ?? "";
+  // Pre-release identifiers compared the semver way: numbers by value, words by text, more identifiers later.
+  function comparePre(p, q) {
+    const [x, y] = [p.split("."), q.split(".")];
+    for (let i = 0; i < Math.min(x.length, y.length); i++) {
+      if (x[i] === y[i]) continue;
+      const [m, n] = [/^\d+$/.test(x[i]) ? Number(x[i]) : null, /^\d+$/.test(y[i]) ? Number(y[i]) : null];
+      if (m !== null && n !== null) return m - n;
+      if (m !== null || n !== null) return m !== null ? -1 : 1;
+      return x[i] < y[i] ? -1 : 1;
+    }
+    return x.length - y.length;
+  }
+  // Whether version `a` is newer than `b` ("v0.1.1" over "0.1.0", "0.1.1" over its "0.1.1-beta.1", "beta.2"
+  // over "beta.1"); anything that is not a version is not newer.
   function newer(a, b) {
     const [x, y] = [numbers(a), numbers(b)];
     if (!x || !y) return false;
     for (let i = 0; i < Math.max(x.length, y.length); i++)
       if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
-    return false;
+    const [p, q] = [prerelease(a), prerelease(b)];
+    if (p === q) return false;
+    if (!p || !q) return !p;
+    return comparePre(p, q) > 0;
   }
   var clean = (text, max) => typeof text === "string" ? text.replace(/[\x00-\x08\x0b-\x1f\x7f]+/g, " ").slice(0, max) : "";
   // A release's page, only when it is on the repository's own path.

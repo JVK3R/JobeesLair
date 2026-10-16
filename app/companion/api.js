@@ -26,7 +26,7 @@
   var QUICK_ACTIONS = /* @__PURE__ */ new Set(["refresh", "home", "downloads", "search", "settings"]);
   // Task states, as state/download-queue.js names them.
   var ACTIVE = ["resolving", "connecting", "downloading", "verifying", "extracting", "installing", "pausing"];
-  var COMPLETE = ["downloaded", "file-downloaded", "installer-required", "installed", "extraction-required", "extracted"];
+  var COMPLETE = ["downloaded", "file-downloaded", "installer-required", "installed", "extraction-required", "extracted", "attention"];
   var json = (status, value) => ({ status, type: "application/json", body: JSON.stringify(value) });
   var failure = (status, message) => json(status, { error: message });
   function params(query) {

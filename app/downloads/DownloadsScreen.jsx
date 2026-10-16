@@ -10,6 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useRef, useState } from 'react';
 import { CARD_WIDTH, DownloadCard, primaryKey } from './DownloadCard.jsx';
 import { Telemetry } from './Telemetry.jsx';
+import { DiagnosisSheet } from '../game/DiagnosisSheet.jsx';
 import { useJobs } from './useQueue.js';
 import { formatNumber2, t } from '../i18n/core.js';
 import { SPAN_MAX, fitBytes } from '../i18n/fit.js';
@@ -44,12 +45,14 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
       [count(COMPLETE), "completed"]
     ].filter(([n]) => n > 0).map(([n, key]) => t(`downloads.summary.${key}`, { count: n })).join(" \xB7 ");
   }
-  function Section({ title, tone, jobs, first, handlers }) {
+  // `anchor`: the list scrolls to the section's title when focus comes to its first row, so moving up a
+  // section shows its heading; the first section is anchored with the page's top instead (see below).
+  function Section({ title, tone, jobs, first, handlers, anchor = true }) {
     const t2 = useT();
     if (!jobs.length) return null;
     const rows = [];
     for (let at = 0; at < jobs.length; at += PER_ROW) rows.push(jobs.slice(at, at + PER_ROW));
-    return /* @__PURE__ */ (0, jsxs)(View, { style: { gap: GAP }, children: [
+    return /* @__PURE__ */ (0, jsxs)(View, { ...anchor ? { scrollAnchor: true } : {}, style: { gap: GAP }, children: [
       /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 16 }, children: [
         /* @__PURE__ */ (0, jsx)(View, { style: { width: 14, height: 14, backgroundColor: tone } }),
         /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 20, fontWeight: 600, color: colors.muted, letterSpacing: 2, lineHeight: 28 }, children: `${t2(title)}  ${formatNumber2(jobs.length)}` }),
@@ -90,6 +93,9 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
       }
     }, []);
     const [failure, setFailure] = (0, useState)("");
+    const [note, setNote] = (0, useState)("");
+    // The job whose "See why" is open: what ShadowMount's logs say about its last launch.
+    const [diagnosing, setDiagnosing] = (0, useState)(null);
     const { focusLater } = useNavActions();
     const focused = (0, useRef)(null);
     const latest2 = (0, useRef)(jobs);
@@ -102,10 +108,22 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
     const [handlers] = (0, useState)(() => ({
       run(job2, name) {
         setFailure("");
-        const target = ["remove", "cancel"].includes(name) ? neighbor(job2) : null;
+        if (name === "seeWhy") {
+          setDiagnosing(job2);
+          return;
+        }
+        const target = ["remove", "cancel", "deleteFromDisk"].includes(name) ? neighbor(job2) : null;
+        setNote("");
         try {
-          void Promise.resolve(downloadQueue()[name](job2.id)).catch((caught) => setFailure(caught.message));
-          if (target) focusLater(target);
+          const done2 = Promise.resolve(downloadQueue()[name](job2.id));
+          // A delete says what is left to happen (ShadowMount uninstalls once the app closes, say).
+          void done2.then((result) => {
+            if (result?.note) setNote(result.note);
+          }, (caught) => setFailure(caught.message));
+          // A deletion can be refused (ShadowMount still has it mounted): focus moves on once it is gone.
+          if (target && name === "deleteFromDisk") void done2.then(() => focusLater(target), () => {
+          });
+          else if (target) focusLater(target);
         } catch (caught) {
           setFailure(caught.message);
         }
@@ -136,22 +154,39 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
     const stopped = jobs.filter((job2) => ["paused", "failed", "awaiting-browser"].includes(placed(job2)));
     const done = jobs.filter((job2) => COMPLETE.includes(placed(job2)));
     const first = active2[0] ?? stopped[0] ?? done[0];
+    const sections = [
+      { title: "downloads.section.active", tone: colors.accentHi, jobs: active2 },
+      { title: "downloads.section.stopped", tone: "#fbbf24", jobs: stopped },
+      { title: "downloads.section.completed", tone: "#4ade80", jobs: done }
+    ].filter((section) => section.jobs.length);
     return /* @__PURE__ */ (0, jsx)(FocusScope, { autoFocus: true, onBack: back2, onAction, children: /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, paddingHorizontal: 48 }, children: [
       /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingTop: 12, paddingBottom: 20 }, children: [
         /* @__PURE__ */ (0, jsxs)(Text, { style: { width: 1300, fontFamily: "Exo2", fontSize: 36, fontWeight: 600, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 48, letterSpacing: 1 }, children: [
           fitBytes(t2("downloads.title"), SPAN_MAX),
           /* @__PURE__ */ (0, jsx)(Text, { style: { fontSize: 22, fontWeight: 400, color: colors.subtle }, children: jobs.length ? fitBytes(`   ${summary(jobs)}`, SPAN_MAX) : "" })
         ] }),
-        /* @__PURE__ */ (0, jsx)(Text, { style: { width: 500, textAlign: "end", fontFamily: "Exo2", fontSize: 21, color: "#f87171", numberOfLines: 2, ellipsizeMode: "tail", lineHeight: 30 }, children: failure })
+        /* @__PURE__ */ (0, jsx)(Text, { style: { width: 500, textAlign: "end", fontFamily: "Exo2", fontSize: 21, color: failure ? "#f87171" : colors.muted, numberOfLines: 3, ellipsizeMode: "tail", lineHeight: 30 }, children: failure || note })
       ] }),
-      /* @__PURE__ */ (0, jsx)(View, { style: { marginBottom: 20 }, children: /* @__PURE__ */ (0, jsx)(CountBand, {}) }),
-      /* @__PURE__ */ (0, jsx)(Telemetry, { error: error2 }),
-      jobs.length > 0 ? /* @__PURE__ */ (0, jsx)(ScrollView, { style: { flex: 1, marginTop: 30 }, children: /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 48, paddingBottom: 48 }, children: [
-        /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.active", tone: colors.accentHi, jobs: active2, first, handlers }),
-        /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.stopped", tone: "#fbbf24", jobs: stopped, first, handlers }),
-        /* @__PURE__ */ (0, jsx)(Section, { title: "downloads.section.completed", tone: "#4ade80", jobs: done, first, handlers })
-      ] }) }) : /* @__PURE__ */ (0, jsx)(Empty, { error: error2, onBack }),
-      /* @__PURE__ */ (0, jsx)(ButtonHints, { hints: jobs.length > 0 ? LIST_HINTS : EMPTY_HINTS })
+      // One scroll for the whole page below the title: the library band and the telemetry scroll away
+      // with the cards (a fixed band left the cards a strip a card and a half tall, and moving up never
+      // brought the top back). The band, the telemetry and the first section are one scroll anchor, so
+      // focus on the first row scrolls to the very top; each later section anchors on its own title.
+      jobs.length > 0 ? /* @__PURE__ */ (0, jsx)(ScrollView, { style: { flex: 1 }, children: /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 48, paddingBottom: 48 }, children: sections.map(
+        (section, index) => index === 0 ? /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, children: [
+          /* @__PURE__ */ (0, jsx)(View, { style: { marginBottom: 20 }, children: /* @__PURE__ */ (0, jsx)(CountBand, {}) }),
+          /* @__PURE__ */ (0, jsx)(Telemetry, { error: error2 }),
+          /* @__PURE__ */ (0, jsx)(View, { style: { marginTop: 30 }, children: /* @__PURE__ */ (0, jsx)(Section, { ...section, first, handlers, anchor: false }, section.title) })
+        ] }, "top") : /* @__PURE__ */ (0, jsx)(Section, { ...section, first, handlers }, section.title)
+      ) }) }) : [
+        /* @__PURE__ */ (0, jsx)(View, { style: { marginBottom: 20 }, children: /* @__PURE__ */ (0, jsx)(CountBand, {}) }, "band"),
+        /* @__PURE__ */ (0, jsx)(Telemetry, { error: error2 }, "telemetry"),
+        /* @__PURE__ */ (0, jsx)(Empty, { error: error2, onBack }, "empty")
+      ],
+      /* @__PURE__ */ (0, jsx)(ButtonHints, { hints: jobs.length > 0 ? LIST_HINTS : EMPTY_HINTS }),
+      diagnosing ? /* @__PURE__ */ (0, jsx)(DiagnosisSheet, { title: diagnosing.title, jobId: diagnosing.id, onClose: () => {
+        setDiagnosing(null);
+        focusLater(primaryKey(diagnosing.id));
+      } }) : null
     ] }) });
   }
 
