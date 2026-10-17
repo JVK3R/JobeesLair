@@ -18,7 +18,6 @@ import { Users } from '@ps5-react/core';
     { id: "violet", name: "theme.violet", accent: "#7c3aed", hi: "#a78bfa", deep: "#5b21b6", fg: "#ffffff" },
     { id: "graphite", name: "theme.graphite", accent: "#64748b", hi: "#cbd5e1", deep: "#475569", fg: "#ffffff" }
   ];
-  var DEFAULT_THEME = "electric";
   var FILE = "themes.json";
   var presetOf = (id) => PRESETS.find((preset) => preset.id === id) ?? PRESETS[0];
   // The foreground user: the one who launched the store. Asked once; a console that cannot say shares
@@ -66,4 +65,4 @@ import { Users } from '@ps5-react/core';
     return id;
   }
 
-export { DEFAULT_THEME, PRESETS, activeTheme, onTheme, presetOf, saveTheme, useActiveTheme, userName };
+export { PRESETS, activeTheme, onTheme, presetOf, saveTheme, useActiveTheme, userName };

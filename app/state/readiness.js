@@ -4,7 +4,6 @@
 
 import { t } from '../i18n/core.js';
 
-  var STAGES = ["downloading", "preparing", "installed", "played", "wontStart"];
   var ICON = { downloading: "download", preparing: "settings", installed: "circleCheck", played: "play", wontStart: "alert" };
   var TONE = { downloading: "accent", preparing: "accent", installed: "good", played: "good", wontStart: "bad" };
   // The queue's states by stage, and the note each one adds (null: none).
@@ -54,4 +53,4 @@ import { t } from '../i18n/core.js';
   }
   var cardReadiness = (jobs) => cardPick(jobs)?.ready ?? null;
 
-export { STAGES, cardPick, cardReadiness, readinessOf, readinessText, stageLabel };
+export { cardPick, cardReadiness, readinessOf, readinessText, stageLabel };

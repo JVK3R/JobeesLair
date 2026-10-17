@@ -1,6 +1,6 @@
 // ../pub-game-store/native/ui/SideSheet.jsx
 // reconstructed from the esbuild bundle in eboot.bin
-// MODIFIED: panels carry the purple backdrop gradient.
+// MODIFIED: panels are the flat surface color with a 2 px edge (the backdrop gradient they once had is gone).
 
 import '../assets/Exo2.ttf';
 import { jsx, jsxs } from 'react/jsx-runtime';

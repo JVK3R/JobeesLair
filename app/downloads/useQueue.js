@@ -2,7 +2,6 @@
 // reconstructed from the esbuild bundle in eboot.bin
 
 import { useEffect, useState } from 'react';
-import { createActivity } from './rates.js';
 import { downloadQueue } from '../state/downloads.js';
 
   function subscribe2(listener) {
@@ -47,19 +46,5 @@ import { downloadQueue } from '../state/downloads.js';
     }, [id]);
     return progress;
   }
-  function useActivity() {
-    const [activity, setActivity] = (0, useState)({ speed: 0, left: 0, active: 0, connections: 0, peak: 0, low: 0, mean: 0 });
-    (0, useEffect)(() => {
-      const measure = createActivity();
-      let shown = null;
-      return subscribe2((jobs) => {
-        const next = measure(jobs, Date.now());
-        if (shown && Object.keys(next).every((key) => shown[key] === next[key])) return;
-        shown = next;
-        setActivity(next);
-      });
-    }, []);
-    return activity;
-  }
 
-export { fractionOf, shapeOf, subscribe2, useActivity, useJobs, useProgress };
+export { fractionOf, shapeOf, subscribe2, useJobs, useProgress };

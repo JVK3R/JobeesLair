@@ -5,10 +5,12 @@
 import { spaceNeeded } from '../game/releases.js';
 import { describeSource, fallbacks, preferredRelease } from '../game/sources.js';
 import { downloadQueue, freeBytes, storageRoots } from '../state/downloads.js';
+import { linkHealth } from '../state/links.js';
 import { MARGIN2 } from '../state/space.js';
 
   function startRemoteDownload(game) {
-    const releases = game.releases;
+    // With what is known of their links: a dead one is never picked or fallen back to (state/links.js).
+    const releases = linkHealth().overlay(game.releases);
     if (!releases.length) throw new Error("This game has no download source.");
     const selected = preferredRelease(releases);
     const release = releases[selected];

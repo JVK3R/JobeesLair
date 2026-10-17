@@ -13,7 +13,6 @@ import { GameCard } from '../ui/GameCard.jsx';
 
   var WIDTH4 = 152;
   var POPULAR = showcase(sortGames(games, "relevance"), 15);
-  var FIRST_POPULAR = `popular:${POPULAR[0].id}`;
   var PopularRail = (0, memo)(function PopularRail2() {
     const t2 = useT();
     const { openGame, focusLater } = useNavActions();
@@ -41,4 +40,4 @@ import { GameCard } from '../ui/GameCard.jsx';
     }) });
   });
 
-export { FIRST_POPULAR, PopularRail };
+export { PopularRail };

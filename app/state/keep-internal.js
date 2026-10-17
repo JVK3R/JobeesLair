@@ -19,7 +19,6 @@ import { FileSystem } from '@ps5-react/core';
     }
     return pins;
   }
-  var keptInternal = () => load();
   function setKeptInternal(key, keep) {
     const next = new Set(load());
     if (keep) next.add(key);
@@ -44,4 +43,4 @@ import { FileSystem } from '@ps5-react/core';
     return value;
   }
 
-export { keptInternal, setKeptInternal, useKeptInternal };
+export { setKeptInternal, useKeptInternal };

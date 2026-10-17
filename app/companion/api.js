@@ -96,7 +96,8 @@
   // `download(game)` -> { id, source }; `queue()` -> the queue's tasks; `control`: { pause, resume, cancel,
   // clear }(id); `storage()` -> [{ root, name, free, total }]; `feeds`: { list, add, edit, remove, refresh };
   // `remote(action)` presses a button on the console; `quick(action)` runs a shortcut; `info()` -> /api/info.
-  function createCompanionApi({ catalog, describe, download, queue, control, storage, feeds, remote, quick, info }) {
+  // `releasesOf(game)` -> its sources as the console shows them (with what is known of their links).
+  function createCompanionApi({ catalog, describe, download, queue, control, storage, feeds, remote, quick, info, releasesOf = (game) => game.releases }) {
     const withId = (request, run) => {
       const body = bodyOf(request);
       if (!body || typeof body.id !== "string") return failure(400, "Send {\"id\": \"…\"}.");
@@ -127,7 +128,7 @@
       "GET /api/game": (request) => {
         const game = catalog.getGame(params(request.query).id || "");
         if (!game) return failure(404, "No such game.");
-        return json(200, { ...card(game), summary: game.shortDescription || "", developer: game.developer || "", sources: game.releases.map((release) => {
+        return json(200, { ...card(game), summary: game.shortDescription || "", developer: game.developer || "", sources: releasesOf(game).map((release) => {
           const { name, detail, size, group } = describe(release);
           return { name, detail, size, group };
         }) });

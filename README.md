@@ -12,7 +12,7 @@
 
 <p align="center">
   <b>An open-source homebrew download manager for the PS5.</b><br>
-  Version 0.2.1 · Title ID <code>PPSA99058</code> · created by JVK3R<br>
+  Version 0.2.3 · Title ID <code>PPSA99058</code> · created by JVK3R<br>
   <i>Proudly created alongside AI by JVK3R</i>
 </p>
 
@@ -86,6 +86,12 @@ are allowed to download.**
   progress meters, speed, and Pause, Resume, Retry, Install and Cancel controls
 - **Downloads straight to the console**, to internal storage or a USB or extended drive, with the
   drive's space read off the interface thread so a sleeping drive cannot freeze the screen
+- **Link health**: a game's download links are checked in the background while you look at it (a
+  HEAD request each, only while no download needs the network), or all at once with **Check link
+  health** in its source list. A link that is gone (404 or 410, confirmed by a second request) is
+  greyed out as **Link unavailable** and never picked; one that keeps timing out is tagged **Not
+  responding** and ranked after the hosts that answer, and the best healthy mirror is picked instead.
+  Rate-limited hosts are left alone, and nothing is marked on a single failed request
 - **A couch library** of the games on the console, each tile with its readiness (Installed, Played,
   Won't start) and its **play time** ("42 hours played · Last played yesterday"), read from
   ShadowMount+'s session log; sort by last played, most played, size or newest
@@ -223,7 +229,7 @@ change the license in [LICENSE](LICENSE).
 
 ## Status
 
-Jobee'sLair 0.2.1 follows 0.2.0 and adds installing updates from the app. The 0.1.1 betas were tested on a PS5
+Jobee'sLair 0.2.3 adds link health checks and fixes the space check for downloads of unknown size; 0.2.1 added installing updates from the app. The 0.1.1 betas were tested on a PS5
 running firmware 13.60 with ShadowMount+ 1.7. Every build passes its automated tests (the app's logic suites, the framework's
 tests, and the native server and drive-probe tests under AddressSanitizer, UndefinedBehaviorSanitizer
 and ThreadSanitizer), but not every feature has been confirmed on PS5 hardware yet. Report what you
@@ -237,8 +243,8 @@ find, with your firmware and loader.
 
 | Path | What it is |
 | --- | --- |
-| `app/` | The application: JSX sources, state, assets, catalog data, and `app.json` (title ID `PPSA99058`, package version `01.002.001`, capabilities) |
-| `app/version.js` | The app version (`0.2.1`), the creator credit (`JVK3R`) and the official repository the update check reads |
+| `app/` | The application: JSX sources, state, assets, catalog data, and `app.json` (title ID `PPSA99058`, package version `01.002.003`, capabilities) |
+| `app/version.js` | The app version (`0.2.3`), the creator credit (`JVK3R`) and the official repository the update check reads |
 | `app/ui/JLMark.jsx` | The "JL" monogram as native vector paths (`.github/readme/logo.svg` is the same mark as a file) |
 | `app/state/library-count.js` | The live indexed-titles and direct-downloads counter |
 | `LICENSE` | GPL-3.0-or-later, followed by the content neutrality and DMCA notice |
@@ -272,7 +278,7 @@ The image is a plain exFAT volume whose root is the app folder, with 64 KiB clus
 `JOBEESLAIR`.
 
 To publish a build, raise the version in `app/version.js`, run the build workflow, test the draft's
-image on a console, then publish the draft with a tag of the same version (`v0.2.1`): the
+image on a console, then publish the draft with a tag of the same version (`v0.2.3`): the
 update check in installed copies compares that tag with their own version. To let installed copies
 install it themselves, attach both `JobeesLair.exfat` and `update.zip` (`ps5-react/dist/PPSA99058.zip`
 renamed). GitHub publishes each asset's SHA-256, and a release without both files only offers the

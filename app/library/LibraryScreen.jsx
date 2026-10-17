@@ -19,7 +19,6 @@ import { DiagnosisSheet } from '../game/DiagnosisSheet.jsx';
 import { OptionsSheet } from '../game/OptionsSheet.jsx';
 import { formatNumber2, formatPercent2 } from '../i18n/core.js';
 import { useT } from '../i18n/index.js';
-import { getGame } from '../state/catalog.js';
 import { driveName, downloadQueue } from '../state/downloads.js';
 import { refreshDrives } from '../state/drives.js';
 import { setKeptInternal, useKeptInternal } from '../state/keep-internal.js';

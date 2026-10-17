@@ -18,6 +18,7 @@ import { formatPercent2 } from '../i18n/core.js';
 import { useT } from '../i18n/index.js';
 import { editionsOf } from '../state/catalog.js';
 import { BUSY, COMPLETE } from '../state/download-queue.js';
+import { checkLinksNow, useHealthyReleases } from '../state/links.js';
 import { readinessOf, readinessText } from '../state/readiness.js';
 import { downloadQueue, driveName, freeBytes, storageRoots } from '../state/downloads.js';
 import { useNavActions } from '../state/nav.jsx';
@@ -36,7 +37,9 @@ import { colors, radius } from '../ui/colors.js';
   var STATUS = { fontFamily: "Exo2", fontSize: 21, lineHeight: 30 };
   function DownloadButton({ game, start, onDownloaded, nextDown, onRequestDialog }) {
     const t2 = useT();
-    const releases = game.releases || [];
+    // The game's sources with what is known of their links (state/links.js): a dead one is unavailable,
+    // one that does not answer ranks after those that do.
+    const releases = useHealthyReleases(game.releases || []);
     const [selected, setSelected] = (0, useState)(() => {
       let jobs = [];
       try {
@@ -64,6 +67,19 @@ import { colors, radius } from '../ui/colors.js';
     const alternatives = (0, useMemo)(() => fallbacks(releases, selected), [releases, selected]);
     const download = useDownload(game, release, roots[storage], alternatives);
     const { progress, restart, remove, deleteFromDisk, job: job2, error: error2 } = download;
+    // The source picked for the gamer turns out gone or silent: the best one that answers takes its place,
+    // unless they picked it themselves or a download of it exists.
+    const chosen = (0, useRef)(false);
+    const [switched, setSwitched] = (0, useState)(null);
+    (0, useEffect)(() => {
+      const health = release?.linkHealth?.status;
+      if (chosen.current || job2 || health !== "dead" && health !== "unreachable") return;
+      const best = preferredRelease(releases);
+      const next = releases[best];
+      if (best === selected || !next || next.unavailableReason || health === "unreachable" && next.linkHealth?.status !== "active") return;
+      setSwitched(t2(health === "dead" ? "links.switched" : "links.switchedSlow", { from: describeSource(release).host, to: describeSource(next).host }));
+      setSelected(best);
+    }, [releases]);
     const free = useFreeSpace(roots, download.status, !job2);
     const need = spaceNeeded(release, roots[storage]);
     const lacking = download.status === "idle" && need && free[storage] !== null && free[storage] < need + MARGIN2;
@@ -145,22 +161,29 @@ import { colors, radius } from '../ui/colors.js';
       title: step ? t2("download.browser.partTitle", step) : t2("download.browser.title"),
       action: t2("download.browser.action")
     } : error2 ? explainError(error2, Boolean(job2?.release.parts)) : lacking ? { title: t2("download.noFit"), action: spaceAdvice(roots, free, storage, need) } : shadowMount || status === "installed" ? null : { title: t2("shadowMount.offTitle"), action: t2("shadowMount.offAction") };
-    const notice = job2?.message || download.notice;
+    const notice = job2?.message || download.notice || switched;
     const pick2 = (index) => {
       if (index !== selected && job2 && !written && ["awaiting-browser", "failed", "paused"].includes(job2.state)) downloadQueue().remove(job2.id);
+      chosen.current = true;
+      setSwitched(null);
       setSelected(index);
     };
     const chooseSource = (from) => onRequestDialog({
       kind: "source",
       title: game.title,
-      releases,
+      // The catalog's own: the picker applies link health itself, so a check run from it shows as it goes.
+      releases: game.releases || [],
       selected,
       submit: pick2,
       from,
       editions,
       current: game.id,
-      onEdition: (id) => openEdition(id)
+      onEdition: (id) => openEdition(id),
+      // Every link asked again, the dead ones too.
+      checkLinks: () => checkLinksNow(game.id, game.releases || [])
     });
+    // How the chosen source's link stands, after its name and host: nothing while it answers or is unchecked.
+    const linkTag = release?.linkHealth?.status === "dead" ? t2("links.badge.dead") : release?.linkHealth?.status === "unreachable" ? t2("links.badge.unreachable") : null;
     const saved = job2?.written ? formatBytes(job2.written) : null;
     const removal = { icon: "x", label: t2("download.remove.label"), detail: t2("download.remove.detail"), onSelect: remove };
     const deletion = job2 && {
@@ -274,7 +297,7 @@ import { colors, radius } from '../ui/colors.js';
             detail: [t2("sources.cdnFastest"), release.sizeBytes && formatBytes(release.sizeBytes)].filter(Boolean).join(" \xB7 ")
           } : null,
           // What the gamer gets first ("Disk image · USA v1.10"), then where from and how big.
-          text: [describeSource(release).name, describeSource(release).host, release.sizeBytes && formatBytes(release.sizeBytes)].filter(Boolean).join(" \xB7 ")
+          text: [describeSource(release).name, describeSource(release).host, release.sizeBytes && formatBytes(release.sizeBytes), linkTag].filter(Boolean).join(" \xB7 ")
         }
       ) : null,
       !job2 ? /* @__PURE__ */ (0, jsx)(

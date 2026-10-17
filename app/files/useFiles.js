@@ -145,11 +145,6 @@ import { FileSystem, Http, Packages, Platform } from '@ps5-react/core';
     }
     return { note, path: target };
   }
-  // Deletes the copy a move cut off left on `to`; the game stays where it was.
-  async function discardMove(file, root2, to) {
-    const partial = `${to}${file.path.slice(root2.length)}.partial`;
-    if (FileSystem.exists(partial)) await FileSystem.removeAsync(partial);
-  }
   function useFiles(root2) {
     const [version2, setVersion] = (0, useState)(0);
     const rescan = () => setVersion((value) => value + 1);
@@ -201,4 +196,4 @@ import { FileSystem, Http, Packages, Platform } from '@ps5-react/core';
     return { files, installing, install, remove, rescan, shadowMount };
   }
 
-export { deleteFile, discardMove, installedTitles, moveFile, useFiles };
+export { deleteFile, installedTitles, moveFile, useFiles };

@@ -11,6 +11,7 @@ import { t } from '../i18n/core.js';
 import { archivePassword } from './archive-password.js';
 import { consoleFirmware, firmwareText, newerFirmware, requiredFirmware } from './firmware.js';
 import { diagnoseLaunch, launchOutcomes } from './launch-diagnosis.js';
+import { reportLink } from './link-health.js';
 import { BrowserRequired, archiveRefusal, cancellation, createSourceResolver, sourceKind, webURL } from './download-sources.js';
 import { readJSON } from './read-json.js';
 import { busyWhileOpen, mountedImages, reregister, shadowRequest, within2 } from './shadowmount.js';
@@ -504,6 +505,8 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     async function execute(job2) {
       let task;
       let unsubscribe;
+      // Set when the download is stopped for want of room (see the size check in the progress handler).
+      let noRoom = null;
       if (job2.install) {
         try {
           await install(job2);
@@ -562,11 +565,24 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         active2.transferring = true;
         task = downloads.enqueue({ ...job2.options, rejectHtml: true, mirrors: void 0, connections: 64, adaptive: true, rangeBytes: 16 * 1024 * 1024, destination: job2.downloadDestination, storageRoot: job2.root, recoverCompleted: true });
         active2.task = task;
+        // Most catalog releases do not say their size, so the check above had nothing to go on: once the
+        // server does, the rest is checked against the drive once, before it fills (the partial file counts
+        // what is written out of order, as above).
+        let sized = Boolean(job2.total);
         unsubscribe = task.subscribe((progress) => {
           if (job2.state === "pausing") return;
           if (ACTIVE.includes(progress.state)) job2.state = progress.state;
           job2.written = progress.written || 0;
           job2.total = progress.total ?? job2.total;
+          if (!sized && job2.total && !noRoom) {
+            sized = true;
+            const held2 = Math.max(job2.written, fs.stat(`${job2.downloadDestination}.part`)?.size || 0);
+            if (fs.diskUsage(job2.root).free < stillNeeded({ ...job2, written: held2 }) + MARGIN2) {
+              noRoom = new Error("Not enough space on the selected drive. Free space and retry.");
+              task.cancel();
+              return;
+            }
+          }
           job2.received = progress.received || 0;
           job2.connections = progress.connections || 0;
           job2.bytesPerSecond = progress.bytesPerSecond || 0;
@@ -604,12 +620,21 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         notifications.show(t("downloads.notice.complete"), job2.title);
         if (job2.state === "installer-required" && canInstall()) await install(job2);
       } catch (error2) {
+        if (noRoom) error2 = noRoom;
         console.log("[download-queue] transfer stopped:", error2.message);
         // The engine words every 401/403 as a possible browser check; from Archive.org it is a
         // restricted or removed item, so it fails over like a dead link and reads as one.
         const refused = archiveRefusal(job2.parts ? job2.currentSource : job2.release, cause(error2.message));
         if (refused) error2 = new Error(`Source unavailable: HTTP ${refused}. Choose another source.`);
-        const browser = !refused && (error2 instanceof BrowserRequired || /browser verification required/i.test(cause(error2.message)));
+        // A file link that is gone shows as unavailable on the game's page from now on (state/link-health.js).
+        // Only a direct one: a host page's 404 may be the file link read from it, and a link the gamer
+        // typed in is not the catalog's.
+        const failedSource = job2.parts ? job2.currentSource : job2.release;
+        try {
+          if (!job2.directURL && failedSource && sourceKind(failedSource) === "direct") reportLink(failedSource.browserUrl || failedSource.url, cause(error2.message));
+        } catch {
+        }
+        const browser =!refused && (error2 instanceof BrowserRequired || /browser verification required/i.test(cause(error2.message)));
         const retried = job2.state !== "pausing" && !job2.cancelling && browser && active2.transferring && reresolve(job2);
         const switched = !retried && job2.state !== "pausing" && !job2.cancelling && failOver(job2, error2);
         if (!retried && !switched && job2.state !== "pausing") {

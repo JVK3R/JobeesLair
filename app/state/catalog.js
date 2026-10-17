@@ -5,7 +5,7 @@
 // MODIFIED: bundledIndex keeps the bundled titles' ids and direct flags for the live game counter.
 
 import { features, games, twins } from '../data/catalog.js';
-import { formatDate2, formatNumber2, t } from '../i18n/core.js';
+import { formatDate2, t } from '../i18n/core.js';
 import { createPageCache } from './page-cache.js';
 import { loadFeedGames } from './feeds.js';
 import { createReleaseCache } from './release-cache.js';
@@ -224,16 +224,35 @@ import { FileSystem, Image } from '@ps5-react/core';
     return Object.fromEntries(facet.options.map(({ value }) => [value, pool.filter((game) => facet.has(game, value)).length]));
   }
   var summaryOf = (game) => game.about.find((text) => text.length > 80 && text !== text.toUpperCase()) ?? game.shortDescription;
+  // The games sharing the most genres with `game`, then the most recommended; ties keep catalog order. One
+  // pass that keeps only the best `limit` (the whole catalog was sorted with the shared count worked out in
+  // the comparator), remembered per game: the list is complete once this module has loaded, and the game
+  // page asks on every render.
+  var relatedCache = /* @__PURE__ */ new Map();
   function relatedGames(game, limit = 6) {
-    const shared = (other) => other.genres.filter((genre) => game.genres.includes(genre)).length;
-    return games.filter((other) => other.id !== game.id && shared(other) > 0).sort((a, b) => shared(b) - shared(a) || b.recommendations - a.recommendations).slice(0, limit);
+    const key = `${game.id}\n${limit}`;
+    const known = relatedCache.get(key);
+    if (known) return known;
+    const mine = new Set(game.genres);
+    const best = [];
+    for (const other of games) {
+      if (other.id === game.id) continue;
+      let shared = 0;
+      for (const genre of other.genres) if (mine.has(genre)) shared++;
+      if (!shared) continue;
+      const after = (entry) => entry.shared > shared || entry.shared === shared && entry.game.recommendations >= other.recommendations;
+      let at = best.length;
+      while (at > 0 && !after(best[at - 1])) at--;
+      if (at < limit) {
+        best.splice(at, 0, { game: other, shared });
+        if (best.length > limit) best.pop();
+      }
+    }
+    const result = best.map((entry) => entry.game);
+    if (relatedCache.size >= 32) relatedCache.delete(relatedCache.keys().next().value);
+    relatedCache.set(key, result);
+    return result;
   }
   var formatDate3 = (iso) => iso ? formatDate2(iso) : "\u2014";
-  function formatCount(n) {
-    const short = (value) => formatNumber2(value, { maximumFractionDigits: 1 });
-    if (n >= 1e6) return t("units.millions", { n: short(n / 1e6) });
-    if (n >= 1e3) return t("units.thousands", { n: short(n / 1e3) });
-    return formatNumber2(n);
-  }
 
-export { CDN_HOST, FACETS, NO_FILTERS, SORTS, activeCount, bundledIndex, editionsOf, facetCounts, facetLabel, facetTitle, featureLabel, filterGames, formatCount, formatDate3, fromArchive, genreLabel, genres, getGame, listedId, onCdn, optionLabel, relatedGames, showcase, sortGames, sortLabel, summaryOf, toggleValue, warmCovers };
+export { CDN_HOST, FACETS, NO_FILTERS, SORTS, activeCount, bundledIndex, editionsOf, facetCounts, facetLabel, facetTitle, featureLabel, filterGames, formatDate3, fromArchive, genreLabel, genres, getGame, listedId, onCdn, optionLabel, relatedGames, showcase, sortGames, sortLabel, summaryOf, toggleValue, warmCovers };

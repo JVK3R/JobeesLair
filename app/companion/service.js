@@ -14,6 +14,7 @@ import { filterGames, getGame, NO_FILTERS, sortGames } from '../state/catalog.js
 import { downloadQueue, driveName } from '../state/downloads.js';
 import { driveSnapshot, refreshDrives } from '../state/drives.js';
 import { addFeed, addMirror, feedsSnapshot, refreshFeeds, removeFeed, removeMirror, replaceFeed } from '../state/feeds.js';
+import { linkHealth } from '../state/links.js';
 import { loadList, saveList } from '../state/saved.js';
 import { CREATOR, VERSION_LABEL } from '../version.js';
 import { LocalServer } from '@ps5-react/core';
@@ -32,6 +33,7 @@ import { startRemoteDownload } from './remote-download.js';
       getGame
     },
     describe: describeSource,
+    releasesOf: (game) => linkHealth().overlay(game.releases),
     download: startRemoteDownload,
     queue: () => downloadQueue().snapshot(),
     control: {

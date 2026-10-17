@@ -6,6 +6,7 @@ import { jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useState } from 'react';
 import { useT } from '../i18n/index.js';
 import { genreLabel, summaryOf } from '../state/catalog.js';
+import { useLinkWatch } from '../state/links.js';
 import { useNavActions } from '../state/nav.jsx';
 import { useStoreActions, useWishlist } from '../state/store.jsx';
 import { Button2 } from './Button.jsx';
@@ -28,7 +29,9 @@ import { AnimatePresence, FocusScope, Text, View, motion } from '@ps5-react/core
     const { openGame } = useNavActions();
     const { toggleWish } = useStoreActions();
     const wished = useWishlist().includes(game.id);
-    const facts = [game.platform?.toUpperCase(), game.year, ...game.genres.slice(0, 2).map(genreLabel), game.sizeGb ? `${Math.round(game.sizeGb * 10) / 10} GB` : null].filter(Boolean).join(" · ");
+    // A game looked at from the catalog gets its links checked once in the background (state/links.js).
+    useLinkWatch(`preview:${game.id}`, game, { repeat: false });
+    const facts =[game.platform?.toUpperCase(), game.year, ...game.genres.slice(0, 2).map(genreLabel), game.sizeGb ? `${Math.round(game.sizeGb * 10) / 10} GB` : null].filter(Boolean).join(" · ");
     let summary = "";
     try {
       summary = summaryOf(game) || "";

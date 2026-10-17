@@ -105,13 +105,15 @@ import { formatBytes } from '../state/size.js';
   var isBackport = ({ label }) => /\bback\s*port\b/i.test(label || "");
   var hostRank = ({ provider }) => isCdnProvider(provider) ? 0 : provider.toLowerCase() === "archive.org" ? 1 : provider.toLowerCase() === "mediafire" ? 2 : 3;
   // The order sources are offered in: the game before its add-ons and backports, what can be had before
-  // what cannot, a disk image (which mounts as it is) before an archive or an unknown format (which can
-  // turn out to be an extracted folder dump), then the faster and healthier hosts.
+  // what cannot, a link that answers now before one that just failed to (state/link-health.js), a disk
+  // image (which mounts as it is) before an archive or an unknown format (which can turn out to be an
+  // extracted folder dump), then the faster and healthier hosts.
   var ranked = (release, index) => {
     const group = GROUP_RANK[describeSource(release).group];
     return { release, index, group, rank: [
       isDlc(release) || isBackport(release) ? 1 : 0,
       release.unavailableReason ? 1 : 0,
+      release.linkHealth?.status === "unreachable" ? 1 : 0,
       isImage(release) ? 0 : 1,
       hostRank(release),
       group,

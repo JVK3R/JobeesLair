@@ -36,7 +36,8 @@
     "themes.json": isRecord,
     "feed-mirrors.json": isRecord,
     "update-check.json": isRecord,
-    "auto-update.json": isRecord
+    "auto-update.json": isRecord,
+    "link-health.json": isRecord
   };
 
 export { SAVED_FILES, isRecord, isStringList, readJSON };

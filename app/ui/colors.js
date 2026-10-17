@@ -30,12 +30,6 @@ import { activeTheme, presetOf, saveTheme } from './themes.js';
   // The shape scale. Small tags, controls and rows, cards, panels and sheets, and the full round of a pill
   // (a radius past half the height draws a pill). Everything rounded in the interface takes one of these.
   var radius = { xs: 6, sm: 10, md: 14, lg: 20, xl: 28, pill: 999 };
-  // Graphite into black: the dock and sheets, drawn as `backgroundGradient`.
-  var backdrop = (to = "bottom right") => ({
-    type: "linear",
-    to,
-    stops: [{ color: "#161d2b", offset: 0 }, { color: "#0a0e17", offset: 0.55 }, { color: colors.canvas, offset: 1 }]
-  });
   // The store is drawn again in the new accent once Settings closes (commitTheme), not while it is open:
   // a redraw remounts the store, which would close Settings under the player's hands.
   var epoch = 0, pending = false;
@@ -62,4 +56,4 @@ import { activeTheme, presetOf, saveTheme } from './themes.js';
     return value;
   }
 
-export { backdrop, chooseTheme, colors, commitTheme, radius, useThemeEpoch };
+export { chooseTheme, colors, commitTheme, radius, useThemeEpoch };
