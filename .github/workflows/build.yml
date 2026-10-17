@@ -51,6 +51,26 @@ jobs:
           path: ps5-react/.deps
           key: deps-${{ hashFiles('ps5-react/dependencies.lock.json') }}
 
+      - name: Check the version
+        # Installed copies compare the release tag (named after app/version.js) with their own VERSION, and
+        # check update.zip's package version against it (app/state/updater.js contentVersionOf: 0.2.3 is
+        # 01.002.003). A build whose app.json says otherwise is refused by every installer.
+        run: |
+          python3 - <<'EOF'
+          import json, re, sys
+          version = re.search(r'var VERSION = "([^"]+)"', open("app/version.js", encoding="utf-8").read()).group(1)
+          major, minor, patch = (list(map(int, re.match(r"(\d+)\.(\d+)\.(\d+)", version).groups())))
+          expected = f"{major + 1:02d}.{minor:03d}.{patch:03d}"
+          app = json.load(open("app/app.json", encoding="utf-8"))
+          problems = []
+          if app["version"] != expected:
+              problems.append(f'app.json version is {app["version"]}, but VERSION {version} needs {expected}')
+          if app.get("userAgent") and f"JobeesLair/{version} " not in app["userAgent"] + " ":
+              problems.append(f'app.json userAgent ({app["userAgent"]}) does not name {version}')
+          print("\n".join(problems) or f"VERSION {version}, package version {expected}")
+          sys.exit(1 if problems else 0)
+          EOF
+
       - name: Build
         working-directory: ps5-react
         run: python3 tools/build_ps5.py --app-dir "$GITHUB_WORKSPACE/app" --llvm /usr/bin

@@ -74,14 +74,25 @@ import { Archives, BackHandler, Downloads, FileSystem, Http, Notifications, Plat
     }
     return state;
   }
-  // At launch, and every 24 hours after; returns the function that stops it. A relaunch within the hour
-  // reuses the last answer instead of asking again. The installer first reads what the updater did.
-  function startUpdateChecks() {
+  // Once per launch, as early as the app can (index.jsx Boot, before the startup notice): the installer says
+  // this build started (booted.txt) and reads what the updater did. After a swap the updater waits for that
+  // word while the app runs; written only once the store mounted, it was missing for as long as the notice
+  // stayed up, and closing the app there rolled a working update back. The store also remounts when the
+  // theme changes, which must not redo it.
+  var installerStarted = false;
+  function startInstaller() {
+    if (installerStarted) return;
+    installerStarted = true;
     try {
       installer?.start();
     } catch (error2) {
       console.log(`update: the installer did not start: ${error2.message}`);
     }
+  }
+  // At launch, and every 24 hours after; returns the function that stops it. A relaunch within the hour
+  // reuses the last answer instead of asking again. The installer has read what the updater did by then.
+  function startUpdateChecks() {
+    startInstaller();
     const first = setTimeout(() => void checkForUpdate({ minAge: HOUR_MS }), CHECK_DELAY_MS);
     const daily = setInterval(() => void checkForUpdate(), DAY_MS);
     return () => {
@@ -173,4 +184,4 @@ import { Archives, BackHandler, Downloads, FileSystem, Http, Notifications, Plat
     return on;
   }
 
-export { canInstall, cancelUpdate, checkForUpdate, closeUpdateDialog, downloadUpdate, openUpdateDialog, restartToApply, setAutoInstall, startUpdateChecks, useAutoInstall, useInstall, useUpdate, useUpdateDialog };
+export { canInstall, cancelUpdate, checkForUpdate, closeUpdateDialog, downloadUpdate, openUpdateDialog, restartToApply, setAutoInstall, startInstaller, startUpdateChecks, useAutoInstall, useInstall, useUpdate, useUpdateDialog };

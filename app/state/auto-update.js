@@ -143,6 +143,19 @@ import { contentVersionOf, newer } from './updater.js';
         return;
       }
       const outcome = result?.version === state.version ? result : null;
+      // The updater put that version's image in place, yet the build that started is not it: the release's
+      // files are not the version its tag says (a build made before its version was raised). Offering it
+      // again would loop (download, swap, the same build, the same offer), so it is set aside: never
+      // downloaded automatically again, only when the gamer asks, until another release comes out.
+      if (outcome?.outcome === "swapped" || outcome?.outcome === "applied") {
+        const reason = `The ${state.version} update started as version ${running}: the release's files are not the version it says, so it won't be installed automatically again.`;
+        log(reason);
+        if (state.staging) void removeQuietly(state.staging);
+        removeControl("apply.txt");
+        store.set({ version: state.version, phase: "failed", error: reason, mismatched: state.version });
+        publish({ phase: "failed", version: state.version, error: reason, outcome: { ...outcome, reason } });
+        return;
+      }
       if (outcome?.outcome === "rolledback" || outcome?.outcome === "failed") {
         settle({ phase: "failed", error: outcome.reason });
         publish({ version: state.version, outcome });
@@ -307,6 +320,11 @@ import { contentVersionOf, newer } from './updater.js';
     function offer(release) {
       if (!release?.assets || !newer(release.version, running)) return;
       const state = saved();
+      // A release whose build turned out to be another version (start): shown, never fetched by itself.
+      if (state.mismatched === release.version) {
+        if (!run) publish({ version: release.version });
+        return;
+      }
       if (automatic() || state.version === release.version && state.phase === "paused") download(release);
       else if (state.version === release.version && !run) publish({ version: release.version });
     }
