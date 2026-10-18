@@ -1,8 +1,6 @@
 // ../pub-game-store/native/state/download-sources.js
 // reconstructed from the esbuild bundle in eboot.bin
 // MODIFIED: archiveRefusal, so an Archive.org 401/403 is a dead link, not a browser check.
-// MODIFIED: retiredSource names the releases of hosts this build no longer downloads from (none now:
-// Vikingfile and AkiraBox are back, their file links captured from the console's browser, browser-links.js).
 // MODIFIED (from Overdrive 1.0.6, MyLuxy): Vikingfile's own file links are direct and its pages give theirs;
 // FileKeeper's file is had without the browser, by waiting its countdown and posting its form.
 // MODIFIED: a source marked `debrid` (state/debrid.js) is of kind "debrid": the resolver hands it to the
@@ -23,19 +21,6 @@
     filekeeper: ["filekeeper.net"]
   };
   var isHost = (host2, domain) => host2 === domain || host2.endsWith(`.${domain}`);
-  // Hosts this build no longer downloads from. Their catalog releases are dropped as they load, with
-  // the link pages (link-vault.org/c/…#VikingFile) that only lead to them.
-  var RETIRED = [];
-  function retiredSource(release) {
-    if (!RETIRED.length) return false;
-    return [release.url, release.browserUrl].some((value) => {
-      try {
-        return Boolean(value) && RETIRED.some((domain) => isHost(webURL(value).host, domain));
-      } catch {
-        return false;
-      }
-    });
-  }
   // Archive.org answers 401 for a restricted item and 403 for one taken down. Neither is a
   // check a browser can pass: a login there gives the app no access, it only stays in the
   // console's browser. The status, when it is that refusal, else null.
@@ -188,4 +173,4 @@
     } };
   }
 
-export { archiveRefusal, BrowserRequired, cancellation, createSourceResolver, retiredSource, sourceKind, webURL };
+export { archiveRefusal, BrowserRequired, cancellation, createSourceResolver, sourceKind, webURL };

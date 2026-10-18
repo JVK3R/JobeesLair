@@ -12,15 +12,16 @@
 import { INCOMPLETE_PART, STALE_PARTIAL, cause } from '../downloads/errors.js';
 import { t } from '../i18n/core.js';
 import { archivePassword } from './archive-password.js';
-import { consoleFirmware, firmwareText, newerFirmware, requiredFirmware } from './firmware.js';
 import { diagnoseLaunch, launchOutcomes } from './launch-diagnosis.js';
 import { reportLink } from './link-health.js';
 import { BrowserRequired, archiveRefusal, cancellation, createSourceResolver, sourceKind, webURL } from './download-sources.js';
-import { LINK_PREFIX, captureAnchor, linkForLog, otherSourceLink, validateCapturedLink } from './browser-links.js';
-import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetadata, requirePart, validateVikingCapture, vikingLinkPage } from './viking-capture.js';
+import { captureAnchor } from './browser-links.js';
+import { createCaptureFlow } from './capture-flow.js';
+import { createMoves } from './queue-moves.js';
+import { createPayloadChecks } from './payload-checks.js';
+import { vikingLinkPage } from './viking-capture.js';
 import { readJSON } from './read-json.js';
-import { busyWhileOpen, mountedImages, reregister, shadowRequest, within2 } from './shadowmount.js';
-import { formatBytes } from './size.js';
+import { busyWhileOpen, mountedImages, shadowRequest, within2 } from './shadowmount.js';
 import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
 
   var ACTIVE = ["resolving", "connecting", "downloading", "verifying", "extracting", "installing", "pausing"];
@@ -34,45 +35,9 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
   var AWAITING_INSTALL = ["downloaded", "attention"];
   // Disk images ShadowMount mounts. An archive can hold several (a base game and its update, say).
   var IMAGE = /\.(ffpfsc|ffpfs|ffpkg|exfat)$/i;
-  // An image named as an update, patch or add-on rather than the base game: the base goes first.
-  var ADDON = /(?:^|[^a-z])(?:update|patch|dlc)(?:[^a-z]|$)/i;
-  // The engine's completion receipt in an extraction's root: "P5AR001:<identity>", then "<sha256>|<path>"
-  // for every file, written only after the whole archive was read and every file hashed.
-  var RECEIPT = ".ps5-react-extraction";
   var baseName = (path) => path.slice(path.lastIndexOf("/") + 1);
-  // A LinkVault page adds its own check and a mirror page before the host's, so a link capture gets
-  // the payload's longest window.
-  var LINK_CAPTURE_SECONDS = 300;
   // A host's web page is kilobytes; a file this big with no known headers is the game itself.
   var WEB_PAGE_BYTES = 4 * 1024 ** 2;
-  // The payload's first pass, before the page opens, fingerprints the links the browser already holds;
-  // the task turns "capturing" when it ends (or settles if it fails), and only then may the page open,
-  // so no link the page makes is counted as old.
-  function armedCapture(task) {
-    return new Promise((resolve) => {
-      let off = null, settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        off?.();
-        resolve();
-      };
-      off = task.subscribe((snapshot) => {
-        if (snapshot.state !== "queued") finish();
-      });
-      if (settled) off();
-      task.done.then(finish, finish);
-    });
-  }
-  // Which source opened the browser, for the log: its provider, and the vault or host it opens.
-  function sourceForLog(source2, browserUrl) {
-    let host = "?";
-    try {
-      host = webURL(browserUrl).host;
-    } catch {
-    }
-    return `${source2.provider || sourceKind(source2) || "?"} at ${host}${host.endsWith("link-vault.org") ? " (LinkVault)" : ""}`;
-  }
   // What a release is for the game, by its catalog label: the game itself, an add-on, or a backport (files
   // ShadowMount lays over the game from homebrew/backports/<TITLE_ID>/ when it starts). The same tests as
   // the source picker's sections (game/sources.js).
@@ -174,6 +139,46 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     let active2 = null;
     // Browser captures in progress, one at a time: job id -> { cancel, task, decide }.
     const captures = /* @__PURE__ */ new Map();
+    // The capture flows (state/capture-flow.js) work on this queue's jobs through these; change, pump and
+    // continueJob are the queue's, reached when called, not when the flows are built.
+    const { stopCapture, captureVikingfile, captureBrowserLink } = createCaptureFlow({
+      captures,
+      jobs: () => jobs,
+      active: () => active2,
+      change: () => change(),
+      pump: (...args) => pump(...args),
+      continueJob: (...args) => continueJob(...args),
+      http,
+      linking,
+      browserCapture,
+      notifications,
+      onCapture
+    });
+    // A download's files checked and set in place (state/payload-checks.js).
+    const { transferProblem, checkTransfer, verifyImages, verifyGameFolder, keepExtras, placeBackport, orderImages, changedPayload } = createPayloadChecks({
+      fs,
+      firmware: () => firmware(),
+      storageIdentity: (job2) => storageIdentity(job2)
+    });
+    // Moving a game to another drive (state/queue-moves.js), on the same terms: the queue's own parts are
+    // reached when called.
+    const { moves, relocate, cancelMove, adoptMoved } = createMoves({
+      fs,
+      platform,
+      COMPLETE,
+      jobs: () => jobs,
+      active: () => active2,
+      deletions: () => deletions,
+      find: (id) => find(id),
+      change: () => change(),
+      emit: () => emit2(),
+      storageIdentity: (job2) => storageIdentity(job2),
+      ownedPaths: (job2) => ownedPaths(job2),
+      quietNetwork: (reason, work) => quietNetwork(reason, work),
+      shadowRequest: (route2, body) => shadowRequest2(route2, body),
+      gameInfo: (title) => gameInfo(title),
+      removePath: (path) => removePath(path)
+    });
     // Work that is asking ShadowMount and cannot wait for a download (quietNetwork); no job starts meanwhile.
     let holds = 0;
     // Who borrowed the network while the queue had nothing to do (lendNetwork): the app's own update
@@ -289,38 +294,6 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     // Where a download is written. ShadowMount scans homebrew/ and mounts what it finds there, so an image
     // downloads to downloads/images/ and moves into homebrew/ only once it passed its check (publishImage).
     const stagedPath = (artifact2, root2) => artifact2.nextAction === "shadowmount" ? `${root2}/downloads/images/${baseName(artifact2.destination)}` : artifact2.destination;
-    // What is wrong with a finished transfer, or null: the file must be there, not empty, with no partial
-    // beside it, and hold exactly the bytes its source declared (or the server reported).
-    function transferProblem(path, expected, result) {
-      const name = baseName(path);
-      const info = fs.stat(path);
-      if (!info?.isFile) return `${name} is missing after its download`;
-      if (!info.size) return `${name} is empty`;
-      if (fs.exists(`${path}.part`)) return `${name} still has an unfinished partial file beside it`;
-      const reported = Number.isSafeInteger(result?.total) && result.total > 0 ? result.total : null;
-      const want = expected || reported;
-      if (want && info.size !== want) return `${name} holds ${info.size} of ${want} bytes`;
-      return null;
-    }
-    // Throws when a transfer fails its check. A staged image was never where ShadowMount looks, so it is
-    // deleted and a retry downloads it again; a file already in place is kept for inspection.
-    async function checkTransfer(job2, result) {
-      const path = job2.downloadDestination;
-      const problem = transferProblem(path, job2.options?.expectedBytes, result);
-      if (!problem) return;
-      console.log(`[download-queue] ${job2.id} failed its check before mounting: ${problem}`);
-      let message = t("downloads.invalid", { problem });
-      if (path !== job2.artifact.destination) {
-        try {
-          await Promise.all(["", ".complete", ".resume"].map((suffix) => fs.removeAsync(path + suffix)));
-          job2.written = 0;
-          message = `${message} ${t("downloads.discarded")}`;
-        } catch (error2) {
-          console.log(`[download-queue] ${path} not deleted:`, error2.message);
-        }
-      }
-      throw new Error(message);
-    }
     // Moves a checked image from downloads/images/ into homebrew/, where ShadowMount finds it.
     function publishImage(job2) {
       if (job2.downloadDestination === job2.artifact.destination) return;
@@ -329,178 +302,6 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       job2.routing = { ...job2.artifact };
       change();
       finishRouting(job2);
-    }
-    function invalid(job2, problem) {
-      console.log(`[download-queue] ${job2.id} failed its check before mounting: ${problem}`);
-      throw new Error(t("downloads.invalid", { problem }));
-    }
-    // The paths an extraction's completion receipt lists, or null when it has none the queue can read.
-    function receiptPaths(directory3) {
-      let text;
-      try {
-        text = fs.readFile(`${directory3}/${RECEIPT}`);
-      } catch {
-        return null;
-      }
-      const lines = text.split("\n");
-      if (!lines[0]?.startsWith("P5AR001:")) return null;
-      return new Set(lines.slice(1).filter((line) => line[64] === "|").map((line) => line.slice(65)));
-    }
-    // Checks the images of an extraction before they go where ShadowMount scans: each is a non-empty
-    // regular file and, when the receipt is there, listed in it. Returns each one's path and size.
-    function verifyImages(job2, paths) {
-      const listed = receiptPaths(job2.output);
-      if (!listed) console.log(`[download-queue] ${job2.id}: no extraction receipt, checking the images' files only`);
-      return paths.map((path) => {
-        const info = fs.stat(`${job2.output}/${path}`);
-        if (!info?.isFile) invalid(job2, `${path} is missing from the extraction`);
-        if (!info.size) invalid(job2, `${path} is empty`);
-        if (listed && !listed.has(path)) invalid(job2, `${path} is not in the extraction receipt`);
-        return { path, size: info.size };
-      });
-    }
-    // The console's system software as [13, 60], or null when it is unknown.
-    function thisConsole() {
-      try {
-        return consoleFirmware(firmware());
-      } catch {
-        return null;
-      }
-    }
-    // What a game folder that passed its check may still trip over, as sentences for its message: system
-    // software newer than the console's (a backport can still make it run, so it is not refused), and no
-    // sce_module folder, which most PS5 games carry.
-    function folderWarnings(job2, folder, param) {
-      const warnings = [];
-      const required = requiredFirmware(param.requiredSystemSoftwareVersion);
-      const current = thisConsole();
-      if (required && current && newerFirmware(required, current))
-        warnings.push(t("downloads.warning.firmware", { required: firmwareText(required), current: firmwareText(current) }));
-      if (!fs.stat(`${folder}/sce_module`)?.isDirectory) warnings.push(t("downloads.warning.noModules"));
-      console.log(`[download-queue] ${job2.id}: ${param.titleId} ${param.contentVersion ?? ""} needs system software ${required ? firmwareText(required) : "(not stated)"}, console ${current ? firmwareText(current) : "unknown"}, sce_module ${warnings.includes(t("downloads.warning.noModules")) ? "missing" : "present"}`);
-      return warnings;
-    }
-    // Whether an extraction root still holds files of its own once its game folder moved out (notes,
-    // readmes, tools), not counting the engine's .ps5-react-* metadata.
-    function holdsExtras(directory3, depth = 0, budget = { left: 2e3 }) {
-      let entries2;
-      try {
-        entries2 = fs.readDir(directory3);
-      } catch {
-        return false;
-      }
-      for (const entry2 of entries2) {
-        if (--budget.left < 0) return true;
-        if (entry2.name.startsWith(".ps5-react-")) continue;
-        if (!entry2.isDirectory) return true;
-        if (depth < 16 && holdsExtras(`${directory3}/${entry2.name}`, depth + 1, budget)) return true;
-      }
-      return false;
-    }
-    // What an extraction root still holds once the folder that matters moved out of it (notes that may say a
-    // backport is needed, say): kept as <name>-extras in downloads/extracted, outside ShadowMount's scan, and
-    // deleted with the job. Returns where, or null when nothing was left (the root is deleted then).
-    async function keepExtras(job2) {
-      if (!holdsExtras(job2.output)) {
-        await fs.removeAsync(job2.output);
-        return null;
-      }
-      const kept = `${job2.output}-extras`;
-      if (fs.exists(`${job2.output}/${RECEIPT}`)) fs.remove(`${job2.output}/${RECEIPT}`);
-      if (!fs.exists(kept)) fs.rename(job2.output, kept);
-      job2.extras = fs.exists(kept) ? kept : job2.output;
-      console.log(`[download-queue] ${job2.id}: the archive's other files kept in ${job2.extras}`);
-      return job2.extras;
-    }
-    // A backport archive's files go to homebrew/backports/<TITLE_ID>/, where ShadowMount lays them over the
-    // game when it starts (it skips that folder when it scans for games). The folder taken is one named for
-    // the title, or the archive's only top folder (followed down), or else everything the archive holds.
-    async function placeBackport(job2) {
-      const title = job2.titleId;
-      const destination = `${job2.root}/homebrew/backports/${title}`;
-      if (fs.exists(destination)) {
-        console.log(`[download-queue] ${job2.id}: ${destination} already exists, the backport was kept in ${job2.output}`);
-        throw new Error(t("downloads.backport.exists", { title, path: destination }));
-      }
-      let folder = job2.output;
-      for (let depth = 0; depth < 8; depth++) {
-        let entries2;
-        try {
-          entries2 = fs.readDir(folder).filter((entry2) => !entry2.name.startsWith(".ps5-react-"));
-        } catch {
-          break;
-        }
-        const named = entries2.find((entry2) => entry2.isDirectory && entry2.name.toUpperCase() === title);
-        if (named) {
-          folder = `${folder}/${named.name}`;
-          break;
-        }
-        if (entries2.length !== 1 || !entries2[0].isDirectory) break;
-        folder = `${folder}/${entries2[0].name}`;
-      }
-      fs.mkdir(`${job2.root}/homebrew/backports`, { recursive: true });
-      storageIdentity(job2);
-      fs.rename(folder, destination);
-      if (folder === job2.output) {
-        for (const name of [RECEIPT, ".ps5-react-stage"]) if (fs.exists(`${destination}/${name}`)) fs.remove(`${destination}/${name}`);
-      }
-      const extras = folder !== job2.output ? await keepExtras(job2) : null;
-      console.log(`[download-queue] ${job2.id}: backport for ${title} placed in ${destination}`);
-      job2.output = destination;
-      job2.publishTo = destination;
-      job2.backportPath = destination;
-      job2.artifact.nextAction = "backport";
-      job2.artifact.destination = destination;
-      job2.state = "installed";
-      job2.message = [t("downloads.backport.placed", { title }), extras ? t("downloads.extrasKept", { path: extras }) : ""].filter(Boolean).join(" ");
-    }
-    // Checks an extracted game folder: a non-empty eboot.bin and a sce_sys/param.json that parses and
-    // names a title ID. Returns the two files' paths (inside the folder) and sizes, and its warnings.
-    function verifyGameFolder(job2, folder) {
-      const eboot = fs.stat(`${folder}/eboot.bin`);
-      if (!eboot?.isFile || !eboot.size) invalid(job2, "eboot.bin is missing or empty");
-      const paramPath = `${folder}/sce_sys/param.json`;
-      let param;
-      try {
-        param = JSON.parse(fs.readFile(paramPath));
-      } catch (error2) {
-        invalid(job2, `sce_sys/param.json cannot be read: ${error2.message}`);
-      }
-      const titleId = typeof param?.titleId === "string" ? param.titleId : "";
-      if (!/^[A-Z]{4}\d{5}$/.test(titleId)) invalid(job2, `sce_sys/param.json names no valid title ID (${titleId || "none"})`);
-      if (titleId !== job2.titleId) {
-        console.log(`[download-queue] ${job2.id}: param.json names ${titleId}, the catalog ${job2.titleId}`);
-        job2.consoleTitleId = titleId;
-      }
-      const listed = receiptPaths(job2.output);
-      const inside = folder === job2.output ? "" : `${folder.slice(job2.output.length + 1)}/`;
-      for (const path of ["eboot.bin", "sce_sys/param.json"]) {
-        if (listed && !listed.has(`${inside}${path}`)) invalid(job2, `${path} is not in the extraction receipt`);
-      }
-      return {
-        files: [{ path: "eboot.bin", size: eboot.size }, { path: "sce_sys/param.json", size: fs.stat(paramPath)?.size ?? 0 }],
-        warnings: folderWarnings(job2, folder, param)
-      };
-    }
-    // A set's images, the base game first: names that read as an update, patch or add-on go last, and
-    // otherwise the largest first.
-    function orderImages(directory3, paths) {
-      const size = (path) => fs.stat(`${directory3}/${path}`)?.size || 0;
-      return [...paths].sort((a, b) => Number(ADDON.test(a)) - Number(ADDON.test(b)) || size(b) - size(a) || a.localeCompare(b));
-    }
-    // A payload file that is gone or changed size since its check, or null: such a job is not installed.
-    function changedPayload(job2) {
-      for (const { path, size } of job2.payload ?? []) {
-        let info;
-        try {
-          info = fs.stat(path);
-        } catch {
-          info = null;
-        }
-        if (!info) return `${baseName(path)} is gone`;
-        if (info.size !== size) return `${baseName(path)} is now ${info.size} bytes, it was ${size} when checked`;
-      }
-      return null;
     }
     function failOver(job2, error2) {
       if (job2.written || job2.parts?.some((part) => part.written) || /space|storage|drive|disconnected/i.test(cause(error2.message))) return false;
@@ -1743,386 +1544,6 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       change();
       pump(job2);
     }
-    // ---- Browser capture (from Overdrive 1.0.6): the file link read out of the console's browser ----
-    function stopCapture(job2) {
-      const session = captures.get(job2.id);
-      if (session) {
-        captures.delete(job2.id);
-        session.cancel.cancel();
-        session.task?.cancel();
-      }
-      delete job2.captureState;
-      delete job2.captureError;
-      delete job2.captureMode;
-      delete job2.captureFile;
-    }
-    // A capture that failed: the job waits for the browser again, saying why; typing the link stays open.
-    function captureFailed(job2, source2, session, error2) {
-      console.log("[browser-capture] failed:", error2.message);
-      onCapture(source2, false);
-      session.cancel.cancel();
-      session.task?.cancel();
-      captures.delete(job2.id);
-      job2.state = "awaiting-browser";
-      job2.captureState = "failed";
-      job2.captureError = error2.message;
-      change();
-      pump();
-    }
-    // The validated link handed to the queue, with the file's real length in place of the catalog's.
-    function handOff(job2, source2, validated) {
-      if (validated.filename) job2.fileName = validated.filename;
-      source2.sizeBytes = validated.expectedBytes;
-      if (!job2.parts) job2.total = validated.expectedBytes;
-      notifications.show(t("downloads.notice.captured"), job2.title);
-      console.log("[browser-capture] file validated; handing off to queue");
-      onCapture(source2, true);
-      continueJob(job2, validated.url, { url: validated.url, expectedBytes: validated.expectedBytes, sha256: source2.sha256 || void 0, rejectHtml: true });
-    }
-    // Vikingfile: its public page names the file, and only a link to that exact file is taken.
-    async function captureVikingfile(job2, source2, session) {
-      const current = () => captures.get(job2.id) === session && jobs.includes(job2) && job2.state === "awaiting-browser";
-      let handingOff = false;
-      try {
-        const linkPage = vikingLinkPage(source2);
-        console.log("[browser-capture] source:", sourceForLog(source2, job2.browserUrl));
-        const deadline = Date.now() + (linkPage ? LINK_CAPTURE_SECONDS : 180) * 1e3;
-        let metadata = null;
-        if (linkPage) {
-          // A vault hides which Vikingfile page it opens, so the capture first takes that page; its public
-          // metadata then names the file exactly, as a direct Vikingfile source's does.
-          session.task = browserCapture.capture({ prefix: VIKING_PAGE_PREFIX, suffix: "/", timeoutSeconds: LINK_CAPTURE_SECONDS });
-        } else {
-          metadata = await describeVikingCapture(http, source2, session.cancel.signal);
-          if (!current()) return;
-          session.task = browserCapture.capture({ prefix: VIKING_PREFIX, suffix: `/${metadata.filename}`, timeoutSeconds: 180 });
-        }
-        await armedCapture(session.task);
-        if (!current()) return;
-        job2.captureState = "capturing";
-        change();
-        if (!linking?.openURL(webURL(job2.browserUrl).url)) throw new Error("The browser could not open. Retry or enter the final file link.");
-        if (linkPage) {
-          const page = await session.task.done;
-          if (!current()) return;
-          metadata = await describeVikingCapture(http, { ...source2, url: page.url, browserUrl: page.url }, session.cancel.signal);
-          if (!current()) return;
-          requirePart(linkPageMetadata(source2).part, metadata.filename);
-          const seconds = Math.floor((deadline - Date.now()) / 1e3);
-          if (seconds < 5) throw new Error("The verification ran out of time. Reopen the page and retry.");
-          session.task = browserCapture.capture({ prefix: VIKING_PREFIX, suffix: `/${metadata.filename}`, timeoutSeconds: seconds, resume: true });
-        }
-        const result = await session.task.done;
-        if (!current()) return;
-        job2.captureState = "validating";
-        change();
-        console.log("[browser-capture] link captured:", linkForLog(result.url), "- validating one-byte range");
-        const validated = await validateVikingCapture(http, result.url, metadata, session.cancel.signal);
-        if (!current()) return;
-        handingOff = true;
-        handOff(job2, source2, { ...validated, filename: metadata.filename });
-      } catch (error2) {
-        if (!current() && !(handingOff && jobs.includes(job2) && job2.state === "queued" && active2?.job !== job2)) return;
-        captureFailed(job2, source2, session, error2);
-      }
-    }
-    // A file that names no game waits for the gamer's word, shown under the download button.
-    function confirmCapturedFile(job2, session, found) {
-      return new Promise((resolve) => {
-        session.decide = (accepted) => {
-          delete session.decide;
-          delete job2.captureFile;
-          resolve(accepted);
-        };
-        session.cancel.signal.addEventListener("abort", () => session.decide?.(false));
-        job2.captureState = "confirm";
-        job2.captureFile = { name: found.filename, bytes: found.expectedBytes };
-        change();
-      });
-    }
-    // Any other host whose check only the browser passes (LinkVault's mirrors, AkiraBox, Datanodes,
-    // Buzzheavier, 1fichier): the file link appears on the page, or when its download starts, and the
-    // browser's memory is read for one that names the game's title id. A refused link (a page, an expired
-    // route, another source's file) does not end the session: it scans on past it, up to six.
-    async function captureBrowserLink(job2, source2, session) {
-      const current = () => captures.get(job2.id) === session && jobs.includes(job2) && job2.state === "awaiting-browser";
-      let handingOff = false;
-      try {
-        const anchor = captureAnchor(job2.titleId);
-        console.log("[browser-capture] source:", sourceForLog(source2, job2.browserUrl), "- watching any file link carrying", anchor);
-        // A LinkVault record's catalog size is the whole vault's, not the file's: only a direct host's
-        // size is evidence.
-        const vaulted = webURL(job2.browserUrl).host === "link-vault.org";
-        const catalogBytes = vaulted ? null : source2.sizeBytes || null;
-        const akiraBox = /(?:^|\.)akirabox\.(?:com|to)$/.test(webURL(job2.browserUrl).host) || vaulted && /#AkiraBox$/.test(job2.browserUrl);
-        const akiraPart = akiraBox ? linkPageMetadata(source2).part : null;
-        const deadline = Date.now() + LINK_CAPTURE_SECONDS * 1e3;
-        const rejected = [];
-        let validated = null;
-        while (!validated) {
-          const seconds = Math.floor((deadline - Date.now()) / 1e3);
-          if (seconds < 5) throw new Error("Captured file failed validation or expired. Reopen the page and retry.");
-          const resume = rejected.length > 0;
-          session.task = browserCapture.capture({ prefix: LINK_PREFIX, suffix: `/${anchor}`, timeoutSeconds: seconds, rejected, resume });
-          if (!resume) {
-            await armedCapture(session.task);
-            if (!current()) return;
-            if (!linking?.openURL(webURL(job2.browserUrl).url)) throw new Error("The browser could not open. Retry or enter the final file link.");
-          }
-          job2.captureState = "capturing";
-          change();
-          const result = await session.task.done;
-          if (!current()) return;
-          job2.captureState = "validating";
-          change();
-          if (otherSourceLink(result.url, source2)) {
-            if (rejected.length >= 6) throw new Error("Captured link belongs to another source. Reopen the page and retry.");
-            console.log("[browser-capture] passed over", linkForLog(result.url), "- another source's link, scanning on");
-            rejected.push(result.url);
-            continue;
-          }
-          console.log("[browser-capture] link captured:", linkForLog(result.url), "- validating one-byte range");
-          let found;
-          try {
-            found = await validateCapturedLink(http, result.url, { anchor, sizeBytes: catalogBytes }, session.cancel.signal);
-            // An AkiraBox set's parts are captured one by one, and the part before is still in the
-            // browser's memory, on the same host and named for the same game: the file has to be this part.
-            if (akiraPart) requirePart(akiraPart, found.filename);
-          } catch (error2) {
-            if (!current() || rejected.length >= 6) throw error2;
-            console.log("[browser-capture] refused", linkForLog(result.url), "and scanning on:", error2.message);
-            rejected.push(result.url);
-            continue;
-          }
-          if (found.unbound) {
-            const accepted = await confirmCapturedFile(job2, session, found);
-            if (!current()) return;
-            console.log("[browser-capture] gamer", accepted ? "accepted" : "refused", linkForLog(result.url));
-            if (!accepted) {
-              if (rejected.length >= 6) throw new Error("None of the captured files was this game's. Reopen the page and retry.");
-              rejected.push(result.url);
-              continue;
-            }
-          }
-          validated = found;
-        }
-        if (!current()) return;
-        handingOff = true;
-        handOff(job2, source2, validated);
-      } catch (error2) {
-        if (!current() && !(handingOff && jobs.includes(job2) && job2.state === "queued" && active2?.job !== job2)) return;
-        captureFailed(job2, source2, session, error2);
-      }
-    }
-    // ---- Moving a finished game to another drive (Make Room, the library's Options) ----
-    // The sidecar files a download leaves beside its file: its receipt ties it to that file's inode, so
-    // they are not copied; they go with the original.
-    const SIDECAR2 = /\.(?:complete|complete\.tmp|part|resume|resume\.tmp)$/;
-    const moves = /* @__PURE__ */ new Map();
-    // A file's bytes, or a folder's (its files, as far as `budget` entries go).
-    function treeSize(path, budget = { left: 2e4 }) {
-      const info = fs.stat(path);
-      if (!info) return 0;
-      if (!info.isDirectory) return info.size || 0;
-      let total = 0;
-      for (const entry2 of fs.readDir(path)) {
-        if (--budget.left < 0) break;
-        total += entry2.isDirectory ? treeSize(`${path}/${entry2.name}`, budget) : entry2.size || 0;
-      }
-      return total;
-    }
-    // What a move of `job2` copies: the files and folders it put on its drive that are still there, without
-    // the sidecars and without what lies inside another of them; and the sidecars, which only go. A backport
-    // (homebrew/backports/<TITLE>) stays where ShadowMount was given it: where ShadowMount looks for the
-    // backport of a game on another drive is not established.
-    function movable(job2) {
-      const owned2 = ownedPaths(job2).filter((path) => fs.exists(path) && path !== job2.backportPath);
-      const copies2 = owned2.filter((path) => !SIDECAR2.test(path)).filter((path, _, all) => !all.some((other) => other !== path && path.startsWith(`${other}/`)));
-      return { copies: copies2, sidecars: owned2.filter((path) => SIDECAR2.test(path) && !copies2.some((other) => path.startsWith(`${other}/`))) };
-    }
-    const onRoot = (path, from, to) => path === from ? to : path.startsWith(`${from}/`) ? `${to}${path.slice(from.length)}` : path;
-    // Every path in the job (its artifact, payload, outputs...) under `from` now under `to`. The release
-    // and its fallbacks are where it came from, not where it is, and stay.
-    function rehome(value, from, to, depth = 0) {
-      if (typeof value === "string") return onRoot(value, from, to);
-      if (depth > 6 || value === null || typeof value !== "object") return value;
-      if (Array.isArray(value)) return value.map((item) => rehome(item, from, to, depth + 1));
-      return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, depth === 0 && ["release", "fallbacks", "currentSource", "options", "backportPath"].includes(key) ? item : rehome(item, from, to, depth + 1)]));
-    }
-    function rootIdentityOf(root2) {
-      const info = fs.stat(root2);
-      if (!info?.isDirectory) throw new Error(t("move.driveGone"));
-      return `${info.device}:${info.inode}`;
-    }
-    // Points the job at its files' new drive, and saves that: from here on the copy is the game.
-    function rehomeJob(job2, to) {
-      const from = job2.root;
-      const moved = rehome(job2, from, to);
-      for (const key of Object.keys(job2)) if (!(key in moved)) delete job2[key];
-      Object.assign(job2, moved, { root: to, rootIdentity: rootIdentityOf(to) });
-    }
-    async function mountedOf(job2, paths, log2) {
-      if (job2.artifact.nextAction !== "shadowmount" || platform !== "ps5") return [];
-      const mounted = await quietNetwork(`move ${job2.id}`, () => mountedImages(shadowRequest2, paths, job2.root)).catch((error2) => {
-        throw new Error(t("move.mountUnknown", { error: error2.message }));
-      });
-      if (mounted === null) log2("ShadowMount is not running, so none of its files is mounted");
-      return mounted ?? [];
-    }
-    /**
-     * Moves a finished game (everything its download put on its drive) to `to` (a storage root), in this
-     * order, each step logged:
-     *  1. checks: the job is finished and still, the other drive has room for it, nothing is in the way
-     *     there, and ShadowMount has none of its images mounted;
-     *  2. each file or folder is copied with FileSystem.copyAsync, read back against the original (and its
-     *     download receipt, when it has one); the copy is `<path>.partial` until then;
-     *  3. checked unmounted again, the job is pointed at the copy and saved: the copy is the game now;
-     *  4. the originals and their sidecars are deleted;
-     *  5. ShadowMount is told (shadowmount.js reregister): its scan finds the new place, or a manual entry
-     *     names it, and a rescan is asked for (held until Jobee'sLair closes, being a game itself).
-     * A move cut off before step 3 (a failure, a cancel, the app closing) leaves the game where it was and
-     * the copy so far in place; moving again resumes it, cancelling deletes it. `onProgress(fraction)`.
-     * Resolves with { note }.
-     */
-    function relocate(id, to, { onProgress = () => {
-    } } = {}) {
-      const job2 = find(id);
-      if (moves.has(job2)) return moves.get(job2).done;
-      const log2 = (message) => console.log(`[download-queue] move ${job2.id}: ${message}`);
-      const control = { task: null, cancelled: false };
-      const done = (async () => {
-        if (!COMPLETE.includes(job2.state) || deletions.has(job2) || active2?.job === job2) throw new Error(t("move.notReady"));
-        if (job2.root === to) throw new Error(t("move.sameDrive"));
-        const from = job2.root;
-        storageIdentity(job2);
-        rootIdentityOf(to);
-        const { copies: copies2, sidecars } = movable(job2);
-        if (!copies2.length) throw new Error(t("move.nothing"));
-        const sizes = copies2.map((path) => treeSize(path));
-        const total = sizes.reduce((sum, size) => sum + size, 0);
-        const staged = (path) => {
-          try {
-            return treeSize(`${onRoot(path, from, to)}.partial`);
-          } catch {
-            return 0;
-          }
-        };
-        const room = fs.diskUsage(to).free + copies2.reduce((sum, path) => sum + staged(path), 0);
-        log2(`${copies2.length} paths, ${total} bytes, to ${to} (${room} bytes there)`);
-        if (room < total + MARGIN2) throw new Error(t("move.noRoom", { size: formatBytes(total + MARGIN2 - room) }));
-        for (const path of copies2) if (fs.exists(onRoot(path, from, to))) throw new Error(t("move.inTheWay", { path: onRoot(path, from, to) }));
-        const mounted = await mountedOf(job2, copies2, log2);
-        if (mounted.length) throw new Error(t("move.mounted", { path: mounted[0].path }));
-        job2.moving = { to, total, written: 0, at: Date.now() };
-        change();
-        let copied = 0;
-        try {
-          for (const [index, path] of copies2.entries()) {
-            if (control.cancelled) throw Object.assign(new Error(t("move.cancelled")), { name: "AbortError" });
-            const target = onRoot(path, from, to);
-            fs.mkdir(target.slice(0, target.lastIndexOf("/")), { recursive: true });
-            const task = control.task = fs.copyAsync(path, target, { verify: true, resume: true, receipt: true });
-            task.subscribe((progress) => {
-              // Copying, then reading back: each half of the work.
-              job2.moving.written = copied + ((progress.written || 0) + (progress.verified || 0)) / 2;
-              onProgress(total ? job2.moving.written / total : 0);
-              emit2();
-            });
-            const result = await task.done;
-            copied += sizes[index];
-            log2(`copied ${path} to ${target}${result.receipt ? ` (download receipt: ${result.receipt})` : ""}, read back and matched`);
-          }
-          control.task = null;
-          const still = await mountedOf(job2, copies2, log2);
-          if (still.length) throw new Error(t("move.mounted", { path: still[0].path }));
-        } catch (error2) {
-          job2.moving = { ...job2.moving, interrupted: true, error: error2.name === "AbortError" ? "" : error2.message };
-          log2(`stopped: ${error2.message}`);
-          change();
-          throw error2;
-        }
-        const previous = JSON.parse(JSON.stringify(job2));
-        delete job2.moving;
-        rehomeJob(job2, to);
-        try {
-          change();
-        } catch (error2) {
-          for (const key of Object.keys(job2)) delete job2[key];
-          Object.assign(job2, previous);
-          throw error2;
-        }
-        log2(`the game now lives on ${to}`);
-        let note = null;
-        for (const path of [...copies2, ...sidecars]) {
-          try {
-            await fs.removeAsync(path);
-            log2(`deleted the original ${path}`);
-          } catch (error2) {
-            log2(`original ${path} not deleted: ${error2.message}`);
-            note = t("move.leftBehind", { path });
-          }
-        }
-        // The folder an archive's images were unpacked into, empty now, goes too (homebrew/ itself stays).
-        for (const folder of new Set(copies2.map((path) => path.slice(0, path.lastIndexOf("/"))))) {
-          try {
-            if (folder.startsWith(`${from}/homebrew/`) && fs.exists(folder) && !fs.readDir(folder).length) fs.remove(folder);
-          } catch {
-          }
-        }
-        if (job2.artifact.nextAction === "shadowmount" && platform === "ps5") {
-          // ShadowMount's sources are each image (or the game's folder), not the folder holding a set of
-          // images: those are what its scan and manual.lst name.
-          const sources = job2.artifact.images?.length ? job2.artifact.images : [job2.artifact.destination];
-          for (const path of sources.filter((item) => item.startsWith(`${to}/homebrew/`))) {
-            const { steps, failed } = await quietNetwork(`move ${job2.id}`, () => reregister(shadowRequest2, { from: onRoot(path, to, from), to: path }));
-            log2(`ShadowMount: ${steps.join("; ")}`);
-            note || (note = failed ? t("move.tellShadowMount") : t("move.afterClose"));
-          }
-        }
-        emit2();
-        return { note };
-      })().finally(() => moves.delete(job2));
-      moves.set(job2, { done, control });
-      done.catch(() => {
-      });
-      return done;
-    }
-    // Stops a move and deletes its copy so far: the game stays where it was, untouched.
-    async function cancelMove(id) {
-      const job2 = find(id);
-      const running = moves.get(job2);
-      if (running) {
-        running.control.cancelled = true;
-        running.control.task?.cancel();
-        await running.done.catch(() => {
-        });
-      }
-      if (!job2.moving) return;
-      const { copies: copies2 } = movable(job2);
-      for (const path of copies2) {
-        const partial = `${onRoot(path, job2.root, job2.moving.to)}.partial`;
-        if (fs.exists(partial)) await removePath(partial);
-      }
-      console.log(`[download-queue] move ${job2.id}: cancelled, its copy deleted`);
-      delete job2.moving;
-      change();
-    }
-    // A game moved outside the app (another tool, FTP): when its file is gone from where the job left it,
-    // and ShadowMount's record of the title points at that file's name on another drive, the job follows it.
-    async function adoptMoved() {
-      const lost = jobs.filter((job2) => job2.state === "installed" && job2.artifact.nextAction === "shadowmount" && !job2.moving && !fs.exists(job2.artifact.destination));
-      let adopted = false;
-      for (const job2 of lost) {
-        const game = await gameInfo(job2.installedTitleId ?? job2.consoleTitleId ?? job2.titleId).catch(() => null);
-        const root2 = /^(\/data|\/mnt\/(?:usb|ext)\d+)\//.exec(game?.path ?? "")?.[1];
-        if (!root2 || root2 === job2.root || onRoot(job2.artifact.destination, job2.root, root2) !== game.path || !fs.exists(game.path)) continue;
-        console.log(`[download-queue] ${job2.id}: its files moved to ${root2} (ShadowMount has ${game.path}); the task follows them`);
-        rehomeJob(job2, root2);
-        adopted = true;
-      }
-      if (adopted) change();
-      return adopted;
-    }
     // Coming back to Jobee'sLair is when a game was just tried: what its launch did is read now.
     if (platform === "ps5") void refreshLaunches();
     return {
@@ -2328,6 +1749,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         } catch {
         }
         const anchor = viking ? "" : captureAnchor(job2.titleId);
+        console.log(`[browser-capture] open ${job2.id}: capture=${Boolean(browserCapture)} viking=${viking} anchor=${anchor || "-"} kind=${source2 ? sourceKind(source2) : "?"}`);
         // The file link is captured from the browser (PS5): Vikingfile by its file's name, any other host
         // by a link naming the game's title id. Without capture, the gamer types the link in afterwards.
         if (browserCapture && source2 && (viking || anchor)) {

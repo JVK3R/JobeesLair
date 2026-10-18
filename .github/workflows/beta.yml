@@ -1,0 +1,122 @@
+name: beta
+
+# Dev builds for testers, from the beta branch only. Every push to beta runs the tests, builds, and puts the
+# result in one pre-release tagged "beta" (replaced each time, so there is a single current dev build to
+# download). The in-app update check reads releases/latest, which never returns a pre-release, so nobody on
+# a published version is offered a dev build. Published versions are made by build.yml from main.
+on:
+  push:
+    branches: [beta]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  ps5:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      # The tests run before the toolchain is installed: a failing test costs minutes, not an hour.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run the tests
+        run: npm run test:all
+
+      - name: Install the toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang-18 llvm-18 llvm-18-dev cmake ninja-build nodejs npm python3-venv \
+            zlib1g-dev build-essential pkg-config unzip zip curl zstd exfatprogs exfat-fuse
+          # The build wants unversioned clang and llvm-config in --llvm.
+          for tool in clang clang++ llvm-config; do
+            sudo ln -sf "/usr/bin/$tool-18" "/usr/local/bin/$tool"
+          done
+          clang --version | head -1
+          llvm-config --version
+
+      - name: Install the Python dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check -r ps5-react/requirements.txt
+          # The build spawns python3 for its own tools, so the venv goes on PATH.
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Check the exfat packaging
+        run: |
+          mkdir -p "$RUNNER_TEMP/check/payload"
+          printf 'eboot' > "$RUNNER_TEMP/check/payload/eboot.bin"
+          # Big enough that the image gets the same geometry as the real one.
+          head -c 24000000 /dev/urandom > "$RUNNER_TEMP/check/payload/data.bin"
+          sudo bash packaging/make-exfat.sh "$RUNNER_TEMP/check/payload" \
+            "$RUNNER_TEMP/check/check.exfat" CHECK
+
+      - name: Cache the downloaded sources
+        uses: actions/cache@v4
+        with:
+          path: ps5-react/.deps
+          key: deps-${{ hashFiles('ps5-react/dependencies.lock.json') }}
+
+      - name: Check the version
+        # Installed copies compare the release tag (named after app/version.js) with their own VERSION, and
+        # check update.zip's package version against it (app/state/updater.js contentVersionOf: 0.2.3 is
+        # 01.002.003). A build whose app.json says otherwise is refused by every installer.
+        run: |
+          python3 - <<'EOF'
+          import json, re, sys
+          version = re.search(r'var VERSION = "([^"]+)"', open("app/version.js", encoding="utf-8").read()).group(1)
+          major, minor, patch = (list(map(int, re.match(r"(\d+)\.(\d+)\.(\d+)", version).groups())))
+          expected = f"{major + 1:02d}.{minor:03d}.{patch:03d}"
+          app = json.load(open("app/app.json", encoding="utf-8"))
+          problems = []
+          if app["version"] != expected:
+              problems.append(f'app.json version is {app["version"]}, but VERSION {version} needs {expected}')
+          if app.get("userAgent") and f"JobeesLair/{version} " not in app["userAgent"] + " ":
+              problems.append(f'app.json userAgent ({app["userAgent"]}) does not name {version}')
+          print("\n".join(problems) or f"VERSION {version}, package version {expected}")
+          sys.exit(1 if problems else 0)
+          EOF
+
+      - name: Build
+        working-directory: ps5-react
+        run: python3 tools/build_ps5.py --app-dir "$GITHUB_WORKSPACE/app" --llvm /usr/bin
+
+      - name: Package
+        run: |
+          # The image is made from a copy of the verified build with the documentation added as /docs.
+          cp -a ps5-react/dist/PPSA99058 stage
+          bash packaging/stage-docs.sh stage
+          sudo bash packaging/make-exfat.sh stage JobeesLair.exfat JOBEESLAIR
+          # The app folder as installed copies download it to check an update (app/state/auto-update.js).
+          cp ps5-react/dist/PPSA99058.zip update.zip
+          ls -l JobeesLair.exfat update.zip ps5-react/dist/
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: JobeesLair
+          path: |
+            JobeesLair.exfat
+            update.zip
+            ps5-react/dist/PPSA99058.receipt.json
+          if-no-files-found: error
+
+      - name: Rolling beta pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/.*var VERSION = "\([^"]*\)".*/\1/p' app/version.js)
+          test -n "$version" || { echo "no VERSION in app/version.js" >&2; exit 1; }
+          short=$(echo "$GITHUB_SHA" | cut -c1-7)
+          notes="Dev build of $version from the beta branch, commit $short. For testing: it may be unfinished, and it is never offered by the in-app updater."
+          # One current build: the old pre-release and its tag go, then the new one is made at this commit.
+          gh release delete beta --cleanup-tag --yes 2>/dev/null || true
+          gh release create beta JobeesLair.exfat update.zip --prerelease --target "$GITHUB_SHA" \
+            --title "Jobee'sLair beta $version ($short)" --notes "$notes"
+          gh release view beta --json isPrerelease,tagName,assets \
+            --jq '"\(.tagName) prerelease=\(.isPrerelease) " + ([.assets[] | "\(.name) \(.size)"] | join(", "))'

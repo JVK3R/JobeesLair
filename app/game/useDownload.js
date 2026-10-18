@@ -52,9 +52,11 @@ import { sameRelease } from '../state/release-sets.js';
       if (!started.current || !job2) return;
       if (job2.state === "awaiting-browser") {
         started.current = false;
+        console.log(`[download-ui] ${job2.id} waits for the browser: opening it`);
         try {
           downloadQueue().openBrowser(job2.id);
         } catch (failure) {
+          console.log(`[download-ui] openBrowser failed: ${failure.message}`);
           setError(failure.message);
         }
       } else if (!["queued", "resolving", "connecting"].includes(job2.state)) started.current = false;

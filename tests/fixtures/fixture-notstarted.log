@@ -1,0 +1,20 @@
+[23:53:07]   [ACTION] Installing: The Outer Worlds 2 (PPSA24588)
+[23:53:07] NOTIFY: Installing: The Outer Worlds 2 (PPSA24588)...
+[23:53:10]   [LINK] nullfs mounted: /data/homebrew/set-177a7e1bba8addf-app -> /system_ex/app/PPSA24588
+[23:53:10]   [LINK] mount.lnk created: /user/app/PPSA24588/mount.lnk -> /data/homebrew/set-177a7e1bba8addf-app
+[23:53:10]   [SHELLCORE] AppInstallAll bridge consumed: PPSA24588 result=0x00000000
+[23:53:10]   [REG] Installed NEW!
+[23:53:10] NOTIFY: installed game PPSA24588
+[23:53:10]   [LINK] runtime layers released: PPSA24588
+[23:53:12]   [LINK] nullfs mounted: /data/homebrew/set-177a7e1bba8addf-app -> /system_ex/app/PPSA24588
+[23:53:12]   [SHELLCORE] launch mount ready: PPSA24588
+[23:53:12]   [FAKELIB] directory mounted for PPSA24588: /data -> /mnt/sandbox/PPSA24588_000/data
+[23:53:12]   [FAKELIB] directory mounted for PPSA24588: /preinst/common/font -> /mnt/sandbox/PPSA24588_000/preinst/common/font
+[23:53:12]   [SHELLCORE] sandbox ready handled: PPSA24588
+[23:53:12]   [SHELLFLAG] SceLncUtilSystemStatus poll rc=0x80020010
+[23:53:13]   [FAKELIB] directory unmounted: /preinst/common/font -> /mnt/sandbox/PPSA24588_000/preinst/common/font
+[23:53:13]   [FAKELIB] directory unmounted: /data -> /mnt/sandbox/PPSA24588_000/data
+[23:53:13]   [SHELLCORE] runtime release start: PPSA24588
+[23:53:13]   [LINK] runtime layers released: PPSA24588
+[23:53:13]   [SHELLFLAG] SceLncUtilSystemStatus value=0x0000000000000002 delta=0x0000000000000000 low32=0x00000002 high32=0x00000000 decoded=SHELLUI_FG_GAME_BG_CPU_MODE
+[23:53:28]   [DB] loaded app.db title list: 37 entries

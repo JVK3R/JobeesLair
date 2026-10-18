@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Copies the project documentation into a staged copy of the built app, so the exFAT image carries it
-# as /docs: the READMEs, the installation guide, the feed format, the license, and the images they show.
+# as /docs: the READMEs, the installation guide, the feed format, the changelog, the license, and the images
+# they show.
 # Run it on a copy, not on ps5-react/dist itself, whose files tools/verify.py has checked.
 #
 # usage: stage-docs.sh <staged-app-folder>
@@ -12,7 +13,7 @@ repo="$(cd "$(dirname "$0")/.." && pwd)"
 docs="$app/docs"
 rm -rf "$docs"
 mkdir -p "$docs/.github/readme"
-for file in README.md README.ru.md INSTALLATION-GUIDE.md FEEDS.md LICENSE; do
+for file in README.md README.ru.md INSTALLATION-GUIDE.md FEEDS.md CHANGELOG.md LICENSE; do
     [ -f "$repo/$file" ] || { echo "error: $repo/$file is missing" >&2; exit 1; }
     cp "$repo/$file" "$docs/$file"
 done

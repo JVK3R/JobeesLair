@@ -1,0 +1,25 @@
+name: test
+
+# The app's logic and screen tests (tests/, run with npm) on every push and pull request. They need only
+# Node: no console, no toolchain. The build workflow (build.yml) and the beta workflow (beta.yml) run
+# them again before they build anything.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  app:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Logic tests
+        run: npm test
+      - name: Screen tests
+        run: npm run test:render

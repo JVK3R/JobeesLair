@@ -128,17 +128,19 @@ import { formatBytes } from '../state/size.js';
   // folder dump), then the faster and healthier hosts, a browser host whose captures work before one not
   // tried yet.
   var ranked = (release, index) => {
-    const group = GROUP_RANK[describeSource(release).group];
+    // Only the group and the capture standing are needed here, not the whole described source.
+    const group = GROUP_RANK[release.unavailableReason ? "unavailable" : access(release)];
+    const standing = captureStanding(release);
     return { release, index, group, rank: [
       isDlc(release) || isBackport(release) ? 1 : 0,
       release.unavailableReason ? 1 : 0,
       release.linkHealth?.status === "dead" ? 1 : 0,
-      captureStanding(release) === "hard" ? 1 : 0,
+      standing === "hard" ? 1 : 0,
       release.linkHealth?.status === "unreachable" ? 1 : 0,
       release.compatible1360 === false ? 1 : 0,
       isImage(release) ? 0 : 1,
       hostRank(release),
-      captureStanding(release) === "unknown" ? 1 : 0,
+      standing === "unknown" ? 1 : 0,
       group,
       HEALTH_RANK[release.health] ?? 1,
       release.source === "orbit" ? 0 : 1,

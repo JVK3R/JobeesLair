@@ -16,7 +16,10 @@
 // never returned, logged or saved, and no error message carries the key.
 //
 // The runtime's Http (ps5-react docs/NETWORKING.md): string bodies only, 30 s per request, custom headers
-// turn off automatic redirects (none of these endpoints redirect).
+// turn off automatic redirects (none of these endpoints redirect). No Date objects anywhere: the console's JS
+// engine has only Date.now() (state/clock.js parseStamp reads TorBox's ISO times).
+
+import { parseStamp } from '../state/clock.js';
 
   var BASE = "https://api.torbox.app/v1/api";
   var PLANS = ["free", "essential", "pro", "standard"];
@@ -133,7 +136,7 @@
    * TorBox's API for one account. `key()` reads the API key (empty: not set up); `http` is the runtime's
    * Http (request(url, options) -> { status, ok, json() }); `wait(ms, signal)` pauses between polls.
    */
-  function createTorBox({ http, key, wait = sleep, now = Date.now }) {
+  function createTorBox({ http, key, wait = sleep, now = Date.now, log = () => {} }) {
     let hosterList = null;
     const secret = () => {
       const value = String(key() || "").trim();
@@ -158,12 +161,15 @@
         body = Object.entries(multipart).filter(([, field]) => field !== void 0 && field !== null).map(([name, field]) => `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${field}\r\n`).join("") + `--${boundary}--\r\n`;
       }
       let response;
+      const started = now();
       try {
         response = await http.request(url, { method, headers, body, signal, maxBytes: 4 * 1024 * 1024 });
       } catch (error) {
         if (error?.name === "AbortError" || signal?.aborted) throw error;
+        log(`${method} ${path} failed after ${now() - started} ms: ${scrub(error?.message || error, value)}`);
         throw new TorBoxError("NETWORK", `TorBox didn't answer: ${scrub(error?.message || error, value)}`);
       }
+      log(`${method} ${path} -> HTTP ${response.status} in ${now() - started} ms`);
       if (response.status === 429) throw new TorBoxError("RATE_LIMITED", MESSAGES.RATE_LIMITED);
       let answer = null;
       try {
@@ -173,6 +179,7 @@
       if (!answer || typeof answer !== "object") throw new TorBoxError(`HTTP_${response.status}`, `TorBox answered HTTP ${response.status}.`);
       if (!answer.success) {
         const code = answer.error || `HTTP_${response.status}`;
+        log(`${method} ${path} refused: ${code}`);
         throw new TorBoxError(code, MESSAGES[code] || scrub(answer.detail || `TorBox: ${code}.`, value), { data: answer.data ?? null });
       }
       return answer.data;
@@ -186,7 +193,7 @@
         return {
           plan,
           planName: PLANS[plan] ?? "unknown",
-          premium: plan > 0 && (!expiresAt || Date.parse(expiresAt) > now()),
+          premium: plan > 0 && (!expiresAt || (parseStamp(expiresAt) ?? Infinity) > now()),
           expiresAt,
           cooldownUntil: data?.cooldown_until || null
         };
@@ -284,6 +291,18 @@
     };
     return api;
   }
+  // Each hoster's pattern compiled once (null when TorBox sent one that does not compile), not on every check.
+  var patterns = /* @__PURE__ */ new Map();
+  function patternOf(source) {
+    if (!patterns.has(source)) {
+      try {
+        patterns.set(source, new RegExp(source, "i"));
+      } catch {
+        patterns.set(source, null);
+      }
+    }
+    return patterns.get(source);
+  }
   // Whether TorBox lists `url`'s host and has it working: true, false, or null when its list is not known.
   function hostSupported(hosters, url) {
     if (!hosters) return null;
@@ -293,11 +312,7 @@
     return hosters.some((hoster) => {
       if (!hoster.working) return false;
       if (hoster.domains.some((domain) => host === domain.toLowerCase() || host.endsWith(`.${domain.toLowerCase()}`))) return true;
-      try {
-        return Boolean(hoster.regex) && new RegExp(hoster.regex, "i").test(url);
-      } catch {
-        return false;
-      }
+      return Boolean(hoster.regex) && patternOf(hoster.regex)?.test(url) === true;
     });
   }
 

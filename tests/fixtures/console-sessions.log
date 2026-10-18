@@ -1,0 +1,405 @@
+[23:35:19] ShadowMount+ v1.7-beta5fix1 exFAT/UFS/PFS/LVD/MD. FW: 13.60. Build: 2026-10-10T18:39:01Z. Thx to VoidWhisper/Gezine/Earthonion/EchoStretch/Drakmor
+[23:35:19]   [SHELLCORE] resolved fw=13.60 pid=58 base=0x3b3bc000
+[23:35:19]   [SHELLCORE] hooks installed: fw=13.60 pid=58 cave=0x3cd1e700+0x2e8 launch=1 sandbox=1 trampoline=0x3cd1e940 install=1
+[23:35:19]   [GAME] lifecycle watcher started
+[23:35:19]   [SHELLFLAG] monitor started (4/4 flags opened)
+[23:35:19] NOTIFY: ShadowMount+ v1.7-beta5fix1
+[23:39:47]   [SHELLCORE] launch mount ready: PPSA03524
+[23:39:48]   [SHELLCORE] sandbox ready handled: PPSA03524
+[23:39:48]   [GAME] started: PPSA03524 pid=111 app_id=0x00000018
+[23:44:29]   [GAME] process exited, awaiting same-app handoff: PPSA03524 pid=111 app_id=0x00000018
+[23:44:30]   [GAME] finalizing stopped application: PPSA03524 pid=111
+[23:44:30]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA03524
+[23:44:30]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA03524
+[23:44:30]   [SHELLCORE] runtime release start: PPSA03524
+[23:45:24]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[23:45:27]   [SHELLCORE] launch mount ready: PPSA99058
+[23:45:28]   [SHELLCORE] sandbox ready handled: PPSA99058
+[23:45:28]   [GAME] started: PPSA99058 pid=132 app_id=0x00002018
+[00:03:45]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=132 app_id=0x00002018
+[00:03:46]   [SHELLCORE] sandbox ready handled: CUSA11302
+[00:03:46]   [GAME] finalizing stopped application: PPSA99058 pid=132
+[00:03:46]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[00:03:46]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[00:03:46]   [SHELLCORE] runtime release start: PPSA99058
+[00:03:47]   [GAME] started: CUSA11302 pid=142 app_id=0x00004018
+[00:06:34]   [GAME] process exited, awaiting same-app handoff: CUSA11302 pid=142 app_id=0x00004018
+[00:06:35]   [GAME] finalizing stopped application: CUSA11302 pid=142
+[00:06:36]   [SHELLCORE] launch mount ready: PPSA99058
+[00:06:36]   [SHELLCORE] sandbox ready handled: PPSA99058
+[00:06:37]   [GAME] started: PPSA99058 pid=159 app_id=0x00006018
+[00:07:38]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=159 app_id=0x00006018
+[00:07:39]   [GAME] finalizing stopped application: PPSA99058 pid=159
+[00:07:39]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[00:07:39]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[00:07:39]   [SHELLCORE] runtime release start: PPSA99058
+[00:07:54]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[00:31:40]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[00:31:48]   [SHELLCORE] launch mount ready: PPSA99058
+[00:31:48]   [SHELLCORE] sandbox ready handled: PPSA99058
+[00:31:48]   [GAME] started: PPSA99058 pid=175 app_id=0x00008018
+[00:46:52]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=175 app_id=0x00008018
+[00:46:53]   [GAME] finalizing stopped application: PPSA99058 pid=175
+[00:46:53]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[00:46:53]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[00:46:53]   [SHELLCORE] runtime release start: PPSA99058
+[00:47:05]   [SHELLCORE] launch mount ready: PPSA99058
+[00:47:05]   [SHELLCORE] sandbox ready handled: PPSA99058
+[00:47:05]   [GAME] started: PPSA99058 pid=181 app_id=0x0000A018
+[00:50:23]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=181 app_id=0x0000A018
+[00:50:24]   [GAME] finalizing stopped application: PPSA99058 pid=181
+[00:50:24]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[00:50:24]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[00:50:24]   [SHELLCORE] runtime release start: PPSA99058
+[00:50:40]   [SHELLCORE] launch mount ready: PPSA03524
+[00:50:40]   [SHELLCORE] sandbox ready handled: PPSA03524
+[00:50:41]   [GAME] started: PPSA03524 pid=187 app_id=0x0000C018
+[00:58:37]   [GAME] process exited, awaiting same-app handoff: PPSA03524 pid=187 app_id=0x0000C018
+[00:58:38]   [GAME] finalizing stopped application: PPSA03524 pid=187
+[00:58:38]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA03524
+[00:58:38]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA03524
+[00:58:38]   [SHELLCORE] runtime release start: PPSA03524
+[01:01:01]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[01:01:16]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[01:03:23]   [SHELLCORE] launch mount ready: PPSA99058
+[01:03:23]   [SHELLCORE] sandbox ready handled: PPSA99058
+[01:03:23]   [GAME] started: PPSA99058 pid=218 app_id=0x0000E018
+[01:03:39]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=218 app_id=0x0000E018
+[01:03:40]   [GAME] finalizing stopped application: PPSA99058 pid=218
+[01:03:40]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[01:03:40]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[01:03:40]   [SHELLCORE] runtime release start: PPSA99058
+[01:04:43]   [SHELLCORE] launch mount ready: PPSA99058
+[01:04:43]   [SHELLCORE] sandbox ready handled: PPSA99058
+[01:04:44]   [GAME] started: PPSA99058 pid=225 app_id=0x00000018
+[01:04:52]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=225 app_id=0x00000018
+[01:04:53]   [GAME] finalizing stopped application: PPSA99058 pid=225
+[01:04:53]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[01:04:53]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[01:04:53]   [SHELLCORE] runtime release start: PPSA99058
+[01:06:09]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[01:22:12]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[01:22:15]   [SHELLCORE] launch mount ready: PPSA99058
+[01:22:15]   [SHELLCORE] sandbox ready handled: PPSA99058
+[01:22:16]   [GAME] started: PPSA99058 pid=233 app_id=0x00002018
+[01:35:30]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=233 app_id=0x00002018
+[01:35:31]   [GAME] finalizing stopped application: PPSA99058 pid=233
+[01:35:31]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[01:35:31]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[01:35:31]   [SHELLCORE] runtime release start: PPSA99058
+[01:35:34]   [SHELLCORE] AppInstallAll bridge consumed: PPSA04339 result=0x00000000
+[01:35:39]   [SHELLCORE] launch mount ready: PPSA04339
+[01:35:39]   [SHELLCORE] sandbox ready handled: PPSA04339
+[01:35:41]   [GAME] started: PPSA04339 pid=238 app_id=0x00004018
+[01:36:20]   [GAME] process exited, awaiting same-app handoff: PPSA04339 pid=238 app_id=0x00004018
+[01:36:21]   [GAME] finalizing stopped application: PPSA04339 pid=238
+[01:36:21]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA04339
+[01:36:21]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA04339
+[01:36:21]   [SHELLCORE] runtime release start: PPSA04339
+[01:38:37]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[01:38:44]   [SHELLCORE] launch mount ready: PPSA99058
+[01:38:44]   [SHELLCORE] sandbox ready handled: PPSA99058
+[01:38:44]   [GAME] started: PPSA99058 pid=247 app_id=0x00006018
+[01:40:01]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=247 app_id=0x00006018
+[01:40:02]   [GAME] finalizing stopped application: PPSA99058 pid=247
+[01:40:02]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[01:40:02]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[01:40:02]   [SHELLCORE] runtime release start: PPSA99058
+[01:41:02]   [SHELLCORE] launch mount ready: PPSA99058
+[01:41:02]   [SHELLCORE] sandbox ready handled: PPSA99058
+[01:41:02]   [GAME] started: PPSA99058 pid=253 app_id=0x00008018
+[01:45:40]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=253 app_id=0x00008018
+[01:45:41]   [GAME] finalizing stopped application: PPSA99058 pid=253
+[01:45:41]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[01:45:41]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[01:45:41]   [SHELLCORE] runtime release start: PPSA99058
+[01:45:44]   [SHELLCORE] launch mount ready: PPSA15246
+[01:45:44]   [SHELLCORE] sandbox ready handled: PPSA15246
+[01:45:44]   [GAME] started: PPSA15246 pid=260 app_id=0x0000A018
+[02:29:03]   [GAME] process exited, awaiting same-app handoff: PPSA15246 pid=260 app_id=0x0000A018
+[02:29:04]   [GAME] finalizing stopped application: PPSA15246 pid=260
+[02:29:04]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA15246
+[02:29:04]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA15246
+[02:29:04]   [SHELLCORE] runtime release start: PPSA15246
+[02:29:05]   [SHELLCORE] launch mount ready: PPSA99058
+[02:29:05]   [SHELLCORE] sandbox ready handled: PPSA99058
+[02:29:05]   [GAME] started: PPSA99058 pid=262 app_id=0x0000C018
+[10:13:03]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=262 app_id=0x0000C018
+[10:13:04]   [GAME] finalizing stopped application: PPSA99058 pid=262
+[10:13:04]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[10:13:04]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[10:13:04]   [SHELLCORE] runtime release start: PPSA99058
+[10:13:08]   [SHELLCORE] AppInstallAll bridge consumed: PPSA01494 result=0x00000000
+[10:13:11]   [SHELLCORE] launch mount ready: PPSA01494
+[10:13:11]   [SHELLCORE] sandbox ready handled: PPSA01494
+[10:13:12]   [SHELLCORE] runtime release start: PPSA01494
+[10:13:48]   [SHELLCORE] launch mount ready: PPSA99058
+[10:13:48]   [SHELLCORE] sandbox ready handled: PPSA99058
+[10:13:49]   [GAME] started: PPSA99058 pid=271 app_id=0x00000018
+[10:15:39]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=271 app_id=0x00000018
+[10:15:40]   [GAME] finalizing stopped application: PPSA99058 pid=271
+[10:15:40]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[10:15:40]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[10:15:40]   [SHELLCORE] runtime release start: PPSA99058
+[10:16:06]   [SHELLCORE] launch mount ready: PPSA03524
+[10:16:06]   [SHELLCORE] sandbox ready handled: PPSA03524
+[10:16:07]   [GAME] started: PPSA03524 pid=276 app_id=0x00002018
+[10:24:56]   [GAME] process exited, awaiting same-app handoff: PPSA03524 pid=276 app_id=0x00002018
+[10:24:57]   [GAME] finalizing stopped application: PPSA03524 pid=276
+[10:24:57]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA03524
+[10:24:57]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA03524
+[10:24:57]   [SHELLCORE] runtime release start: PPSA03524
+[10:30:05]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[10:30:10]   [SHELLCORE] launch mount ready: PPSA99058
+[10:30:10]   [SHELLCORE] sandbox ready handled: PPSA99058
+[10:30:10]   [GAME] started: PPSA99058 pid=300 app_id=0x00004018
+[10:34:27]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=300 app_id=0x00004018
+[10:34:28]   [GAME] finalizing stopped application: PPSA99058 pid=300
+[10:34:28]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[10:34:28]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[10:34:28]   [SHELLCORE] runtime release start: PPSA99058
+[10:34:48]   [SHELLCORE] launch mount ready: PPSA99000
+[10:34:48]   [SHELLCORE] sandbox ready handled: PPSA99000
+[10:34:48]   [GAME] started: PPSA99000 pid=305 app_id=0x00006018
+[10:35:07]   [GAME] process exited, awaiting same-app handoff: PPSA99000 pid=305 app_id=0x00006018
+[10:35:08]   [GAME] finalizing stopped application: PPSA99000 pid=305
+[10:35:08]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99000
+[10:35:08]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99000
+[10:35:08]   [SHELLCORE] runtime release start: PPSA99000
+[10:35:09]   [SHELLCORE] launch mount ready: PPSA99000
+[10:35:09]   [SHELLCORE] sandbox ready handled: PPSA99000
+[10:35:09]   [GAME] started: PPSA99000 pid=313 app_id=0x00008018
+[10:36:02]   [GAME] process exited, awaiting same-app handoff: PPSA99000 pid=313 app_id=0x00008018
+[10:36:03]   [GAME] finalizing stopped application: PPSA99000 pid=313
+[10:36:03]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99000
+[10:36:03]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99000
+[10:36:03]   [SHELLCORE] runtime release start: PPSA99000
+[10:36:07]   [SHELLCORE] launch mount ready: PPSA99058
+[10:36:07]   [SHELLCORE] sandbox ready handled: PPSA99058
+[10:36:07]   [GAME] started: PPSA99058 pid=319 app_id=0x0000A018
+[10:54:14]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=319 app_id=0x0000A018
+[10:54:15]   [GAME] finalizing stopped application: PPSA99058 pid=319
+[10:54:15]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[10:54:15]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[10:54:15]   [SHELLCORE] runtime release start: PPSA99058
+[10:55:54]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[10:56:02]   [SHELLCORE] launch mount ready: PPSA99058
+[10:56:02]   [SHELLCORE] sandbox ready handled: PPSA99058
+[10:56:03]   [GAME] started: PPSA99058 pid=325 app_id=0x0000C018
+[11:01:30]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=325 app_id=0x0000C018
+[11:01:31]   [GAME] finalizing stopped application: PPSA99058 pid=325
+[11:01:31]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[11:01:31]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[11:01:31]   [SHELLCORE] runtime release start: PPSA99058
+[11:15:59]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[11:16:05]   [SHELLCORE] launch mount ready: PPSA99058
+[11:16:06]   [SHELLCORE] sandbox ready handled: PPSA99058
+[11:16:06]   [GAME] started: PPSA99058 pid=331 app_id=0x0000E018
+[11:25:40]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=331 app_id=0x0000E018
+[11:25:41]   [GAME] finalizing stopped application: PPSA99058 pid=331
+[11:25:41]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[11:25:41]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[11:25:41]   [SHELLCORE] runtime release start: PPSA99058
+[11:25:57]   [SHELLCORE] launch mount ready: PPSA15246
+[11:25:57]   [SHELLCORE] sandbox ready handled: PPSA15246
+[11:25:57]   [GAME] started: PPSA15246 pid=337 app_id=0x00000018
+[11:54:18]   [GAME] process exited, awaiting same-app handoff: PPSA15246 pid=337 app_id=0x00000018
+[11:54:19]   [GAME] finalizing stopped application: PPSA15246 pid=337
+[11:54:19]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA15246
+[11:54:19]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA15246
+[11:54:19]   [SHELLCORE] runtime release start: PPSA15246
+[11:54:22]   [SHELLCORE] launch mount ready: PPSA99058
+[11:54:23]   [SHELLCORE] sandbox ready handled: PPSA99058
+[11:54:23]   [GAME] started: PPSA99058 pid=339 app_id=0x00002018
+[12:41:44]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=339 app_id=0x00002018
+[12:41:45]   [GAME] finalizing stopped application: PPSA99058 pid=339
+[12:41:45]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[12:41:45]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[12:41:45]   [SHELLCORE] runtime release start: PPSA99058
+[12:43:59]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[12:44:06]   [SHELLCORE] launch mount ready: PPSA99058
+[12:44:06]   [SHELLCORE] sandbox ready handled: PPSA99058
+[12:44:06]   [GAME] started: PPSA99058 pid=346 app_id=0x00004018
+[12:44:47]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=346 app_id=0x00004018
+[12:44:48]   [GAME] finalizing stopped application: PPSA99058 pid=346
+[12:44:48]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[12:44:48]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[12:44:48]   [SHELLCORE] runtime release start: PPSA99058
+[13:03:18]   [SHELLCORE] launch mount ready: PPSA99058
+[13:03:18]   [SHELLCORE] sandbox ready handled: PPSA99058
+[13:03:19]   [GAME] started: PPSA99058 pid=351 app_id=0x00006018
+[13:03:34]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=351 app_id=0x00006018
+[13:03:35]   [GAME] finalizing stopped application: PPSA99058 pid=351
+[13:03:35]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[13:03:35]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[13:03:35]   [SHELLCORE] runtime release start: PPSA99058
+[13:03:36]   [SHELLCORE] launch mount ready: PPSA99058
+[13:03:36]   [SHELLCORE] sandbox ready handled: PPSA99058
+[13:03:37]   [GAME] started: PPSA99058 pid=356 app_id=0x00008018
+[13:06:18]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=356 app_id=0x00008018
+[13:06:19]   [GAME] finalizing stopped application: PPSA99058 pid=356
+[13:06:19]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[13:06:19]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[13:06:19]   [SHELLCORE] runtime release start: PPSA99058
+[14:55:01]   [SHELLCORE] launch mount ready: PPSA99058
+[14:55:01]   [SHELLCORE] sandbox ready handled: PPSA99058
+[14:55:01]   [GAME] started: PPSA99058 pid=361 app_id=0x0000A018
+[14:57:25]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=361 app_id=0x0000A018
+[14:57:26]   [GAME] finalizing stopped application: PPSA99058 pid=361
+[14:57:26]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[14:57:26]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[14:57:26]   [SHELLCORE] runtime release start: PPSA99058
+[15:20:24]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[15:20:30]   [SHELLCORE] launch mount ready: PPSA99058
+[15:20:30]   [SHELLCORE] sandbox ready handled: PPSA99058
+[15:20:30]   [GAME] started: PPSA99058 pid=368 app_id=0x0000C018
+[16:25:16]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=368 app_id=0x0000C018
+[16:25:17]   [GAME] finalizing stopped application: PPSA99058 pid=368
+[16:25:17]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[16:25:17]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[16:25:17]   [SHELLCORE] runtime release start: PPSA99058
+[16:27:36]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[16:27:41]   [SHELLCORE] launch mount ready: PPSA99058
+[16:27:42]   [SHELLCORE] sandbox ready handled: PPSA99058
+[16:27:42]   [GAME] started: PPSA99058 pid=375 app_id=0x0000E018
+[16:34:42]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=375 app_id=0x0000E018
+[16:34:43]   [GAME] finalizing stopped application: PPSA99058 pid=375
+[16:34:43]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[16:34:43]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[16:34:43]   [SHELLCORE] runtime release start: PPSA99058
+[16:34:45]   [SHELLCORE] launch mount ready: PPSA99058
+[16:34:45]   [SHELLCORE] sandbox ready handled: PPSA99058
+[16:34:46]   [GAME] started: PPSA99058 pid=380 app_id=0x00000018
+[16:45:05]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=380 app_id=0x00000018
+[16:45:06]   [GAME] finalizing stopped application: PPSA99058 pid=380
+[16:45:06]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[16:45:06]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[16:45:06]   [SHELLCORE] runtime release start: PPSA99058
+[16:47:24]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[17:08:44]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[17:08:46]   [SHELLCORE] launch mount ready: PPSA99058
+[17:08:46]   [SHELLCORE] sandbox ready handled: PPSA99058
+[17:08:47]   [GAME] started: PPSA99058 pid=388 app_id=0x00002018
+[17:17:25]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=388 app_id=0x00002018
+[17:17:26]   [GAME] finalizing stopped application: PPSA99058 pid=388
+[17:17:26]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[17:17:26]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[17:17:26]   [SHELLCORE] runtime release start: PPSA99058
+[17:20:05]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[17:20:07]   [SHELLCORE] launch mount ready: PPSA99058
+[17:20:07]   [SHELLCORE] sandbox ready handled: PPSA99058
+[17:20:07]   [GAME] started: PPSA99058 pid=395 app_id=0x00004018
+[19:16:37]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=395 app_id=0x00004018
+[19:16:38]   [GAME] finalizing stopped application: PPSA99058 pid=395
+[19:16:38]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[19:16:38]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[19:16:38]   [SHELLCORE] runtime release start: PPSA99058
+[19:18:32]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[19:24:23]   [SHELLCORE] launch mount ready: PPSA99058
+[19:24:24]   [SHELLCORE] sandbox ready handled: PPSA99058
+[19:24:24]   [GAME] started: PPSA99058 pid=401 app_id=0x00006018
+[19:25:48]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=401 app_id=0x00006018
+[19:25:49]   [GAME] finalizing stopped application: PPSA99058 pid=401
+[19:25:49]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[19:25:49]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[19:25:49]   [SHELLCORE] runtime release start: PPSA99058
+[19:25:49]   [SHELLCORE] launch mount ready: PPSA99058
+[19:25:49]   [SHELLCORE] sandbox ready handled: PPSA99058
+[19:25:50]   [GAME] started: PPSA99058 pid=406 app_id=0x00008018
+[20:34:47]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=406 app_id=0x00008018
+[20:34:48]   [GAME] finalizing stopped application: PPSA99058 pid=406
+[20:34:48]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[20:34:48]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[20:34:48]   [SHELLCORE] runtime release start: PPSA99058
+[20:36:27]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[20:36:40]   [SHELLCORE] launch mount ready: PPSA99058
+[20:36:40]   [SHELLCORE] sandbox ready handled: PPSA99058
+[20:36:40]   [GAME] started: PPSA99058 pid=414 app_id=0x0000A018
+[21:15:37]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=414 app_id=0x0000A018
+[21:15:38]   [GAME] finalizing stopped application: PPSA99058 pid=414
+[21:15:38]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[21:15:38]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[21:15:38]   [SHELLCORE] runtime release start: PPSA99058
+[21:15:54]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[21:17:35]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[21:17:43]   [SHELLCORE] launch mount ready: PPSA99058
+[21:17:43]   [SHELLCORE] sandbox ready handled: PPSA99058
+[21:17:44]   [GAME] started: PPSA99058 pid=420 app_id=0x0000C018
+[22:51:24]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=420 app_id=0x0000C018
+[22:51:25]   [GAME] finalizing stopped application: PPSA99058 pid=420
+[22:51:25]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[22:51:25]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[22:51:25]   [SHELLCORE] runtime release start: PPSA99058
+[22:52:46]   [SHELLCORE] launch mount ready: PPSA99058
+[22:52:46]   [SHELLCORE] sandbox ready handled: PPSA99058
+[22:52:46]   [GAME] started: PPSA99058 pid=425 app_id=0x0000E018
+[22:59:01]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=425 app_id=0x0000E018
+[22:59:02]   [GAME] finalizing stopped application: PPSA99058 pid=425
+[22:59:02]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[22:59:02]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[22:59:02]   [SHELLCORE] runtime release start: PPSA99058
+[23:03:25]   [SHELLCORE] AppInstallAll bridge consumed: PPSA99058 result=0x00000000
+[23:03:26]   [SHELLCORE] launch mount ready: PPSA99058
+[23:03:27]   [SHELLCORE] sandbox ready handled: PPSA99058
+[23:03:27]   [GAME] started: PPSA99058 pid=432 app_id=0x00000018
+[23:53:06]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=432 app_id=0x00000018
+[23:53:07]   [GAME] finalizing stopped application: PPSA99058 pid=432
+[23:53:07]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[23:53:07]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[23:53:07]   [SHELLCORE] runtime release start: PPSA99058
+[23:53:10]   [SHELLCORE] AppInstallAll bridge consumed: PPSA24588 result=0x00000000
+[23:53:12]   [SHELLCORE] launch mount ready: PPSA24588
+[23:53:12]   [SHELLCORE] sandbox ready handled: PPSA24588
+[23:53:13]   [SHELLCORE] runtime release start: PPSA24588
+[23:55:44]   [SHELLCORE] launch mount ready: PPSA24588
+[23:55:45]   [SHELLCORE] sandbox ready handled: PPSA24588
+[23:55:45]   [SHELLCORE] runtime release start: PPSA24588
+[00:00:42]   [SHELLCORE] launch mount ready: PPSA24588
+[00:00:42]   [SHELLCORE] sandbox ready handled: PPSA24588
+[00:00:42]   [SHELLCORE] runtime release start: PPSA24588
+[00:00:44]   [SHELLCORE] launch mount ready: PPSA99058
+[00:00:44]   [SHELLCORE] sandbox ready handled: PPSA99058
+[00:00:44]   [GAME] started: PPSA99058 pid=444 app_id=0x00008018
+[00:02:26]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=444 app_id=0x00008018
+[00:02:27]   [GAME] finalizing stopped application: PPSA99058 pid=444
+[00:02:27]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[00:02:27]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[00:02:27]   [SHELLCORE] runtime release start: PPSA99058
+[00:03:48]   [SHELLCORE] launch mount ready: PPSA24588
+[00:03:49]   [SHELLCORE] sandbox ready handled: PPSA24588
+[00:03:49]   [SHELLCORE] runtime release start: PPSA24588
+[00:38:37]   [SHELLCORE] launch mount ready: PPSA99058
+[00:38:37]   [SHELLCORE] sandbox ready handled: PPSA99058
+[00:38:38]   [GAME] started: PPSA99058 pid=453 app_id=0x0000C018
+[00:39:52]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=453 app_id=0x0000C018
+[00:39:53]   [GAME] finalizing stopped application: PPSA99058 pid=453
+[00:39:53]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[00:39:53]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[00:39:53]   [SHELLCORE] runtime release start: PPSA99058
+[00:39:54]   [SHELLCORE] launch mount ready: PPSA24588
+[00:39:54]   [SHELLCORE] sandbox ready handled: PPSA24588
+[00:39:54]   [SHELLCORE] runtime release start: PPSA24588
+[00:39:57]   [SHELLCORE] launch mount ready: PPSA99058
+[00:39:57]   [SHELLCORE] sandbox ready handled: PPSA99058
+[00:39:57]   [GAME] started: PPSA99058 pid=459 app_id=0x00000018
+[01:10:01]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=459 app_id=0x00000018
+[01:10:02]   [GAME] finalizing stopped application: PPSA99058 pid=459
+[01:10:02]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[01:10:02]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[01:10:02]   [SHELLCORE] runtime release start: PPSA99058
+[01:11:20]   [SHELLCORE] launch mount ready: PPSA99058
+[01:11:20]   [SHELLCORE] sandbox ready handled: PPSA99058
+[01:11:21]   [GAME] started: PPSA99058 pid=464 app_id=0x00002018
+[01:15:12]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=464 app_id=0x00002018
+[01:15:13]   [GAME] finalizing stopped application: PPSA99058 pid=464
+[01:15:13]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[01:15:13]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[01:15:13]   [SHELLCORE] runtime release start: PPSA99058
+[01:44:42]   [SHELLCORE] launch mount ready: PPSA99058
+[01:44:42]   [SHELLCORE] sandbox ready handled: PPSA99058
+[01:44:42]   [GAME] started: PPSA99058 pid=471 app_id=0x00004018
+[01:48:00]   [GAME] process exited, awaiting same-app handoff: PPSA99058 pid=471 app_id=0x00004018
+[01:48:01]   [GAME] finalizing stopped application: PPSA99058 pid=471
+[01:48:01]   [SHELLCORE] runtime release awaiting sandbox removal: PPSA99058
+[01:48:01]   [SHELLCORE] title sandbox gone; releasing runtime: PPSA99058
+[01:48:01]   [SHELLCORE] runtime release start: PPSA99058

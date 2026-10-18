@@ -1,0 +1,12 @@
+{
+  "name": "jobeeslair",
+  "private": true,
+  "type": "module",
+  "description": "Jobee'sLair: tests for the app's logic and screens. The app itself is built by ps5-react (see README).",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --import ./tests/stub-loader.mjs --test tests/*.test.mjs",
+    "test:render": "node --import ./tests/render/loader.mjs tests/render/links.mjs && node --import ./tests/render/loader.mjs tests/render/smoke.mjs && node --import ./tests/render/loader.mjs tests/render/update.mjs && node --import ./tests/render/loader.mjs tests/render/catalog.mjs",
+    "test:all": "npm test && npm run test:render"
+  }
+}

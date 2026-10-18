@@ -16,6 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The tests run before the toolchain is installed: a failing test costs minutes, not an hour.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run the tests
+        run: npm run test:all
+
       - name: Install the toolchain
         run: |
           sudo apt-get update

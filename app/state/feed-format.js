@@ -5,10 +5,9 @@
 //   { "version": 1, "name": "…", "games": [ { "id": "PPSA01234", "title": "…", "releases": [ { "url": "https://…" } ] } ] }
 // Everything else is optional. Anything malformed is dropped, field by field and game by game, never
 // trusted: a feed only ever yields plain catalog records, the same shapes data/catalog.js and
-// data/releases/*.json hold. Releases on retired hosts (Vikingfile, AkiraBox) are dropped like the
-// bundled ones.
+// data/releases/*.json hold.
 
-import { retiredSource, sourceKind, webURL } from './download-sources.js';
+import { sourceKind, webURL } from './download-sources.js';
 
   // MAX_TOTAL_RELEASES bounds a whole feed: 1500 games × 64 releases would be ~96 000 records, far
   // more than the 32 MiB JS heap holds beside the catalog; real feeds list a few per game.
@@ -102,7 +101,6 @@ import { retiredSource, sourceKind, webURL } from './download-sources.js';
     const password = text(raw.archivePassword, 256);
     if (password) record.archivePassword = password;
     if (typeof raw.sha256 === "string" && /^[0-9a-f]{64}$/i.test(raw.sha256)) record.sha256 = raw.sha256.toLowerCase();
-    if (retiredSource(record)) return null;
     return record;
   }
   function direct(record) {

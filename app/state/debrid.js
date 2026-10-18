@@ -17,6 +17,7 @@ import { useEffect, useState } from 'react';
 import { createTorBox, hostSupported, isMagnet, md5, validKey } from '../services/torbox.js';
 import { cancellation, sourceKind } from './download-sources.js';
 import { savedList } from './saved.js';
+import { log, logger } from '../services/logger.js';
 import { Http } from '@ps5-react/core';
 
   var HOSTERS_MS = 24 * 36e5;
@@ -32,7 +33,12 @@ import { Http } from '@ps5-react/core';
   }
   var keyOf = () => typeof record().key === "string" ? record().key : "";
   var client = null;
-  var torbox = () => client ?? (client = createTorBox({ http: Http, key: keyOf }));
+  var torbox = () => client ?? (client = createTorBox({ http: Http, key: keyOf, log: (message) => log("torbox", message) }));
+  // The key is never to be written to the log, in whatever line it might turn up.
+  try {
+    logger().addSecret(keyOf());
+  } catch {
+  }
   /** Uses `api` (a createTorBox) in place of the runtime's (tests); null puts the runtime's back. */
   function setTorBoxClient(api) {
     client = api;
@@ -45,6 +51,12 @@ import { Http } from '@ps5-react/core';
     const key = String(value || "").trim();
     if (key && !validKey(key)) throw new Error("That doesn't look like a TorBox API key: it is 36 letters, digits and dashes, on torbox.app under Settings.");
     if (key === keyOf()) return;
+    try {
+      logger().removeSecret(keyOf());
+      logger().addSecret(key);
+    } catch {
+    }
+    log("torbox", key ? "API key set" : "API key removed");
     update({ key: key || void 0, account: void 0, items: void 0 });
     instant.clear();
   }
@@ -128,7 +140,7 @@ import { Http } from '@ps5-react/core';
       const hash = md5(link);
       const result = await torbox().resolve(link, { known: record().items?.[hash], signal, onItem: (entry) => remember(hash, entry) });
       remember(hash, result);
-      console.log(`[debrid] TorBox ${result.kind} ${result.id}: file ${result.fileId} ready`);
+      log("torbox", `${result.kind} ${result.id}: file ${result.fileId} ready (${hash.slice(0, 8)})`);
       return { url: result.url };
     }
   };

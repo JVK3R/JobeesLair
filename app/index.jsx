@@ -3,7 +3,7 @@
 // MODIFIED: Jobee'sLair; catalog feeds refresh in the background once the store is up.
 // MODIFIED: the phone companion starts with the store when Settings left it on.
 // MODIFIED: pages run from under the floating top island to above the button hints (PAGE_TOP, PAGE_BOTTOM).
-// MODIFIED: after the launch animation the dashboard fades in (DASHBOARD_IN).
+// MODIFIED: after the startup notice the store comes out of a vortex reveal (ui/Reveal.jsx).
 // MODIFIED: every launch shows the terms of use and legal notice (ui/Disclaimer.jsx) between the intro and the
 // store; plain text, it stays until the player presses ✕ (Continue), then the store mounts.
 // MODIFIED: the DualSense status light follows the download queue (ui/lightBar.js), and a theme chosen in
@@ -28,16 +28,19 @@ import { colors, useThemeEpoch } from './ui/colors.js';
 import { watchQueue } from './ui/lightBar.js';
 import { startInstaller, startUpdateChecks } from './state/update.js';
 import { applySpeedLimit } from './state/speed-limit.js';
+import { installLogger } from './services/logger.js';
+import { VERSION } from './version.js';
+import { deviceFacts } from './state/device.js';
 import { NavProvider, useIsImmersive, useNavActions, useNavState } from './state/nav.jsx';
 import { StoreFreeze, StoreProvider } from './state/store.jsx';
 import { Header } from './ui/Header.jsx';
 import { Legend } from './ui/Legend.jsx';
 import { Splash } from './ui/Splash.jsx';
+import { Reveal } from './ui/Reveal.jsx';
 import { Disclaimer } from './ui/Disclaimer.jsx';
 import { UpdateDialog } from './ui/UpdateDialog.jsx';
 import { useInterfaceHaptics } from './ui/haptics.js';
 import { useInterfaceSounds } from './ui/sounds.js';
-import { logical } from './ui/scale.js';
 
   function Screen({ screen: screen2 }) {
     const { openGame, pop } = useNavActions();
@@ -52,9 +55,10 @@ import { logical } from './ui/scale.js';
   // Pages start under the top island (Header.jsx: 24 from the top, 80 tall) with a gap, and end above
   // the button hints (Legend, 60 tall).
   var PAGE_TOP = 128, PAGE_BOTTOM = 60;
-  // The store comes up from under a graphite curtain that slides up and away (a full-screen layer is translated,
-  // never faded), and unmounts once it has gone.
-  var DASHBOARD_IN = { type: "tween", duration: 0.55, ease: [0.7, 0, 0.84, 0] };
+  // The store comes up out of the vortex (ui/Reveal.jsx): it is mounted, still, under the reveal's backdrop,
+  // which fades once the JL mark has popped and flown toward the island; the reveal unmounts when done.
+  // CURTAIN_MS only covers a reveal that never reports back.
+  var CURTAIN_MS = 3600;
   // A screen slides in over the one it replaces: the full-screen container is translated, never faded or
   // scaled (a full-screen fade repaints every frame of it).
   var SCREEN_FADE = { type: "tween", duration: 0.32, ease: [0.22, 1, 0.36, 1] };
@@ -117,12 +121,21 @@ import { logical } from './ui/scale.js';
     const theme = useThemeEpoch();
     // This build says it started right away (state/update.js startInstaller): after an update the updater
     // waits for that, and the startup notice below can stay up for as long as the player likes.
+    // The debug log (services/logger.js) opens first, so everything after it, the speed limit included, is in it.
+    (0, useEffect)(() => {
+      let facts = {};
+      try {
+        facts = { version: VERSION, firmware: deviceFacts().firmware ?? "unknown" };
+      } catch {
+      }
+      installLogger(facts);
+    }, []);
     (0, useEffect)(() => startInstaller(), []);
     // The saved download speed limit, handed to the engine before any download starts.
     (0, useEffect)(() => applySpeedLimit(), []);
     (0, useEffect)(() => {
       if (!booted) return void 0;
-      const id = setTimeout(() => setCurtain(false), 1200);
+      const id = setTimeout(() => setCurtain(false), CURTAIN_MS);
       return () => clearTimeout(id);
     }, [booted]);
     // The intro reports itself (about 2.5s); this only covers an animation callback that never
@@ -132,7 +145,7 @@ import { logical } from './ui/scale.js';
       return () => clearTimeout(id);
     }, []);
     return /* @__PURE__ */ (0, jsx)(View, { style: { width: 1920, height: 1080, backgroundColor: colors.canvas }, children: booted
-      ? [/* @__PURE__ */ (0, jsx)(LocaleProvider, { children: /* @__PURE__ */ (0, jsx)(StoreProvider, { children: /* @__PURE__ */ (0, jsx)(NavProvider, { children: /* @__PURE__ */ (0, jsx)(App, {}) }) }) }, `store:${theme}`), curtain ? /* @__PURE__ */ (0, jsx)(motion.View, { style: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 100, backgroundColor: colors.canvas }, initial: { y: 0 }, animate: { y: -logical(1080) }, transition: DASHBOARD_IN, onAnimationComplete: () => setCurtain(false) }, "curtain") : null]
+      ? [/* @__PURE__ */ (0, jsx)(View, { style: { width: 1920, height: 1080 }, children: /* @__PURE__ */ (0, jsx)(LocaleProvider, { children: /* @__PURE__ */ (0, jsx)(StoreProvider, { children: /* @__PURE__ */ (0, jsx)(NavProvider, { children: /* @__PURE__ */ (0, jsx)(App, {}) }) }) }) }, `store:${theme}`), curtain ? /* @__PURE__ */ (0, jsx)(Reveal, { onDone: () => setCurtain(false) }, "curtain") : null]
       : [introDone || introLeaving ? /* @__PURE__ */ (0, jsx)(Disclaimer, { onDone: () => setBooted(true) }, "notice") : null, introDone ? null : /* @__PURE__ */ (0, jsx)(Splash, { onExit: () => setIntroLeaving(true), onDone: () => setIntroDone(true) }, "intro")] });
   }
   AppRegistry.registerComponent("jobeeslair", () => () => /* @__PURE__ */ (0, jsx)(Boot, {}));

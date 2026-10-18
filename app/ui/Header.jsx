@@ -26,7 +26,11 @@ import { NavPill, useNavLayouts } from './NavPill.jsx';
 import { useSections } from './useSections.js';
 import { DockCount } from './LibraryCount.jsx';
 import { useRemoteShortcuts } from '../companion/remote.js';
-import { FocusScope, View } from '@ps5-react/core';
+import { FocusScope, Text, View, motion } from '@ps5-react/core';
+import { VERSION } from '../version.js';
+import { dockMark } from './dock-mark.js';
+import { EASE_OUT } from './ease.js';
+import { logical, px } from './scale.js';
 import '../assets/JetBrainsMono-Regular.ttf';
 import { colors, radius } from './colors.js';
 
@@ -46,6 +50,24 @@ import { colors, radius } from './colors.js';
     const icon = mine && ["ready", "armed"].includes(install.phase) ? "restart" : "download";
     return /* @__PURE__ */ (0, jsx)(NavItem, { focusKey: "nav:update", icon, label, onPress: openUpdateDialog, nextFocusDown: down, children: /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", top: 12, right: 14, width: 10, height: 10, borderRadius: radius.pill, backgroundColor: colors.accentHi } }) });
   }
+  // On the first launch the dock drops in from above a moment after the store starts rising (index.jsx), and
+  // settles without a bounce; after that it is simply there (a theme change remounts the store and must not
+  // replay it). A translated layer, never faded.
+  // The running version, always in sight: a small tab hanging from the island's lower edge under the logo,
+  // in the gap above the page (PAGE_TOP), so it never widens the island or moves its items. "v0.4.0" for a
+  // release, "v0.5.0 PRE 1" for a pre-release.
+  var SHORT_VERSION = `v${VERSION.replace(/-pre\.(\d+)$/i, " PRE $1").replace(/-beta\.(\d+)$/i, " BETA $1")}`;
+  function VersionTab() {
+    return /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", left: 0, right: 0, bottom: -(DOCK_HEIGHT - 60) / 2 - 15, alignItems: "center" }, children: /* @__PURE__ */ (0, jsx)(View, { style: { height: 26, justifyContent: "center", borderRadius: radius.pill, borderWidth: 1, borderColor: colors.glassEdge, backgroundColor: colors.surface, paddingHorizontal: 12 }, children: /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 14, lineHeight: 18, letterSpacing: 1.5, color: colors.muted }, children: SHORT_VERSION }) }) });
+  }
+  var dockArrived = false;
+  // Where the island's JL mark sits on screen (dock-mark.js), for the store's reveal to fly its mark to. The
+  // island is centered, so its width (the language, an update badge) moves it; in a right-to-left language the
+  // logo is at the island's right end. The inset: the island's and the home button's padding, half the mark.
+  var DOCK_MARK_H = px(34);
+  var MARK_INSET = 18 + 18 + Math.round(DOCK_MARK_H * 1.5) / 2;
+  Object.assign(dockMark, { y: DOCK_TOP + DOCK_HEIGHT / 2, height: DOCK_MARK_H });
+  var DOCK_DROP = { type: "tween", duration: 0.9, delay: 0.3, ease: EASE_OUT };
   function Header({ children }) {
     const t2 = useT();
     const { rtl } = useLocale();
@@ -101,12 +123,19 @@ import { colors, radius } from './colors.js';
       /* @__PURE__ */ (0, jsx)(QuickPreview, {}),
       // The island: one floating glass bar at the top, centered. Pages start under it, so it never
       // covers what scrolls (and the engine keeps copying scrolled pixels instead of repainting).
-      /* @__PURE__ */ (0, jsx)(View, { style: immersive ? { position: "absolute", left: 0, right: 0, top: DOCK_TOP, zIndex: 40, display: "none" } : { position: "absolute", left: 0, right: 0, top: DOCK_TOP, zIndex: 40, alignItems: "center" }, children: /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "header", inert: immersive, onBack: dockBack, children: /* @__PURE__ */ (0, jsxs)(View, { onLayout: track("header"), style: { height: DOCK_HEIGHT, flexDirection: "row", alignItems: "center", gap: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.glassEdge, backgroundColor: colors.surface, paddingHorizontal: 18 }, children: [
+      /* @__PURE__ */ (0, jsx)(motion.View, { initial: dockArrived ? false : { y: -logical(120) }, animate: { y: 0 }, transition: DOCK_DROP, onAnimationComplete: () => {
+        dockArrived = true;
+      }, style: immersive ? { position: "absolute", left: 0, right: 0, top: DOCK_TOP, zIndex: 40, display: "none" } : { position: "absolute", left: 0, right: 0, top: DOCK_TOP, zIndex: 40, alignItems: "center" }, children: /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "header", inert: immersive, onBack: dockBack, children: /* @__PURE__ */ (0, jsxs)(View, { onLayout: (event) => {
+        track("header")(event);
+        const { x, width } = event.layout;
+        dockMark.x = rtl ? x + width - MARK_INSET : x + MARK_INSET;
+      }, style: { height: DOCK_HEIGHT, flexDirection: "row", alignItems: "center", gap: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.glassEdge, backgroundColor: colors.surface, paddingHorizontal: 18 }, children: [
         /* @__PURE__ */ (0, jsx)(NavPill, { section, layouts }),
         /* @__PURE__ */ (0, jsxs)(View, { focusKey: "nav:home", onPress: on.discover, nextFocusDown: down, style: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: radius.md, paddingHorizontal: 18, height: 60 }, children: [
           /* @__PURE__ */ (0, jsx)(FocusRing, { round: "full" }),
           /* @__PURE__ */ (0, jsx)(Logo, {}),
-          /* @__PURE__ */ (0, jsx)(DockCount, {})
+          /* @__PURE__ */ (0, jsx)(DockCount, {}),
+          /* @__PURE__ */ (0, jsx)(VersionTab, {})
         ] }),
         divider,
         item("search", { icon: "search", label: t2("nav.search"), onPress: on.search }),

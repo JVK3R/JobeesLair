@@ -1,0 +1,12 @@
+[01:40:12]   [IMG] FS stats: path=/mnt/shadowmnt/Overdrive_9ca4eb6f type=exfatfs bsize=65536 iosize=65536 blocks=7088 bfree=2013 bavail=2013 files=14516224 ffree=4122624 flags=0x210001041 total=464519168B free=131923968B avail=131923968B
+[01:40:12]   [LINK] nullfs mounted: /mnt/shadowmnt/Overdrive_9ca4eb6f -> /system_ex/app/PPSA99058
+[01:40:12]   [SHELLCORE] launch mount ready: PPSA99058
+[01:40:12]   [FAKELIB] directory mounted for PPSA99058: /data -> /mnt/sandbox/PPSA99058_000/data
+[01:40:12]   [FAKELIB] directory mounted for PPSA99058: /preinst/common/font -> /mnt/sandbox/PPSA99058_000/preinst/common/font
+[01:40:12]   [SHELLCORE] sandbox ready handled: PPSA99058
+[01:40:12]   [SHELLFLAG] SceLncUtilSystemStatus poll rc=0x80020010
+[01:40:12]   [GAME] started: PPSA99058 pid=102 app_id=0x00000018
+[01:40:12]   [MDBG] coredump privileges enabled
+[01:40:12]   [MDBG] log monitor ready: PPSA99058 buffer_size=0x20018
+[01:40:12]   [MDBG] monitoring game errors: PPSA99058 pid=102 for up to 60 seconds
+[01:40:13]   [SHELLFLAG] SceShellCoreUtilAppFocus value=0x0000000000000018 delta=0x000000000000001F low32=0x00000018 high32=0x00000000 decoded=APP_ID=0x00000018

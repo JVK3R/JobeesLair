@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { loadList, saveList } from './saved.js';
 import { Downloads } from '@ps5-react/core';
+import { log } from '../services/logger.js';
 
   var LIMITS = [0, 25, 10, 5];
   var SETTINGS = "settings.json";
@@ -23,6 +24,7 @@ import { Downloads } from '@ps5-react/core';
   function apply() {
     try {
       Downloads.setRateLimit?.(current() * 1024 ** 2);
+      log("speed", current() ? `download limit ${current()} MB/s applied` : "download limit off");
     } catch (error) {
       console.log("[speed-limit] not applied:", error.message);
     }

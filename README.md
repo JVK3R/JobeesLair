@@ -12,7 +12,7 @@
 
 <p align="center">
   <b>An open-source homebrew download manager for the PS5.</b><br>
-  Version 0.3.0 · Title ID <code>PPSA99058</code> · created by JVK3R<br>
+  Version 0.4.0 · Title ID <code>PPSA99058</code> · created by JVK3R<br>
   <i>Proudly created alongside AI by JVK3R</i>
 </p>
 
@@ -255,7 +255,12 @@ change the license in [LICENSE](LICENSE).
 
 ## Status
 
-Jobee'sLair 0.3.0 labels each source by whether it runs on 13.60 with ShadowMount+, catches file links from the console's browser for you (VikingFile is back), learns which hosts work on your console, adds optional TorBox support and a download speed limit, and ports Overdrive 1.0.6's fixes for unknown-format files and multi-part sets. Broken-link checks no longer hide sources. 0.2.3 added link health checks and fixed the space check for downloads of unknown size, and 0.2.1 added installing updates from the app. The 0.1.1 betas were tested on a PS5
+Jobee'sLair 0.4.0 is a stability release: no new features, but every one of the 13
+translations now covers the whole app (until now about half of it showed in English), the catalog's search
+and filters do roughly a third of the work they did, the source list ranks faster, the download queue is
+split into smaller parts, the app writes a debug log you can read over FTP
+(`/data/ps5-react/PPSA99058/logs/jobeeslair.log`, with keys, tokens, email addresses and link query strings blanked out), and the tests
+run on every push. Jobee'sLair 0.3.0 labels each source by whether it runs on 13.60 with ShadowMount+, catches file links from the console's browser for you (VikingFile is back), learns which hosts work on your console, adds optional TorBox support and a download speed limit, and ports Overdrive 1.0.6's fixes for unknown-format files and multi-part sets. Broken-link checks no longer hide sources. 0.2.3 added link health checks and fixed the space check for downloads of unknown size, and 0.2.1 added installing updates from the app. The 0.1.1 betas were tested on a PS5
 running firmware 13.60 with ShadowMount+ 1.7. Every build passes its automated tests (the app's logic suites, the framework's
 tests, and the native server and drive-probe tests under AddressSanitizer, UndefinedBehaviorSanitizer
 and ThreadSanitizer), but not every feature has been confirmed on PS5 hardware yet. Report what you
@@ -269,16 +274,18 @@ find, with your firmware and loader.
 
 | Path | What it is |
 | --- | --- |
-| `app/` | The application: JSX sources, state, assets, catalog data, and `app.json` (title ID `PPSA99058`, package version `01.003.000`, capabilities) |
-| `app/version.js` | The app version (`0.3.0`), the creator credit (`JVK3R`) and the official repository the update check reads |
+| `app/` | The application: JSX sources, state, assets, catalog data, and `app.json` (title ID `PPSA99058`, package version `01.004.000`, capabilities) |
+| `app/version.js` | The app version (`0.4.0`), the creator credit (`JVK3R`) and the official repository the update check reads |
 | `app/ui/JLMark.jsx` | The "JL" monogram as native vector paths (`.github/readme/logo.svg` is the same mark as a file) |
 | `app/state/library-count.js` | The live indexed-titles and direct-downloads counter |
 | `LICENSE` | GPL-3.0-or-later, followed by the content neutrality and DMCA notice |
 | `ps5-react/` | The framework it runs on, vendored from [half144/ps5-react](https://github.com/half144/ps5-react), with its native host and tests |
 | `packaging/make-exfat.sh` | Builds the exFAT image ShadowMount+ installs |
 | `packaging/stage-docs.sh` | Adds this documentation to the image, as `/docs` |
+| `tests/` | The app's tests (`npm test` for its logic, `npm run test:render` for its screens) and benchmarks (`tests/bench/`) |
 | `INSTALLATION-GUIDE.md` | Installing, choosing the phone PIN and adding feeds |
 | `FEEDS.md` | The catalog feed format, including mirrors |
+| `CHANGELOG.md` | What changed in each version |
 
 </details>
 
@@ -303,8 +310,17 @@ and a `.receipt.json` into `ps5-react/dist`, and verifies the result itself (`to
 The image is a plain exFAT volume whose root is the app folder, with 64 KiB clusters and the label
 `JOBEESLAIR`.
 
+The app's own tests need only Node.js 22 or newer, no PS5 toolchain, and run on every push and pull
+request (`.github/workflows/test.yml`):
+
+```sh
+npm test               # the app's logic: queue, sources, link health, TorBox, translations, logger...
+npm run test:render    # its screens rendered against the bundled catalog
+npm run test:all       # both, as the build workflow runs them first
+```
+
 To publish a build, raise the version in `app/version.js`, run the build workflow, test the draft's
-image on a console, then publish the draft with a tag of the same version (`v0.3.0`): the
+image on a console, then publish the draft with a tag of the same version (`v0.4.0`): the
 update check in installed copies compares that tag with their own version. To let installed copies
 install it themselves, attach both `JobeesLair.exfat` and `update.zip` (`ps5-react/dist/PPSA99058.zip`
 renamed). GitHub publishes each asset's SHA-256, and a release without both files only offers the
@@ -330,6 +346,8 @@ If you'd like to support its development and future PS5 homebrew tools, you can
   file routing by name and multi-part set fix are adapted here.
 - **[saawant12](https://github.com/saawant12/orbit-store-ps5)**, Orbit Store, whose browser capture
   (GPL-3.0-or-later) Overdrive's is adapted from.
+- **BlackBox**, whose UI layout concepts, payload mounting structures and way of organizing a PS5 homebrew
+  catalog inspired parts of Jobee'sLair. Thank you for the work you have put into the PS5 ecosystem.
 - **PS5 React — created by half144 and PS5 React contributors.**
   [github.com/half144/ps5-react](https://github.com/half144/ps5-react)
 - **[ShadowMount+](https://github.com/drakmor/ShadowMountPlus)** by drakmor, which installs it.

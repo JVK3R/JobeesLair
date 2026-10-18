@@ -95,7 +95,7 @@ import { sourceKind, webURL } from './download-sources.js';
       if (filename && filename !== metadata.filename) throw new Error("Captured response names a different file.");
     }
     const etag = response.headers?.etag;
-    if (!/^"[^"\x00-\x20\x7f]*"$/.test(etag || "") && !Number.isFinite(Date.parse(response.headers?.["last-modified"] || "")))
+    if (!/^"[^"\x00-\x20\x7f]*"$/.test(etag || "") && !/\d{4}/.test(response.headers?.["last-modified"] || ""))
       throw new Error("Captured file has no stable identity. Reopen the page and retry.");
     return { url, expectedBytes: bytes };
   }

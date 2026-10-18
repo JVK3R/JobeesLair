@@ -214,7 +214,7 @@ import { colors, radius } from '../ui/colors.js';
       return null;
     })();
     const sourceWarning = job2 || !release ? null : allGone ? { title: t2("links.allGone.title"), action: t2("links.allGone.action") } : wontLaunch ? { title: t2("release.fpkg.title"), action: t2("release.fpkg.action") } : hardHost ? { title: t2("capture.hard.title", { host: describeSource(release).host }), action: t2(debridSupports(release) ? "capture.hard.torbox" : "capture.hard.action") } : release.linkHealth?.status === "unreachable" ? { title: t2("links.unreachable.title", { host: describeSource(release).host }), action: t2("links.unreachable.action") } : tip;
-    const problem = browser ? {
+    const problem = browser && !error2 ? {
       title: step ? t2("download.browser.partTitle", step) : t2("download.browser.title"),
       action: t2("download.browser.action")
     } : error2 ? explainError(error2, Boolean(job2?.release.parts)) : lacking ? { title: t2("download.noFit"), action: spaceAdvice(roots, free, storage, need) } : sourceWarning ? sourceWarning : shadowMount || status === "installed" ? null : { title: t2("shadowMount.offTitle"), action: t2("shadowMount.offAction") };

@@ -85,11 +85,9 @@ import { FileSystem, Image } from '@ps5-react/core';
     }
   }
   var entries = [...games, ...twins];
-  var RETIRED_HOSTS = /* @__PURE__ */ new Set([]);
   var _a;
   for (const game of entries) {
     Object.setPrototypeOf(game, game.feedPage ? FeedEntry : Entry);
-    if (game.providers) game.providers = game.providers.filter((host2) => !RETIRED_HOSTS.has(host2));
     game.genres = [...new Set(game.genres.flatMap((genre) => genre.split(" / ")).map((genre) => SYNONYMS[genre] ?? genre))];
     (_a = game.art).cover && (_a.cover = coverSize(game.art.cover));
     if (game.art.coverFallbacks) game.art.coverFallbacks = game.art.coverFallbacks.map(coverSize);
@@ -215,14 +213,37 @@ import { FileSystem, Image } from '@ps5-react/core';
   var activeCount = (filters) => FACETS.reduce((sum, facet) => sum + filters[facet.key].length, Number(filters.wishlist));
   var toggleValue = (list, value) => list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
   var passes = (game, facet, picked) => !picked.length || (facet.any ? picked.some((value) => facet.has(game, value)) : picked.every((value) => facet.has(game, value)));
-  function matching({ filters, query, wishlist }, skip) {
+  // What a search matches against, lowercased once per game rather than on every keystroke for every game.
+  var searchTexts = /* @__PURE__ */ new WeakMap();
+  function searchText(game) {
+    let text = searchTexts.get(game);
+    if (text === void 0) searchTexts.set(game, text = `${game.title} ${game.developer} ${game.publisher}`.toLowerCase());
+    return text;
+  }
+  // The filter sheet asks for every facet's counts on each draw, and the facets that are not "any" share one
+  // pool: each pool (and each facet's counts) is kept while the filters, query and wishlist are the same
+  // objects the store handed out last time.
+  var pools = /* @__PURE__ */ new Map();
+  var countsKept = /* @__PURE__ */ new Map();
+  var sameInputs = (kept, { filters, query, wishlist }) => kept && kept.filters === filters && kept.query === query && kept.wishlist === wishlist;
+  function matching(state, skip) {
+    const key = skip?.key ?? "";
+    const kept = pools.get(key);
+    if (sameInputs(kept, state)) return kept.result;
+    const { filters, query, wishlist } = state;
     const q = query.trim().toLowerCase();
-    return games.filter((game) => (!q || `${game.title} ${game.developer} ${game.publisher}`.toLowerCase().includes(q)) && FACETS.every((facet) => facet === skip || passes(game, facet, filters[facet.key])) && (!filters.wishlist || wishlist.includes(game.id)));
+    const result = games.filter((game) => (!q || searchText(game).includes(q)) && FACETS.every((facet) => facet === skip || passes(game, facet, filters[facet.key])) && (!filters.wishlist || wishlist.includes(game.id)));
+    pools.set(key, { filters, query, wishlist, result });
+    return result;
   }
   var filterGames = (state) => matching(state);
   function facetCounts(state, facet) {
+    const kept = countsKept.get(facet.key);
+    if (sameInputs(kept, state)) return kept.result;
     const pool = matching(state, facet.any ? facet : void 0);
-    return Object.fromEntries(facet.options.map(({ value }) => [value, pool.filter((game) => facet.has(game, value)).length]));
+    const result = Object.fromEntries(facet.options.map(({ value }) => [value, pool.filter((game) => facet.has(game, value)).length]));
+    countsKept.set(facet.key, { filters: state.filters, query: state.query, wishlist: state.wishlist, result });
+    return result;
   }
   var summaryOf = (game) => game.about.find((text) => text.length > 80 && text !== text.toUpperCase()) ?? game.shortDescription;
   // The games sharing the most genres with `game`, then the most recommended; ties keep catalog order. One
