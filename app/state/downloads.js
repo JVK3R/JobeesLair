@@ -1,14 +1,17 @@
 // ../pub-game-store/native/state/downloads.js
 // reconstructed from the esbuild bundle in eboot.bin
-// MODIFIED: the queue gets no browser capture; it only served Vikingfile.
+// MODIFIED: the queue gets the browser capture on the PS5 (its file links read out of the console's browser).
 // MODIFIED: storageRoots and freeBytes read state/drives.js, which keeps the drives and their space off the
 // render thread (a drive waking up froze the screen when they were asked for synchronously).
+// MODIFIED: the queue's resolver gets the debrid provider (state/debrid.js), for sources sent through TorBox.
 
 import { t } from '../i18n/core.js';
 import { getGame } from './catalog.js';
 import { DATA_DIR } from './data-dir.js';
 import { createDownloadQueue } from './download-queue.js';
 import { createSourceResolver } from './download-sources.js';
+import { debridResolver } from './debrid.js';
+import { recordCapture } from './capture-hosts.js';
 import { createMockDownloadQueue } from './mock-download-queue.js';
 import { freeBytes, storageRoots } from './drives.js';
 import { createShadowClient, createShadowMountProbe } from './shadowmount.js';
@@ -16,7 +19,7 @@ import { createMountMonitor, mountMonitor } from './mount-monitor.js';
 import { createPlaytime, playtimeStore } from './playtime.js';
 import { parseStamp } from './clock.js';
 import { deviceFacts } from './device.js';
-import { Archives, DeviceInfo, DownloadFormats, Downloads, FileSystem, Http, Linking, Notifications, Packages, Platform, Power } from '@ps5-react/core';
+import { Archives, BrowserCapture, DeviceInfo, DownloadFormats, Downloads, FileSystem, Http, Linking, Notifications, Packages, Platform, Power } from '@ps5-react/core';
 
   var instance;
   var mocked = () => Platform.OS !== "ps5" && FileSystem.exists(`${DATA_DIR}/mock-downloads`);
@@ -49,7 +52,9 @@ import { Archives, DeviceInfo, DownloadFormats, Downloads, FileSystem, Http, Lin
     notifications: Notifications,
     power: Power,
     linking: Linking,
-    sources: createSourceResolver({ http: Http }),
+    browserCapture: Platform.OS === "ps5" ? BrowserCapture : null,
+    onCapture: recordCapture,
+    sources: createSourceResolver({ http: Http, debrid: debridResolver }),
     packages: Packages,
     releasesOf: (id) => getGame(id)?.releases || [],
     firmware: () => deviceFacts().firmware,

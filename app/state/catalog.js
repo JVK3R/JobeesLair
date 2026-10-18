@@ -1,6 +1,7 @@
 // ../pub-game-store/native/state/catalog.js
 // reconstructed from the esbuild bundle in eboot.bin
-// MODIFIED: Vikingfile and AkiraBox are left out of each game's hosts and the host filter.
+// MODIFIED: hosts this build no longer downloads from are left out of each game's hosts and the host
+// filter (none now: Vikingfile and AkiraBox are back, their file links captured from the browser).
 // MODIFIED: games from catalog feeds (state/feeds.js) are merged in before anything is derived.
 // MODIFIED: bundledIndex keeps the bundled titles' ids and direct flags for the live game counter.
 
@@ -84,7 +85,7 @@ import { FileSystem, Image } from '@ps5-react/core';
     }
   }
   var entries = [...games, ...twins];
-  var RETIRED_HOSTS = /* @__PURE__ */ new Set(["vikingfile", "akirabox"]);
+  var RETIRED_HOSTS = /* @__PURE__ */ new Set([]);
   var _a;
   for (const game of entries) {
     Object.setPrototypeOf(game, game.feedPage ? FeedEntry : Entry);

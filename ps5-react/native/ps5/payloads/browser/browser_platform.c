@@ -1,4 +1,4 @@
-// Adapted from Orbit Store 1.0.1 by saawant12 (https://github.com/saawant12/orbit-store-ps5).
+// Adapted from Orbit Store 1.0.1 and 1.3.5 by saawant12 (https://github.com/saawant12/orbit-store-ps5).
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Read-only browser capture; original corresponding source is recorded in README.md.
 #include "browser_platform.h"
@@ -86,9 +86,9 @@ bool probe_target_active(void *context) {
 
 int probe_target_read(void *context, uint64_t address, void *bytes, size_t length) {
     ProbeTarget *target = context;
-    /* Rate limit: at most 64 KiB every 32 ms, roughly 2 MiB/s. */
-    struct timespec delay = {.tv_nsec = 32000000};
-    nanosleep(&delay, NULL);
+    /* Rate limit: at most 64 KiB every 8 ms, roughly 8 MiB/s. */
+    struct timespec delay = {.tv_nsec = PROBE_READ_DELAY_NS};
+    if (!target->unpaced) nanosleep(&delay, NULL);
     if (!probe_target_active(target)) return -1;
     return kernel_proc_copyout(target->pid, (intptr_t)address, bytes, length);
 }

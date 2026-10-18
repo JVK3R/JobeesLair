@@ -16,6 +16,13 @@ import { t } from '../i18n/core.js';
   var firmwareText = ([major, minor]) => `${major}.${String(minor).padStart(2, "0")}`;
   // Whether `required` is newer than `current`.
   var newerFirmware = (required, current) => (required[0] - current[0] || required[1] - current[1]) > 0;
+  // Whether this console starts PS5 fake packages: they install on any firmware kstuff runs on, but launch
+  // only up to 11.60 (ps5-react docs/NATIVE-API.md). Null when the console's firmware is not known.
+  var LAST_FAKE_PS5_LAUNCH = [11, 60];
+  function ps5FakePackagesLaunch(text) {
+    const current = consoleFirmware(text);
+    return current ? !newerFirmware(current, LAST_FAKE_PS5_LAUNCH) : null;
+  }
   // What a title asks for, from the files Jobee'sLair can read: the copy of sce_sys ShadowMount keeps for
   // every title it installed (/user/app/<TITLE_ID>/sce_sys), else a downloaded game folder of it.
   function titleRequirement(fs, titleId, jobs = []) {
@@ -45,4 +52,4 @@ import { t } from '../i18n/core.js';
     return { key, ...params, text: t(`sources.backport.${key}`, params) };
   }
 
-export { backportAdvice, consoleFirmware, firmwareText, newerFirmware, requiredFirmware, titleRequirement };
+export { backportAdvice, consoleFirmware, firmwareText, newerFirmware, ps5FakePackagesLaunch, requiredFirmware, titleRequirement };

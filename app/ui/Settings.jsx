@@ -1,7 +1,8 @@
 // Jobee'sLair Settings: a full-screen page of rounded cards in two columns. On the left: the phone
 // companion (switch, live status, address, your PIN and changing it), audio and haptics, theme and light
-// bar, language. On the right: storage and feeds (drives, catalog feeds with their mirrors), the Source
-// Addition Guide, and About (version, update check, origin and credits). Back closes it.
+// bar, language. On the right: storage and feeds (drives, catalog feeds with their mirrors), debrid
+// providers (the TorBox API key and its connection test), the Source Addition Guide, and About (version,
+// update check, origin and credits). Back closes it.
 // Every card is a scroll anchor: focus on any row in it scrolls the whole card into view, header and all,
 // so Up from lower cards always comes back to the top cards and their headers instead of leaving them cut
 // off above the viewport. The page has a solid canvas under its scrolling cards, so the engine can
@@ -17,7 +18,9 @@ import { URLDialog } from '../downloads/URLDialog.jsx';
 import { formatDate2 } from '../i18n/core.js';
 import { chooseLanguage, languageChoice, systemLocale, useT } from '../i18n/index.js';
 import { LOCALES } from '../i18n/locales.js';
-import { driveName } from '../state/downloads.js';
+import { setTorBoxKey, testTorBox, useDebrid } from '../state/debrid.js';
+import { LIMITS as SPEED_LIMITS, setSpeedLimit, useSpeedLimit } from '../state/speed-limit.js';
+import { downloadQueue, driveName } from '../state/downloads.js';
 import { useDrives } from '../state/drives.js';
 import { MAX_FEEDS, MAX_MIRRORS, addFeed, addMirror, refreshFeeds, removeFeed, removeMirror, useFeeds } from '../state/feeds.js';
 import { formatBytes } from '../state/size.js';
@@ -241,6 +244,31 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       ] })
     ] });
   }
+  // The download speed limit (state/speed-limit.js): one pill per choice, the chosen one filled.
+  function SpeedFace({ label, chosen }) {
+    const focused = useIsFocused();
+    return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
+      /* @__PURE__ */ (0, jsx)(FocusRing, { round: "md" }),
+      /* @__PURE__ */ (0, jsx)(Text, { style: text(21, chosen ? colors.accentFg : focused ? colors.fg : colors.muted, { fontWeight: 600 }), children: label })
+    ] });
+  }
+  function SpeedLimitRow() {
+    const t2 = useT();
+    const limit = useSpeedLimit();
+    return /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 10 }, children: [
+      /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 3 }, children: [
+        /* @__PURE__ */ (0, jsx)(Text, { style: text(23, colors.fg, { fontWeight: 600 }), children: t2("settings.speedLimit") }),
+        /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.speedLimitDetail") })
+      ] }),
+      /* @__PURE__ */ (0, jsx)(View, { style: { flexDirection: "row", gap: 12 }, children: SPEED_LIMITS.map((value) => /* @__PURE__ */ (0, jsx)(View, {
+        focusKey: `settings:speed:${value}`,
+        focusable: true,
+        onPress: () => setSpeedLimit(value),
+        style: { position: "relative", flex: value ? 1 : 2, height: 56, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: value === limit ? colors.accent : colors.surface2 },
+        children: /* @__PURE__ */ (0, jsx)(SpeedFace, { label: value ? t2("units.speed", { n: String(value) }) : t2("settings.speedUnlimited"), chosen: value === limit })
+      }, value)) })
+    ] });
+  }
   function StorageCard({ onAdd, onMirror }) {
     const t2 = useT();
     const feeds = useFeeds();
@@ -249,11 +277,49 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "hardDrive", title: t2("settings.card.storage") }),
       ...drives.roots.map((root) => /* @__PURE__ */ (0, jsx)(Drive, { root, usage: drives.usage[root] }, root)),
       /* @__PURE__ */ (0, jsx)(View, { style: { height: 1, marginVertical: 8, backgroundColor: colors.line } }),
+      /* @__PURE__ */ (0, jsx)(SpeedLimitRow, {}),
+      /* @__PURE__ */ (0, jsx)(View, { style: { height: 1, marginVertical: 8, backgroundColor: colors.line } }),
       /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.feeds.detail") }),
       ...feeds.map((feed) => /* @__PURE__ */ (0, jsx)(FeedRow, { feed, onMirror }, feed.url)),
       feeds.length < MAX_FEEDS ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:feeds:add", name: t2("settings.feeds.add"), detail: t2("settings.feeds.addHint", { count: MAX_FEEDS }), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "external", color: colors.muted }), onPress: onAdd }) : null,
       feeds.length ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:feeds:refresh", name: t2("settings.feeds.refresh"), detail: feeds.some((feed) => feed.state === "refreshing") ? t2("settings.feeds.refreshing") : t2("settings.feeds.refreshHint"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "restart", color: colors.muted }), onPress: () => void refreshFeeds() }) : null,
       feeds.some((feed) => feed.restart) ? /* @__PURE__ */ (0, jsx)(Callout, { children: t2("settings.feeds.restart") }) : null
+    ] });
+  }
+  // What the TorBox account looks like, from the last connection test (state/debrid.js).
+  function accountText(t2, account) {
+    if (!account) return null;
+    const plan = t2(`settings.debrid.plan.${account.planName}`);
+    if (!account.premium) return t2("settings.debrid.free");
+    return account.expiresAt ? t2("settings.debrid.okUntil", { plan, date: formatDate2(account.expiresAt.slice(0, 10)) }) : t2("settings.debrid.ok", { plan });
+  }
+  // Debrid providers: the TorBox API key (typed in, kept as its last four characters on screen), a
+  // connection test that pauses a running download while it asks (the network is one task at a time),
+  // and removing the key. With a key, the source list offers TorBox on the hosts it supports.
+  function DebridCard({ onKey }) {
+    const t2 = useT();
+    const debrid = useDebrid();
+    const [test, setTest] = (0, useState)({ state: "idle", error: "" });
+    const run = () => {
+      if (test.state === "testing") return;
+      setTest({ state: "testing", error: "" });
+      testTorBox({ quiet: (reason, work) => downloadQueue().quietNetwork ? downloadQueue().quietNetwork(reason, work) : work() }).then(
+        () => setTest({ state: "ok", error: "" }),
+        (error2) => setTest({ state: "failed", error: error2.message })
+      );
+    };
+    const status = test.state === "testing" ? t2("settings.debrid.testing") : test.state === "failed" ? null : accountText(t2, debrid.account);
+    return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
+      /* @__PURE__ */ (0, jsx)(CardHead, { icon: "zap", title: t2("settings.card.debrid") }),
+      /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.debrid.detail") }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:torbox:key", name: t2("settings.debrid.key"), detail: debrid.configured ? t2("settings.debrid.keySet", { key: debrid.masked }) : t2("settings.debrid.keyNone"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "chevronRight", color: colors.muted }), onPress: onKey }),
+      debrid.configured ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:torbox:test", name: t2("settings.debrid.test"), detail: status ?? t2("settings.debrid.testDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: test.state === "testing" ? "globe" : "restart", color: colors.muted }), onPress: run }) : null,
+      test.state === "failed" ? /* @__PURE__ */ (0, jsx)(Callout, { tone: "error", children: test.error }) : null,
+      debrid.configured ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:torbox:remove", name: t2("settings.debrid.remove"), detail: t2("settings.debrid.removeDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "trash", color: colors.muted }), onPress: () => {
+        setTorBoxKey("");
+        setTest({ state: "idle", error: "" });
+      } }) : null,
+      /* @__PURE__ */ (0, jsx)(Text, { style: text(19, colors.subtle), children: t2("settings.debrid.stored") })
     ] });
   }
   // The Source Addition Guide: how a catalog feed gets into the store, step by step. One row until opened;
@@ -372,6 +438,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     const [adding, setAdding] = (0, useState)(false);
     const [mirrorOf, setMirrorOf] = (0, useState)(null);
     const [pinMode, setPinMode] = (0, useState)(null);
+    const [keying, setKeying] = (0, useState)(false);
     // Drawn again in a newly chosen accent while open; the rest of the store follows once it closes,
     // whichever way it closes (Back, or a phone shortcut).
     useActiveTheme();
@@ -405,6 +472,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
             ] }),
             /* @__PURE__ */ (0, jsxs)(View, { style: { width: COLUMN, gap: 32 }, children: [
               /* @__PURE__ */ (0, jsx)(StorageCard, { onAdd: () => setAdding(true), onMirror: setMirrorOf }),
+              /* @__PURE__ */ (0, jsx)(DebridCard, { onKey: () => setKeying(true) }),
               /* @__PURE__ */ (0, jsx)(GuideCard, {}),
               /* @__PURE__ */ (0, jsx)(AboutCard, {}),
               /* @__PURE__ */ (0, jsx)(NoticeCard, {})
@@ -413,6 +481,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
         ] }) }),
         adding ? /* @__PURE__ */ (0, jsx)(URLDialog, { title: t2("settings.feeds.add"), detail: t2("settings.feeds.addDetail"), submit: addFeed, onClose: () => setAdding(false) }) : null,
         mirrorOf ? /* @__PURE__ */ (0, jsx)(URLDialog, { title: t2("settings.feeds.addMirror"), detail: t2("settings.feeds.mirrorDetail"), submit: (value) => addMirror(mirrorOf, value), onClose: () => setMirrorOf(null) }) : null,
+        keying ? /* @__PURE__ */ (0, jsx)(URLDialog, { title: t2("settings.debrid.keyTitle"), detail: t2("settings.debrid.keyDetail"), initial: "", submit: setTorBoxKey, onClose: () => setKeying(false) }) : null,
         pinMode ? /* @__PURE__ */ (0, jsx)(PinDialog, { mode: pinMode, onDone: choosePin, onClose: () => setPinMode(null) }) : null
       ]
     });

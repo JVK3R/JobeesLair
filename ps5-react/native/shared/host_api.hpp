@@ -1,7 +1,7 @@
 // Copyright (C) 2026 half144 and PS5 React contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Additional attribution term: see LICENSE-ATTRIBUTION.
-// Native API contract (ABI v20) between the hosts and `@ps5-react/core`. The input actions hosts
+// Native API contract (ABI v21) between the hosts and `@ps5-react/core`. The input actions hosts
 // pass to `__ps5ReactDispatch` are a separate contract with its own version (runtime/js/input.js).
 //
 // host_api.cpp (shared) installs `globalThis.__ps5ReactNative` through
@@ -65,18 +65,22 @@
 //                                  switches after this frame (PS5: restarts EGL, the TV resyncs)
 //   network.download(url, path, options) task ID; queues native binary file I/O
 //     options: expectedBytes, storageRoot, pieces[{url, offset, size, sha1}],
-//              sha256, connections, adaptive, rangeBytes, resume, recoverCompleted, headers, rejectHtml
+//              sha256, connections, adaptive, rangeBytes, resume, recoverCompleted, headers, rejectHtml,
+//              unlimited (ABI v21; exempt from setRateLimit)
 //   network.request(url, options)  task ID; queues bounded HTTP text I/O
 //     options: method, body, maxBytes, headers, followRedirects (default true)
 //     terminal snapshots: status, body, effective url, allowlisted lowercase headers
 //   network.cancel(id)             requests cancellation
+//   network.setRateLimit(bytes)    ABI v21; bytes per second all file downloads share, 0 for no limit;
+//                                  applies at once, running downloads included, except unlimited ones
 //   network.poll()                 progress/results; consumes terminal snapshots
 //   archives.extract(sources, destination, maxBytes) task ID; bounded native archive worker
-//   archives.inspect(sources)      {kind, refusal}; file type from leading bytes and, for an archive,
+//   archives.inspect(sources)      {kind, refusal, title}; file type from leading bytes (title: a PKG's own
+//                                  title id, ABI v21) and, for an archive,
 //                                  a decoder-memory refusal its headers so far justify; partial files ok
 //   archives.cancel(id)            requests cancellation; source volumes remain intact
 //   archives.poll()                state/error/written/entries/artifacts; consumes terminal results
-//   browser.capture(prefix, suffix, timeoutSeconds) ABI v7; Vikingfile capture task bound to a filename, or to any file when suffix is "/"
+//   browser.capture(prefix, suffix, timeoutSeconds, rejected, resume) ABI v7 (rejected, resume: v21); capture task bound to a filename, to any file when suffix is "/", or to a file link naming suffix's title id; rejected: up to six refused links scanned past
 //   browser.cancel(id)            stops the read-only payload by closing its connection
 //   browser.poll()                state/error/url; consumes terminal results
 //   lan.broadcast(port, message, timeoutMs, maxReplies) ABI v9; task ID; one UDP datagram to

@@ -156,6 +156,7 @@ JSValue begin(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv, bool d
         !boolean_option(ctx, options, "resume", request.resume) || !boolean_option(ctx, options, "adaptive", request.adaptive) ||
         !boolean_option(ctx, options, "recoverCompleted", request.recover_completed) ||
         !boolean_option(ctx, options, "rejectHtml", request.reject_html) ||
+        !boolean_option(ctx, options, "unlimited", request.unlimited) ||
         !string_option(ctx, options, "sha256", request.sha256, 64) || !digest(request.sha256, 64) ||
         !number_option(ctx, options, "expectedBytes", request.expected_bytes, 1, 9007199254740991ULL) ||
         !pieces(ctx, options, request) || !mirrors(ctx, options, request))
@@ -209,11 +210,18 @@ JSValue poll(JSContext* ctx, JSValueConst, int, JSValueConst*) {
   return out;
 }
 JSValue info(JSContext* ctx, JSValueConst, int, JSValueConst*) { return JS_NewString(ctx, network::version()); }
+// Bytes per second every file download shares; 0 lifts the cap.
+JSValue rate_limit(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
+  double bytes = 0;
+  if (!argc || JS_ToFloat64(ctx, &bytes, argv[0]) || !(bytes >= 0) || bytes > 9007199254740991.0)
+    return JS_ThrowTypeError(ctx, "network.setRateLimit: expected bytes per second, 0 for no limit");
+  network::set_rate_limit(static_cast<std::uint64_t>(bytes)); return JS_UNDEFINED;
+}
 } // namespace
 
 JSValue ps5_react_network_api(JSContext* ctx) {
   JSValue out = JS_NewObject(ctx);
-  for (const auto& item : {std::pair<const char*, JSCFunction*>{"download", &download}, {"request", &request}, {"cancel", &cancel}, {"poll", &poll}, {"version", &info}})
+  for (const auto& item : {std::pair<const char*, JSCFunction*>{"download", &download}, {"request", &request}, {"cancel", &cancel}, {"poll", &poll}, {"version", &info}, {"setRateLimit", &rate_limit}})
     JS_SetPropertyStr(ctx, out, item.first, JS_NewCFunction(ctx, item.second, item.first, 0));
   return out;
 }

@@ -1,7 +1,12 @@
 // ../pub-game-store/native/state/download-sources.js
 // reconstructed from the esbuild bundle in eboot.bin
 // MODIFIED: archiveRefusal, so an Archive.org 401/403 is a dead link, not a browser check.
-// MODIFIED: Vikingfile and AkiraBox are no longer supported; retiredSource names their releases.
+// MODIFIED: retiredSource names the releases of hosts this build no longer downloads from (none now:
+// Vikingfile and AkiraBox are back, their file links captured from the console's browser, browser-links.js).
+// MODIFIED (from Overdrive 1.0.6, MyLuxy): Vikingfile's own file links are direct and its pages give theirs;
+// FileKeeper's file is had without the browser, by waiting its countdown and posting its form.
+// MODIFIED: a source marked `debrid` (state/debrid.js) is of kind "debrid": the resolver hands it to the
+// debrid provider given to it, which answers with that service's direct link.
 
 
   function webURL(value) {
@@ -13,16 +18,17 @@
   var hosts2 = {
     mediafire: ["mediafire.com"],
     buzzheavier: ["buzzheavier.com"],
-    datanodes: ["datanodes.to"]
+    vikingfile: ["vikingfile.com", "vik1ngfile.site"],
+    datanodes: ["datanodes.to"],
+    filekeeper: ["filekeeper.net"]
   };
   var isHost = (host2, domain) => host2 === domain || host2.endsWith(`.${domain}`);
   // Hosts this build no longer downloads from. Their catalog releases are dropped as they load, with
   // the link pages (link-vault.org/c/…#VikingFile) that only lead to them.
-  var RETIRED = ["vikingfile.com", "vik1ngfile.site", "akirabox.com", "akirabox.to"];
+  var RETIRED = [];
   function retiredSource(release) {
-    if (/^(?:viking|akira)/i.test(release.provider || "") || /^(?:viking|akira)/i.test(release.flow || "")) return true;
+    if (!RETIRED.length) return false;
     return [release.url, release.browserUrl].some((value) => {
-      if (/#(?:viking|akira)/i.test(value || "")) return true;
       try {
         return Boolean(value) && RETIRED.some((domain) => isHost(webURL(value).host, domain));
       } catch {
@@ -42,12 +48,14 @@
     return /\bHTTP (401|403)\b/.exec(message)?.[1] ?? null;
   }
   function sourceKind(release) {
+    if (release.debrid) return "debrid";
     if (release.manifestUrl) return "manifest";
     const value = release.browserUrl || release.url;
     if (!value) return "unavailable";
     const { host: host2, path } = webURL(value);
     const provider = Object.keys(hosts2).find((name) => hosts2[name].some((domain) => isHost(host2, domain)));
     if (provider === "mediafire" && host2.startsWith("download")) return "direct";
+    if (provider === "vikingfile" && /^\/d\//.test(path) && !release.browserUrl) return "direct";
     if (provider) return provider;
     if (host2 === "archive.org" && path.startsWith("/download/") || host2 === "github.com" && path.includes("/releases/download/") || /\.(?:ffpfsc|ffpfs|ffpkg|exfat|pkg|zip|rar|7z)(?:[?#]|$)/i.test(path)) return "direct";
     if (release.requiresBrowser || release.source?.startsWith("pegasus")) return "browser";
@@ -78,7 +86,17 @@
     }
   };
   var htmlResponse = (response) => /(?:text\/html|application\/xhtml)/i.test(response.headers?.["content-type"] || "");
-  function createSourceResolver({ http }) {
+  // A wait the queue's cancel ends early: FileKeeper's countdown.
+  var pause = (ms, signal) => new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+  var FILEKEEPER_COUNTDOWN_MS = 5e3;
+  // `debrid`: { resolve(source, { signal }) -> { url } } for sources marked `debrid` (state/debrid.js).
+  function createSourceResolver({ http, debrid = null }) {
     async function request(url, options = {}) {
       webURL(url);
       const response = await http.request(url, { maxBytes: 1024 * 1024, ...options });
@@ -94,6 +112,34 @@
       if (response.status >= 300) throw new BrowserRequired(url, "The final file redirects with custom headers. Choose another source.");
       return { url: webURL(response.url || url).url, headers, rejectHtml: true };
     }
+    // FileKeeper's page has no human check: a five-second countdown, then its Free Download button
+    // posts op=download2 with the file's code, and the answer redirects to the file on Datanodes'
+    // dlproxy.uk gateway. The page keeps the file in a cookie the engine never hands to the app, so the
+    // same form goes to the file's own address, /<code>, which needs none, once the countdown is out.
+    async function fileKeeper(url, signal) {
+      const code = /^\/([a-z0-9]{12})(?:[/?]|$)/i.exec(webURL(url).path)?.[1];
+      if (!code) throw new BrowserRequired(url);
+      console.log("[sources] filekeeper", code, "- waiting its countdown, then posting its form");
+      await pause(FILEKEEPER_COUNTDOWN_MS, signal);
+      if (signal?.aborted) throw new Error("Cancelled.");
+      const next = await request(url, {
+        signal,
+        method: "POST",
+        followRedirects: false,
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Referer: url },
+        body: `op=download2&id=${code}&rand=&referer=&method_free=&down_direct=1`
+      });
+      const location2 = next.headers?.location;
+      console.log("[sources] filekeeper answered HTTP", next.status, location2 ? `with ${webURL(absolute(location2, url)).host}` : "without a file");
+      if (!location2) throw new Error("Source unavailable: FileKeeper gave no file. Choose another source.");
+      // The catalog's FileKeeper sizes are rounded (1 GiB for a 1.6 GB file), and the engine holds a
+      // download to its expected size exactly: the file's own length, from the same HEAD, replaces it.
+      const file = absolute(location2, url);
+      const head = await request(file, { method: "HEAD", signal });
+      if (htmlResponse(head) || head.status >= 300) throw new BrowserRequired(url);
+      const bytes = Number(head.headers?.["content-length"]);
+      return { url: webURL(head.url || file).url, rejectHtml: true, ...Number.isSafeInteger(bytes) && bytes > 0 ? { expectedBytes: bytes } : {} };
+    }
     async function resolve2(release, { signal, directURL } = {}) {
       if (directURL) return direct(directURL, signal);
       const url = release.browserUrl || release.url;
@@ -101,13 +147,20 @@
       if (kind === "unavailable") throw new Error("Source unavailable: no download URL.");
       if (kind === "direct") return { url: webURL(url).url, rejectHtml: true };
       if (kind === "manifest") throw new Error("Split manifests must be resolved by the queue.");
+      if (kind === "debrid") {
+        if (!debrid) throw new Error("No debrid service is set up. Add a TorBox API key in Settings, or choose another source.");
+        const { url: link } = await debrid.resolve(release, { signal });
+        return { url: webURL(link).url, rejectHtml: true };
+      }
       if (kind === "browser" || kind === "datanodes") throw new BrowserRequired(url);
+      if (kind === "filekeeper") return fileKeeper(url, signal);
       const response = await request(url, { signal });
       const base = response.url || url;
       if (response.headers?.["content-disposition"]?.includes("attachment")) return direct(base, signal);
       const html = await response.text();
       let candidate;
       if (kind === "mediafire") candidate = anchor(html, "downloadButton");
+      if (kind === "vikingfile") candidate = anchor(html, "download-link");
       if (kind === "buzzheavier") {
         const button = (html.match(/<[a-z]+\b[^>]*>/gi) || []).find((tag) => attribute(tag, "hx-get")?.includes("/download"));
         const route = button && attribute(button, "hx-get");

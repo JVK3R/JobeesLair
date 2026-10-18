@@ -19,6 +19,7 @@ import { BUSY, COMPLETE } from '../state/download-queue.js';
 import { downloadQueue, driveName } from '../state/downloads.js';
 import { useDrives } from '../state/drives.js';
 import { formatBytes } from '../state/size.js';
+import { useSpeedLimit } from '../state/speed-limit.js';
 import { colors, radius } from '../ui/colors.js';
 import { Text, View } from '@ps5-react/core';
 
@@ -97,6 +98,8 @@ import { Text, View } from '@ps5-react/core';
     const t2 = useT();
     const data = useTelemetry();
     const drives = useDrives();
+    // The download speed limit set in Settings (state/speed-limit.js), said beside the peak while one is set.
+    const limit = useSpeedLimit();
     const fraction = data.total ? Math.min(1, data.written / data.total) : 0;
     const speed = data.active ? formatSpeed(data.speed) : t2("downloads.panel.idle");
     // "42.1 MB/s" as a large number and a small unit; a locale that writes it another way shows it whole.
@@ -116,7 +119,7 @@ import { Text, View } from '@ps5-react/core';
           ] }),
           /* @__PURE__ */ (0, jsx)(SpeedChart, { samples: data.samples, max, color: colors.accentHi, width: 240, height: 60 })
         ] }),
-        /* @__PURE__ */ (0, jsx)(Text, { style: mono(17, colors.subtle, { numberOfLines: 1 }), children: error2 ? error2 : t2("downloads.dash.peak", { peak: data.peak ? formatSpeed(data.peak) : "—", connections: formatNumber2(data.connections) }) })
+        /* @__PURE__ */ (0, jsx)(Text, { style: mono(17, colors.subtle, { numberOfLines: 1 }), children: error2 ? error2 : [t2("downloads.dash.peak", { peak: data.peak ? formatSpeed(data.peak) : "—", connections: formatNumber2(data.connections) }), limit ? t2("downloads.dash.capped", { limit: t2("units.speed", { n: String(limit) }) }) : null].filter(Boolean).join(" · ") })
       ] }),
       // Queue progress.
       /* @__PURE__ */ (0, jsxs)(View, { style: { width: 600, gap: 10, paddingHorizontal: 30, paddingVertical: 22, borderRightWidth: 1, borderColor: colors.line }, children: [

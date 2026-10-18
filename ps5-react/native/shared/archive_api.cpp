@@ -73,6 +73,7 @@ JSValue inspect(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
   JSValue out = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx,out,"kind",JS_NewString(ctx,inspection.kind.c_str()));
   JS_SetPropertyStr(ctx,out,"refusal",JS_NewString(ctx,inspection.refusal.c_str()));
+  JS_SetPropertyStr(ctx,out,"title",JS_NewString(ctx,inspection.title.c_str()));
   return out;
 }
 JSValue cancel(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {

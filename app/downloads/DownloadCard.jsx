@@ -150,7 +150,9 @@ import { Text, View, motion } from '@ps5-react/core';
     });
     const meta = [(job2.artifact.format || release.format || "").toUpperCase(), `${release.provider} ${release.version || ""}`.trim(), job2.root].filter(Boolean).join(" \xB7 ");
     const problem = job2.error && explainError(job2.error, Boolean(release.parts));
-    const note = problem ? problem.action ? t2("downloads.problem", { title: problem.title, action: problem.action }) : problem.title : ready.action === "seeWhy" ? t2("ready.seeWhyHint") : state === "downloaded" ? job2.message || t2("downloads.installHint") : "";
+    // The file's own title id is another game's (a PKG's header, download-queue.js noteTitle): said after any problem.
+    const mismatch = job2.titleMismatch ? t2("downloads.titleMismatch", { found: job2.titleMismatch, expected: job2.titleId }) : "";
+    const note = problem ? problem.action ? t2("downloads.problem", { title: problem.title, action: problem.action }) : problem.title : mismatch || (ready.action === "seeWhy" ? t2("ready.seeWhyHint") : state === "downloaded" ? job2.message || t2("downloads.installHint") : "");
     const cdn = isCdnProvider(release.provider);
     return /* @__PURE__ */ (0, jsxs)(View, { style: { width: CARD_WIDTH, flexDirection: "row", borderRadius: radius.lg, roundedClip: true, borderWidth: 1, borderColor: within ? colors.glow : colors.line, backgroundColor: within ? colors.surface2 : colors.surface }, children: [
       /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, gap: 18, padding: 28 }, children: [

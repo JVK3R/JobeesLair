@@ -12,7 +12,7 @@
 
 <p align="center">
   <b>An open-source homebrew download manager for the PS5.</b><br>
-  Version 0.2.3 · Title ID <code>PPSA99058</code> · created by JVK3R<br>
+  Version 0.3.0 · Title ID <code>PPSA99058</code> · created by JVK3R<br>
   <i>Proudly created alongside AI by JVK3R</i>
 </p>
 
@@ -88,10 +88,36 @@ are allowed to download.**
   drive's space read off the interface thread so a sleeping drive cannot freeze the screen
 - **Link health**: a game's download links are checked in the background while you look at it (a
   HEAD request each, only while no download needs the network), or all at once with **Check link
-  health** in its source list. A link that is gone (404 or 410, confirmed by a second request) is
-  greyed out as **Link unavailable** and never picked; one that keeps timing out is tagged **Not
-  responding** and ranked after the hosts that answer, and the best healthy mirror is picked instead.
-  Rate-limited hosts are left alone, and nothing is marked on a single failed request
+  health** in its source list. A link that looks gone (404 or 410, confirmed by a second request) is
+  tagged **Broken link** and ranked last, but stays in the list and can still be tried; one that keeps
+  timing out is tagged **Offline** and ranked after the hosts that answer. Rate-limited hosts are left
+  alone, and nothing is marked on a single failed request
+- **No typing links with the controller**: for a host only the console's browser can get past, you pass
+  its check and Jobee'sLair catches the file link out of the browser by itself, checks it is the game's
+  file (its title ID in the name, or its size), and downloads it in the app. VikingFile is back, and
+  FileKeeper downloads without the browser at all
+- **Learns which hosts work on your console**: every browser capture is remembered per host. Hosts
+  that work are marked **Auto-capture** and come first; hosts that keep failing are marked **Rarely
+  works here**, ranked last and never picked for you, with a note before you're sent to them. Nothing
+  is hidden
+- **TorBox (optional)**: add your TorBox API key in Settings and every source on a host TorBox supports
+  (1fichier, Rapidgator, Gofile and more) gets a **TorBox** button that downloads it in the app at full
+  speed, with no browser step. **TorBox Instant** marks files TorBox already holds. The key stays on the
+  console and goes only to api.torbox.app
+- **Download speed limit** in Settings (no limit, 25, 10 or 5 MB/s) to leave bandwidth for other
+  devices; app updates are never limited
+- **Files that are what they say**: a download whose format the catalog doesn't state is routed by its
+  header or its name (an image to `homebrew/`, a PKG to install), a small web page sent in place of a
+  game says so instead of finishing as a useless `.binary`, older `.binary` downloads are fixed at
+  launch, and a PKG whose header names another game is flagged
+- **Tips when they matter**: a short note under Download for backport-files-only, DLC, a label asking
+  for newer firmware than the console reports, or what to do on a browser host's page; no extra screen
+  before every download
+- **13.60 compatibility badges**: each source shows what it is (**Folder Dump**, **.exfat Image**,
+  **FFPKG**, **FFPFS Image**, **Backport**) and whether it runs on firmware 13.60 with ShadowMount+
+  (**13.60 Ready**; not shown on PS4 backports, where the backport advice says whether one is needed). A PS5 fake package is marked **FPKG (<=11.60)**: it installs on 13.60 but does not
+  launch, so it is ranked after the sources that do and a note under Download says why. A source whose
+  name doesn't say what it holds gets no claim either way
 - **A couch library** of the games on the console, each tile with its readiness (Installed, Played,
   Won't start) and its **play time** ("42 hours played · Last played yesterday"), read from
   ShadowMount+'s session log; sort by last played, most played, size or newest
@@ -229,7 +255,7 @@ change the license in [LICENSE](LICENSE).
 
 ## Status
 
-Jobee'sLair 0.2.3 adds link health checks and fixes the space check for downloads of unknown size; 0.2.1 added installing updates from the app. The 0.1.1 betas were tested on a PS5
+Jobee'sLair 0.3.0 labels each source by whether it runs on 13.60 with ShadowMount+, catches file links from the console's browser for you (VikingFile is back), learns which hosts work on your console, adds optional TorBox support and a download speed limit, and ports Overdrive 1.0.6's fixes for unknown-format files and multi-part sets. Broken-link checks no longer hide sources. 0.2.3 added link health checks and fixed the space check for downloads of unknown size, and 0.2.1 added installing updates from the app. The 0.1.1 betas were tested on a PS5
 running firmware 13.60 with ShadowMount+ 1.7. Every build passes its automated tests (the app's logic suites, the framework's
 tests, and the native server and drive-probe tests under AddressSanitizer, UndefinedBehaviorSanitizer
 and ThreadSanitizer), but not every feature has been confirmed on PS5 hardware yet. Report what you
@@ -243,8 +269,8 @@ find, with your firmware and loader.
 
 | Path | What it is |
 | --- | --- |
-| `app/` | The application: JSX sources, state, assets, catalog data, and `app.json` (title ID `PPSA99058`, package version `01.002.003`, capabilities) |
-| `app/version.js` | The app version (`0.2.3`), the creator credit (`JVK3R`) and the official repository the update check reads |
+| `app/` | The application: JSX sources, state, assets, catalog data, and `app.json` (title ID `PPSA99058`, package version `01.003.000`, capabilities) |
+| `app/version.js` | The app version (`0.3.0`), the creator credit (`JVK3R`) and the official repository the update check reads |
 | `app/ui/JLMark.jsx` | The "JL" monogram as native vector paths (`.github/readme/logo.svg` is the same mark as a file) |
 | `app/state/library-count.js` | The live indexed-titles and direct-downloads counter |
 | `LICENSE` | GPL-3.0-or-later, followed by the content neutrality and DMCA notice |
@@ -278,7 +304,7 @@ The image is a plain exFAT volume whose root is the app folder, with 64 KiB clus
 `JOBEESLAIR`.
 
 To publish a build, raise the version in `app/version.js`, run the build workflow, test the draft's
-image on a console, then publish the draft with a tag of the same version (`v0.2.3`): the
+image on a console, then publish the draft with a tag of the same version (`v0.3.0`): the
 update check in installed copies compares that tag with their own version. To let installed copies
 install it themselves, attach both `JobeesLair.exfat` and `update.zip` (`ps5-react/dist/PPSA99058.zip`
 renamed). GitHub publishes each asset's SHA-256, and a release without both files only offers the
@@ -300,7 +326,10 @@ If you'd like to support its development and future PS5 homebrew tools, you can
 
 - **JVK3R**, creator of Jobee'sLair.
 - **[MyLuxy](https://github.com/MyLuxy)**, author of the open-source Overdrive fork that Jobee'sLair
-  was originally inspired by.
+  was originally inspired by. Its 1.0.6 browser link capture, download speed limit, FileKeeper resolver,
+  file routing by name and multi-part set fix are adapted here.
+- **[saawant12](https://github.com/saawant12/orbit-store-ps5)**, Orbit Store, whose browser capture
+  (GPL-3.0-or-later) Overdrive's is adapted from.
 - **PS5 React — created by half144 and PS5 React contributors.**
   [github.com/half144/ps5-react](https://github.com/half144/ps5-react)
 - **[ShadowMount+](https://github.com/drakmor/ShadowMountPlus)** by drakmor, which installs it.

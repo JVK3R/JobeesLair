@@ -11,7 +11,7 @@ std::mutex guard;
 std::vector<Snapshot> pending;
 std::uint32_t next_id = 1;
 }
-std::uint32_t capture(std::string, std::string, int, std::string&) {
+std::uint32_t capture(std::string, std::string, int, std::vector<std::string>, bool, std::string&) {
   std::lock_guard lock(guard);
   Snapshot snapshot;
   snapshot.id = next_id++;

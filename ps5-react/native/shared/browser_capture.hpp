@@ -7,7 +7,10 @@
 #include <vector>
 namespace browser_capture {
 struct Snapshot { std::uint32_t id = 0; std::string state = "queued", error, url; };
-std::uint32_t capture(std::string prefix, std::string suffix, int timeout, std::string& error);
+// `rejected` holds up to six links the app already refused; the payload scans past them. `resume`
+// restarts after such a refusal with the links the last fresh capture found already in memory.
+std::uint32_t capture(std::string prefix, std::string suffix, int timeout, std::vector<std::string> rejected,
+                      bool resume, std::string& error);
 void cancel(std::uint32_t id);
 std::vector<Snapshot> poll();
 void stop();

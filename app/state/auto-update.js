@@ -202,7 +202,8 @@ import { contentVersionOf, newer } from './updater.js';
         try {
           if (current.cancelled) throw stopped();
           publish({ phase: "downloading", file, written: offset, total });
-          task = downloads.enqueue({ url: asset.url, destination, sha256: asset.sha256, expectedBytes: asset.size, recoverCompleted: true });
+          // Unlimited: the update never waits on the download speed limit (state/speed-limit.js).
+          task = downloads.enqueue({ url: asset.url, destination, sha256: asset.sha256, expectedBytes: asset.size, recoverCompleted: true, unlimited: true });
           current.task = task;
           const unsubscribe = task.subscribe((snapshot) => publish({ written: offset + (snapshot.written || 0) }));
           try {

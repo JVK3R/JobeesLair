@@ -1,8 +1,10 @@
 // ../pub-game-store/native/game/sources.js
 // reconstructed from the esbuild bundle in eboot.bin
-// MODIFIED: Vikingfile is no longer a source.
+// MODIFIED: Vikingfile is a browser source again (its file link captured from the console's browser), and a
+// browser source ranks by how captures on its host fare on this console (state/capture-hosts.js).
 
 import { t } from '../i18n/core.js';
+import { hostStanding } from '../state/capture-hosts.js';
 import { sourceKind } from '../state/download-sources.js';
 import { formatBytes } from '../state/size.js';
 
@@ -41,7 +43,7 @@ import { formatBytes } from '../state/size.js';
     const edition2 = split >= 0 && text.slice(split + 3).toLowerCase().startsWith(host2) ? text.slice(0, split) : text;
     return provider.toLowerCase().startsWith(edition2.toLowerCase()) ? "" : edition2;
   }
-  var GATED = /* @__PURE__ */ new Set(["buzzheavier"]);
+  var GATED = /* @__PURE__ */ new Set(["vikingfile", "buzzheavier"]);
   function access(release) {
     const first = release.parts?.[0]?.sources[0] ?? release;
     let kind;
@@ -50,7 +52,8 @@ import { formatBytes } from '../state/size.js';
     } catch {
       return "browser";
     }
-    if (kind === "direct" || kind === "manifest") return "direct";
+    // A source sent through TorBox (state/debrid.js) downloads in the app like a file link.
+    if (kind === "direct" || kind === "manifest" || kind === "debrid") return "direct";
     return kind === "browser" || kind === "datanodes" || kind === "unavailable" || GATED.has(kind) ? "browser" : "page";
   }
   var SPEED = { "archive.org": "sources.speed.archive", mediafire: "sources.speed.mediafire", "overdrive cdn": "sources.cdnFastest" };
@@ -67,6 +70,7 @@ import { formatBytes } from '../state/size.js';
     const speed = SPEED[release.provider.toLowerCase()];
     const detail2 = [
       host,
+      release.debrid ? t("debrid.via") : null,
       isBackport(release) ? t("sources.role.backport") : isDlc(release) ? t("sources.role.dlc") : null,
       parts ? t("sources.parts", { count: parts }) : null,
       speed ? t(speed) : null
@@ -79,6 +83,11 @@ import { formatBytes } from '../state/size.js';
       group: release.unavailableReason ? "unavailable" : access(release),
       reason: release.unavailableReason ?? null
     };
+  }
+  /** How captures on a browser source's host fare here: "works", "hard", "unknown"; null for other sources. */
+  function captureStanding(release) {
+    if (access(release) !== "browser") return null;
+    return hostStanding(release.parts?.[0]?.sources[0] ?? release);
   }
   var version = (value) => {
     const parts = (value || "").replace(/^v/i, "").split(".").map(Number);
@@ -103,19 +112,33 @@ import { formatBytes } from '../state/size.js';
   var GROUP_RANK = { direct: 0, page: 1, browser: 2, unavailable: 3 };
   var HEALTH_RANK = { ok: 0, flaky: 2 };
   var isBackport = ({ label }) => /\bback\s*port\b/i.test(label || "");
+  // (From Overdrive 1.0.6.) The firmware major a source's label asks for ("USA 10.xx Base", "10.xx BackPort
+  // 4.xx"): a backport runs from the lowest it names, anything else needs the highest. Null when it names none.
+  function labelFirmware(release) {
+    const named = [...(release.label || "").matchAll(/\b(\d{1,2})\.xx\b/gi)].map((match) => Number(match[1]));
+    if (!named.length) return null;
+    return isBackport(release) ? Math.min(...named) : Math.max(...named);
+  }
   var hostRank = ({ provider }) => isCdnProvider(provider) ? 0 : provider.toLowerCase() === "archive.org" ? 1 : provider.toLowerCase() === "mediafire" ? 2 : 3;
   // The order sources are offered in: the game before its add-ons and backports, what can be had before
-  // what cannot, a link that answers now before one that just failed to (state/link-health.js), a disk
-  // image (which mounts as it is) before an archive or an unknown format (which can turn out to be an
-  // extracted folder dump), then the faster and healthier hosts.
+  // what cannot, a link that answers now before one that just failed to and one the check found gone after
+  // both (state/link-health.js), a browser host whose captures fail here with those, what runs
+  // on 13.60 before what is known not to (a PS5 fake package, release-sets.js releaseType), a disk image
+  // (which mounts as it is) before an archive or an unknown format (which can turn out to be an extracted
+  // folder dump), then the faster and healthier hosts, a browser host whose captures work before one not
+  // tried yet.
   var ranked = (release, index) => {
     const group = GROUP_RANK[describeSource(release).group];
     return { release, index, group, rank: [
       isDlc(release) || isBackport(release) ? 1 : 0,
       release.unavailableReason ? 1 : 0,
+      release.linkHealth?.status === "dead" ? 1 : 0,
+      captureStanding(release) === "hard" ? 1 : 0,
       release.linkHealth?.status === "unreachable" ? 1 : 0,
+      release.compatible1360 === false ? 1 : 0,
       isImage(release) ? 0 : 1,
       hostRank(release),
+      captureStanding(release) === "unknown" ? 1 : 0,
       group,
       HEALTH_RANK[release.health] ?? 1,
       release.source === "orbit" ? 0 : 1,
@@ -141,4 +164,4 @@ import { formatBytes } from '../state/size.js';
     return sections.filter((section) => section.items.length);
   }
 
-export { describeSource, fallbacks, isBackport, isCdnProvider, isDlc, isImage, preferredRelease, sourceSections };
+export { captureStanding, describeSource, fallbacks, isBackport, isCdnProvider, isDlc, isImage, labelFirmware, preferredRelease, sourceSections };

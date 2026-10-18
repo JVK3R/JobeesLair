@@ -16,19 +16,53 @@ bool text(JSContext* ctx, JSValueConst value, std::string& out) {
   JS_FreeCString(ctx, input);
   return valid;
 }
+// Links the app already refused, which the payload receives one per line.
+bool links(JSContext* ctx, JSValueConst value, std::vector<std::string>& out) {
+  if (!JS_IsArray(value)) return false;
+  JSValue size = JS_GetPropertyStr(ctx, value, "length");
+  std::uint32_t count = 0;
+  const bool counted = !JS_ToUint32(ctx, &count, size);
+  JS_FreeValue(ctx, size);
+  if (!counted || count > 6) return false;
+  for (std::uint32_t i = 0; i < count; i++) {
+    JSValue item = JS_GetPropertyUint32(ctx, value, i);
+    size_t length = 0;
+    const char* input = JS_IsString(item) ? JS_ToCStringLen(ctx, &length, item) : nullptr;
+    JS_FreeValue(ctx, item);
+    if (!input) return false;
+    bool valid = length >= 9 && length <= 2047 && !std::strncmp(input, "https://", 8);
+    for (size_t j = 0; valid && j < length; j++)
+      valid = static_cast<unsigned char>(input[j]) > 32 && static_cast<unsigned char>(input[j]) < 127;
+    if (valid) out.emplace_back(input, length);
+    JS_FreeCString(ctx, input);
+    if (!valid) return false;
+  }
+  return true;
+}
 JSValue capture(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
   std::string prefix, suffix;
   double timeout = 0;
-  if (argc < 3 || !text(ctx, argv[0], prefix) || prefix != "https://vikingfile.com/d/" ||
+  if (argc < 3 || !text(ctx, argv[0], prefix) ||
+      (prefix != "https://vikingfile.com/d/" && prefix != "https://" && prefix != "https://vikingfile.com/f/") ||
       !text(ctx, argv[1], suffix) || suffix.empty() || suffix[0] != '/' ||
       suffix.find('/', 1) != std::string::npos || suffix.find('\\') != std::string::npos ||
-      suffix.find("..") != std::string::npos || JS_ToFloat64(ctx, &timeout, argv[2]) ||
-      !std::isfinite(timeout) || timeout < 1 || timeout > 180 || std::floor(timeout) != timeout)
-    return JS_ThrowTypeError(ctx, "browser.capture: expected the Vikingfile prefix, /filename (160 UTF-8 bytes), and 1..180 seconds");
+      suffix.find("..") != std::string::npos ||
+      /* The whole scheme means anchor mode, which needs a real anchor. */
+      (prefix == "https://" && suffix.size() < 5) ||
+      /* A Vikingfile page names no file: the vault decides which one it opens. */
+      (prefix == "https://vikingfile.com/f/" && suffix != "/") ||
+      JS_ToFloat64(ctx, &timeout, argv[2]) ||
+      !std::isfinite(timeout) || timeout < 1 || timeout > 300 || std::floor(timeout) != timeout)
+    return JS_ThrowTypeError(ctx, "browser.capture: expected the Vikingfile prefix, its page prefix with /, or https:// with an anchor of 4..160 bytes, then /filename (160 UTF-8 bytes) and 1..300 seconds");
   for (const unsigned char c : suffix) if (c < 32 || c == 127)
     return JS_ThrowTypeError(ctx, "browser.capture: filename contains a control character");
+  std::vector<std::string> rejected;
+  if (argc > 3 && !JS_IsUndefined(argv[3]) && !links(ctx, argv[3], rejected))
+    return JS_ThrowTypeError(ctx, "browser.capture: rejected links must be an array of at most 6 https:// URLs of 9..2047 printable bytes");
+  const bool resume = argc > 4 && JS_ToBool(ctx, argv[4]) > 0;
   std::string error;
-  const auto id = browser_capture::capture(std::move(prefix), std::move(suffix), static_cast<int>(timeout), error);
+  const auto id = browser_capture::capture(std::move(prefix), std::move(suffix), static_cast<int>(timeout),
+                                           std::move(rejected), resume, error);
   return id ? JS_NewUint32(ctx, id) : JS_ThrowPlainError(ctx, "browser.capture: %s", error.c_str());
 }
 JSValue cancel(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
@@ -52,7 +86,7 @@ JSValue poll(JSContext* ctx, JSValueConst, int, JSValueConst*) {
 }
 JSValue ps5_react_browser_capture_api(JSContext* ctx) {
   JSValue api = JS_NewObject(ctx);
-  JS_SetPropertyStr(ctx, api, "capture", JS_NewCFunction(ctx, capture, "capture", 3));
+  JS_SetPropertyStr(ctx, api, "capture", JS_NewCFunction(ctx, capture, "capture", 5));
   JS_SetPropertyStr(ctx, api, "cancel", JS_NewCFunction(ctx, cancel, "cancel", 1));
   JS_SetPropertyStr(ctx, api, "poll", JS_NewCFunction(ctx, poll, "poll", 0));
   return api;

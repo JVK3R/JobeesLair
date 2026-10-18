@@ -23,6 +23,8 @@ struct Request {
   unsigned connections = 8;
   bool resume = true, adaptive = true, recover_completed = false;
   bool follow_redirects = true, reject_html = false;
+  // Exempt from set_rate_limit (an app's own update).
+  bool unlimited = false;
 };
 struct Snapshot {
   std::uint32_t id = 0;
@@ -41,6 +43,9 @@ void stop();
 std::uint32_t enqueue(Request request, std::string& error);
 void cancel(std::uint32_t id);
 std::vector<Snapshot> poll();
+// Caps what file downloads receive together, in bytes per second; 0 lifts the cap. It applies at once,
+// to downloads already running too, except those marked unlimited.
+void set_rate_limit(std::uint64_t bytes_per_second);
 // True while a download to a file runs; image loading yields connections and memory to it.
 bool downloading();
 // True once start() succeeded: the platform's network stack (PS5: libSceNet) is up.

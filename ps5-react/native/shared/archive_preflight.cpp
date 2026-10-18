@@ -713,7 +713,19 @@ Inspection inspect(const std::vector<std::string>& sources) {
   if (starts_with(magic, "\xFD" "7zXZ")) return {"tar.xz", fits(xz_window(in, 0))};
   if (starts_with(magic, "\x28\xB5\x2F\xFD")) return {"tar.zst", fits(zstd_window(in, 0))};
   if (std::string_view(reinterpret_cast<const char*>(ustar.data()), 5) == "ustar") return {"tar", {}};
-  if (starts_with(magic, "\x7F" "CNT")) return {"pkg", {}};
+  if (starts_with(magic, "\x7F" "CNT")) {
+    std::array<char, 36> content{};
+    std::string title;
+    if (in.read(0x40, content.data(), content.size()) && content[6] == '-') {
+      title.assign(content.data() + 7, 9);
+      const bool valid = std::all_of(title.begin(), title.begin() + 4, [](char c) { return c >= 'A' && c <= 'Z'; }) &&
+                         std::all_of(title.begin() + 4, title.end(), [](char c) { return c >= '0' && c <= '9'; });
+      if (!valid) title.clear();
+    }
+    return {"pkg", {}, title};
+  }
+  // A PS5 package opens on "\x7F" "FIH" where a PS4 one has "\x7F" "CNT": it installs the same way.
+  if (starts_with(magic, "\x7F" "FIH")) return {"pkg", {}};
   if (starts_with(magic, "PFSC")) return {"ffpfsc", {}};
   if (little_endian(magic.data(), 8) == 1) {
     std::array<unsigned char, 8> pfs{};

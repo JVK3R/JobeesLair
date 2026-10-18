@@ -11,7 +11,7 @@
 //
 // A link is
 //   active       it answered: 2xx, or redirects that end in one
-//   dead         gone: 404 or 410, Archive.org's 401/403 (an item restricted or taken down; see
+//   dead         looks gone (labelled and ranked last, never hidden): 404 or 410, Archive.org's 401/403 (an item restricted or taken down; see
 //                download-sources.js archiveRefusal), MediaFire's error page. Only when a second request a
 //                moment later says the same, so a blip on a CDN node does not bury a good link
 //   unreachable  no answer after three tries with growing pauses (timeouts, refused connections, 5xx)
@@ -60,14 +60,15 @@ import { sourceKind, webURL } from './download-sources.js';
   }
   function findLinks(release) {
     if (release.unavailableReason) return [];
-    const sources = release.parts ? release.parts.map((part) => part.sources?.[0]).filter(Boolean) : [release];
+    // A set's links carry their part number, so a broken one can be named ("part 3 is gone").
+    const sources = release.parts ? release.parts.filter((part) => part.sources?.[0]).map((part) => [part.sources[0], part.number]) : [[release, null]];
     const links = [];
-    for (const source of sources) {
+    for (const [source, part] of sources) {
       try {
         const kind = sourceKind(source);
         if (!CHECKED_KINDS.has(kind)) continue;
         const { url, host } = webURL(kind === "manifest" ? source.manifestUrl : source.browserUrl || source.url);
-        links.push({ url, host, kind });
+        links.push(part ? { url, host, kind, part } : { url, host, kind });
       } catch {
       }
     }
@@ -98,20 +99,19 @@ import { sourceKind, webURL } from './download-sources.js';
     let all = true;
     for (const link of links) {
       const record = recordOf(link.url);
-      if (record?.s === "dead") return { status: "dead", code: record.c, host: link.host, at: record.at };
-      if (record?.s === "unreachable") unreachable ?? (unreachable = { status: "unreachable", code: record.c, host: link.host, at: record.at });
+      const part = link.part ? { part: link.part } : {};
+      if (record?.s === "dead") return { status: "dead", code: record.c, host: link.host, at: record.at, ...part };
+      if (record?.s === "unreachable") unreachable ?? (unreachable = { status: "unreachable", code: record.c, host: link.host, at: record.at, ...part });
       else if (record?.s !== "active") all = false;
     }
     return unreachable ?? (all ? { status: "active", at: Math.min(...links.map((link) => recordOf(link.url).at)) } : null);
   }
-  // The reason a dead source gives, in the words the download queue and the resolver use for one.
-  var deadReason = (code) => code === "removed" ? "Source unavailable: the host removed the file. Choose another source." : `Source unavailable: HTTP ${code}. Choose another source.`;
-  // A release as the source list should treat it: a dead one unavailable (so it is never picked or fallen
-  // back to), an unreachable one ranked after the hosts that answer, an active one before those not checked.
-  function withVerdict(release, verdict) {
-    if (verdict.status === "dead") return { ...release, unavailableReason: deadReason(verdict.code), linkHealth: verdict };
-    return { ...release, health: verdict.status === "active" ? "ok" : "flaky", linkHealth: verdict };
-  }
+  // A release as the source list should treat it: a dead or unreachable one ranked after the links that
+  // answer, an active one before those not checked. A dead one stays in the list and can still be picked:
+  // the check is a HEAD from the console, and a link it calls gone may still download (as in 0.1.0, which
+  // had no check), so only a download that fails takes it out of the running.
+  var HEALTH = { active: "ok", unreachable: "flaky", dead: "dead" };
+  var withVerdict = (release, verdict) => ({ ...release, health: HEALTH[verdict.status], linkHealth: verdict });
   var stopped = () => Object.assign(new Error("Link check stopped."), { stopped: true });
   function createLinkHealth({
     http,

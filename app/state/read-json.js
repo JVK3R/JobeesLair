@@ -37,7 +37,9 @@
     "feed-mirrors.json": isRecord,
     "update-check.json": isRecord,
     "auto-update.json": isRecord,
-    "link-health.json": isRecord
+    "link-health.json": isRecord,
+    "debrid.json": isRecord,
+    "capture-hosts.json": isRecord
   };
 
 export { SAVED_FILES, isRecord, isStringList, readJSON };

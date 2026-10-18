@@ -22,11 +22,19 @@ import { archivePassword } from './archive-password.js';
     if (volumes[0] && volumes.at(-1) && first.bytes && last.bytes && Math.abs(last.bytes - first.bytes) <= first.bytes / 100 && (!declaredBytes || first.bytes * (parts.length - 1) + last.bytes < declaredBytes * 0.97)) return "last";
     return null;
   }
+  // (From Overdrive 1.0.6.) DLPSGAME's "backport files" downloads hold only the eboot and a few files to copy
+  // over the base game. The catalog sometimes numbers one as a part of a full backport archive; it is its
+  // own file, so it never joins a set (a set of them was missing volumes, or half another archive).
+  var PATCH_FILES = /backport[+_ -]*files/i;
+  var isPatchOnly = (release) => {
+    const first = release.parts?.[0]?.sources[0] ?? release;
+    return PATCH_FILES.test(`${first.url || ""} ${first.browserUrl || ""} ${release.label || ""}`);
+  };
   function releaseSets(releases) {
     const groups = /* @__PURE__ */ new Map();
     const output = [];
     for (const release of releases) {
-      const match = /\bpart\s*(\d+)\b/i.exec(release.label || release.volume || "");
+      const match = !isPatchOnly(release) && /\bpart\s*(\d+)\b/i.exec(release.label || release.volume || "");
       if (!match) {
         output.push(release);
         continue;
@@ -75,10 +83,65 @@ import { archivePassword } from './archive-password.js';
     }
     return output;
   }
+  // What a release is for a console on 13.60 with ShadowMount+ (the setup this app is confirmed on,
+  // INSTALLATION-GUIDE.md), from its format, then the words in its label and file names:
+  //   image    a disk image ShadowMount+ mounts as it is, or an archive of one; imageFormat says which:
+  //            exfat, ffpkg or ffpfs (null when only "image" can be said)
+  //   folder   an extracted game folder ("folder dump"), mounted by ShadowMount+ once unpacked
+  //   backport files ShadowMount+ lays over a game when it starts (download-queue.js puts them in
+  //            homebrew/backports)
+  //   fpkg     a fake package, installed by the console's package service: a PS5 one installs but does not
+  //            launch on firmware above 11.60 (ps5-react docs/NATIVE-API.md); a PS4 one is not confirmed
+  //   unknown  nothing says (an archive or file whose contents show only once downloaded)
+  // compatible1360: true for image, folder and backport, false for a PS5 fpkg, null when it cannot be said.
+  var IMAGE_FORMATS = /* @__PURE__ */ new Set(["exfat", "ffpkg", "ffpfs", "ffpfsc"]);
+  var PACKAGE_FORMATS = /* @__PURE__ */ new Set(["pkg", "fpkg"]);
+  // A word in a label or file name: anything but a letter or digit separates (file names join words with
+  // "_", which \b counts as part of a word: "Game_ShadowMount.rar").
+  var word = (body) => new RegExp(`(?<![a-z0-9])(?:${body})(?![a-z0-9])`, "i");
+  var FOLDER_WORDS = word("folder[\\s_.-]*dump|shadow[\\s_.-]*mount");
+  var IMAGE_WORDS = word("exfat|ffpkg|ffpfsc?");
+  var BACKPORT_WORDS = word("back[\\s_-]*port");
+  var FFPKG_WORD = word("ffpkg"), FFPFS_WORD = word("ffpfsc?"), EXFAT_WORD = word("exfat");
+  // Which image a format or a name says: exfat, ffpkg or ffpfs (ffpfsc is a compressed ffpfs), else null.
+  function imageFormatOf(format, text) {
+    const named = IMAGE_FORMATS.has(format) ? format : FFPKG_WORD.test(text) ? "ffpkg" : FFPFS_WORD.test(text) ? "ffpfs" : EXFAT_WORD.test(text) ? "exfat" : null;
+    return named === "ffpfsc" ? "ffpfs" : named;
+  }
+  // "FPKG" as a word (so not inside "FFPKG"), or a .pkg name ("Game.pkg", "Game.pkg.rar"; not ".ffpkg").
+  var PACKAGE_WORDS = word("fpkg|(?<=\\.)pkg");
+  function textOf(release) {
+    const sources = release.parts ? release.parts.flatMap((part) => part.sources.slice(0, 1)) : [release];
+    const names = sources.flatMap((source) => [source.filename, source.volume, (source.url || source.browserUrl || "").split(/[?#]/)[0].split("/").pop()]);
+    return [release.label, ...names].filter((value) => typeof value === "string" && value).map((value) => {
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
+    }).join(" ");
+  }
+  function releaseType(release, platform) {
+    const format = String(release.format || "").toLowerCase();
+    const text = textOf(release);
+    let dumpType = "unknown";
+    if (PACKAGE_FORMATS.has(format)) dumpType = "fpkg";
+    else if (BACKPORT_WORDS.test(release.label || "")) dumpType = "backport";
+    else if (IMAGE_FORMATS.has(format)) dumpType = "image";
+    else if (FOLDER_WORDS.test(text)) dumpType = "folder";
+    else if (IMAGE_WORDS.test(text)) dumpType = "image";
+    else if (PACKAGE_WORDS.test(text)) dumpType = "fpkg";
+    const system = platform || release.platform || null;
+    const compatible1360 = ["image", "folder", "backport"].includes(dumpType) ? true : dumpType === "fpkg" && system === "ps5" ? false : null;
+    return { dumpType, imageFormat: dumpType === "image" ? imageFormatOf(format, text) : null, compatible1360, platform: system };
+  }
+  // The releases with their type (releaseType) set; `platform` is the game's ("ps5" or "ps4").
+  var withReleaseTypes = (releases, platform) => releases.map((release) => ({ ...release, ...releaseType(release, platform) }));
   var link = (release) => {
     const first = release.parts?.[0]?.sources[0] ?? release;
     return first.manifestUrl || first.url || first.browserUrl;
   };
-  var sameRelease = (saved, release) => saved.id === release.id || Boolean(link(saved)) && link(saved) === link(release) && saved.parts?.length === release.parts?.length;
+  // A download through TorBox (state/debrid.js) is its own, never the same link's plain one.
+  var sameRelease = (saved, release) => saved.id === release.id || Boolean(link(saved)) && link(saved) === link(release) && saved.parts?.length === release.parts?.length && Boolean(saved.debrid) === Boolean(release.debrid);
 
-export { releaseSets, sameRelease };
+export { isPatchOnly, releaseSets, releaseType, sameRelease, withReleaseTypes };

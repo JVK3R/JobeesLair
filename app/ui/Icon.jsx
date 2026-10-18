@@ -1,6 +1,6 @@
 // ../pub-game-store/native/ui/Icon.jsx
 // reconstructed from the esbuild bundle in eboot.bin
-// MODIFIED: settings and languages icons.
+// MODIFIED: settings and languages icons; zap (TorBox).
 
 import { jsx } from 'react/jsx-runtime';
 import { Path, Svg } from '@ps5-react/core';
@@ -23,6 +23,7 @@ import { colors } from './colors.js';
     x: ["M18 6 6 18", "m6 6 12 12"],
     download: ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "m7 10 5 5 5-5", "M12 15V3"],
     play: ["M6 3 20 12 6 21Z"],
+    zap: ["M13 2 3 14h9l-1 8 10-12h-9l1-8Z"],
     pause: [
       "M7 4h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z",
       "M15 4h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z"

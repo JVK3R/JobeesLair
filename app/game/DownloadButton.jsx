@@ -10,7 +10,7 @@ import { Choice, TextAction } from './Choice.jsx';
 import { DISABLED, DownloadLabel, statusLine } from './DownloadLabel.jsx';
 import { MoreOptions, ProblemNote } from './DownloadProblem.jsx';
 import { canDownload, spaceAdvice, spaceNeeded } from './releases.js';
-import { describeSource, fallbacks, isCdnProvider, preferredRelease } from './sources.js';
+import { captureStanding, describeSource, fallbacks, isBackport, isCdnProvider, isDlc, labelFirmware, preferredRelease } from './sources.js';
 import { useDownload } from './useDownload.js';
 import { useFreeSpace } from './useFreeSpace.js';
 import { useShadowMount } from './useShadowMount.js';
@@ -19,6 +19,10 @@ import { useT } from '../i18n/index.js';
 import { editionsOf } from '../state/catalog.js';
 import { BUSY, COMPLETE } from '../state/download-queue.js';
 import { checkLinksNow, useHealthyReleases } from '../state/links.js';
+import { debridSource, debridSupports } from '../state/debrid.js';
+import { deviceFacts } from '../state/device.js';
+import { consoleFirmware, firmwareText, ps5FakePackagesLaunch } from '../state/firmware.js';
+import { isPatchOnly } from '../state/release-sets.js';
 import { readinessOf, readinessText } from '../state/readiness.js';
 import { downloadQueue, driveName, freeBytes, storageRoots } from '../state/downloads.js';
 import { useNavActions } from '../state/nav.jsx';
@@ -40,15 +44,28 @@ import { colors, radius } from '../ui/colors.js';
     // The game's sources with what is known of their links (state/links.js): a dead one is unavailable,
     // one that does not answer ranks after those that do.
     const releases = useHealthyReleases(game.releases || []);
-    const [selected, setSelected] = (0, useState)(() => {
+    // The source a download of this game already has (one through TorBox is its source's id + "~torbox",
+    // state/debrid.js), else the preferred one.
+    const [initial] = (0, useState)(() => {
       let jobs = [];
       try {
         jobs = downloadQueue().snapshot().filter((job3) => job3.gameId === game.id);
       } catch {
       }
-      const owned2 = jobs.map((job3) => releases.findIndex((release2) => release2.id === (job3.requestedId ?? job3.release.id))).find((index) => index >= 0);
-      return owned2 ?? preferredRelease(releases);
+      const owned2 = jobs.map((job3) => {
+        const id = job3.requestedId ?? job3.release.id;
+        const index = releases.findIndex((release2) => release2.id === id.replace(/~torbox$/, ""));
+        return index >= 0 ? { index, debrid: id.endsWith("~torbox") } : null;
+      }).find(Boolean);
+      if (owned2) return owned2;
+      // With TorBox set up, a browser-only source it can take goes through TorBox from the start: no browser.
+      const index = preferredRelease(releases);
+      return { index, debrid: Boolean(releases[index]) && describeSource(releases[index]).group === "browser" && debridSupports(releases[index]) };
     });
+    const [selected, setSelected] = (0, useState)(initial.index);
+    // Whether the picked source goes through TorBox (its TorBox button in the source list).
+    const [viaDebrid, setViaDebrid] = (0, useState)(initial.debrid);
+    const [startDebrid, setStartDebrid] = (0, useState)(false);
     const [roots] = (0, useState)(() => {
       try {
         return storageRoots();
@@ -63,21 +80,34 @@ import { colors, radius } from '../ui/colors.js';
         return !need2 || freeBytes(root2) >= need2 + MARGIN2;
       }));
     });
-    const release = releases[selected];
+    // Through TorBox, the source's TorBox form (the same object for the same source); its mirrors stay the
+    // fallbacks, so a TorBox failure falls back to downloading them directly.
+    const release = viaDebrid && releases[selected] ? debridSource(releases[selected]) : releases[selected];
     const alternatives = (0, useMemo)(() => fallbacks(releases, selected), [releases, selected]);
     const download = useDownload(game, release, roots[storage], alternatives);
     const { progress, restart, remove, deleteFromDisk, job: job2, error: error2 } = download;
-    // The source picked for the gamer turns out gone or silent: the best one that answers takes its place,
-    // unless they picked it themselves or a download of it exists.
+    // The source picked for the gamer turns out gone or silent: the best one takes its place if the check
+    // found it working, unless they picked it themselves or a download of it exists. One the check found gone
+    // also gives way to a source the check cannot ask (a FileKeeper or MediaFire page the app reads itself),
+    // never to one that needs the console's browser. Otherwise the pick stays (as in 0.1.0): the check can be
+    // wrong, and an unchecked host is no safer bet.
     const chosen = (0, useRef)(false);
     const [switched, setSwitched] = (0, useState)(null);
     (0, useEffect)(() => {
       const health = release?.linkHealth?.status;
       if (chosen.current || job2 || health !== "dead" && health !== "unreachable") return;
-      const best = preferredRelease(releases);
+      let best = preferredRelease(releases);
+      // The best overall needs the browser: the best of those the app downloads itself is looked at instead.
+      if (health === "dead" && releases[best] && describeSource(releases[best]).group === "browser") {
+        const pool = releases.map((item, index) => ({ item, index })).filter(({ item }) => describeSource(item).group !== "browser" && !item.unavailableReason && item.linkHealth?.status !== "dead" && !isDlc(item) && !isBackport(item));
+        if (pool.length) best = pool[preferredRelease(pool.map(({ item }) => item))].index;
+      }
       const next = releases[best];
-      if (best === selected || !next || next.unavailableReason || health === "unreachable" && next.linkHealth?.status !== "active") return;
-      setSwitched(t2(health === "dead" ? "links.switched" : "links.switchedSlow", { from: describeSource(release).host, to: describeSource(next).host }));
+      const sure = next?.linkHealth?.status === "active" || health === "dead" && Boolean(next) && !next.linkHealth && describeSource(next).group !== "browser";
+      if (best === selected || !next || next.unavailableReason || !sure) return;
+      const [from, to] = [describeSource(release).host, describeSource(next).host];
+      const same = from.toLowerCase() === to.toLowerCase();
+      setSwitched(t2(health === "dead" ? same ? "links.switchedSameHost" : "links.switched" : same ? "links.switchedSlowSameHost" : "links.switchedSlow", { from, to }));
       setSelected(best);
     }, [releases]);
     const free = useFreeSpace(roots, download.status, !job2);
@@ -157,24 +187,66 @@ import { colors, radius } from '../ui/colors.js';
     const [plain, line] = statusLine(stale ? download.status : settled ? "installed" : shown, progress, sizeGb);
     const state = ready && !stale && shown !== "finishing" ? readinessText(ready) : plain;
     const detail2 = sizeless ? t2("download.soFar", { size: formatBytes(job2?.written || 0) }) : line;
+    // How the chosen source's link stands, after its name and host: nothing while it answers or is unchecked.
+    const linkTag = release?.linkHealth?.status === "dead" ? t2("links.badge.dead") : release?.linkHealth?.status === "unreachable" ? t2("links.badge.unreachable") : null;
+    // A PS5 fake package installs but won't launch above 11.60 (release-sets.js releaseType), so the line
+    // under the button says so, and a note explains it before anything is queued; the same for a host that
+    // is not answering. A console at 11.60 or below is not warned.
+    const wontLaunch = release?.compatible1360 === false && ps5FakePackagesLaunch(deviceFacts().firmware) !== true;
+    const compatTag = wontLaunch ? t2("release.compat.fpkg") : null;
+    // The check found every source's link gone: said plainly, though the download can still be tried.
+    const allGone = !job2 && release?.linkHealth?.status === "dead" && releases.every((item) => item.unavailableReason || item.linkHealth?.status === "dead");
+    // A browser source on a host whose captures fail on the console (state/capture-hosts.js): said before
+    // the gamer is sent to its page, with TorBox as the way round when it can take it.
+    const hardHost = !release?.debrid && captureStanding(release ?? {}) === "hard";
+    // Tips, only when they matter and in this same note (Overdrive shows a screen of them before every
+    // download): files that are not the whole game, a label asking for newer firmware than the console
+    // reports (said as the label's, since a jailbreak can change what the console reports), and what to do
+    // on a browser host's page. Below every warning above.
+    const tip = (() => {
+      if (!release) return null;
+      if (isPatchOnly(release)) return { title: t2("tips.patch.title"), action: t2("tips.patch.action") };
+      if (isDlc(release)) return { title: t2("tips.dlc.title"), action: t2("tips.dlc.action") };
+      const need = labelFirmware(release);
+      const here = consoleFirmware(deviceFacts().firmware);
+      if (need !== null && here && here[0] < need) return { title: t2("tips.firmware.title", { need: `${need}.xx` }), action: t2("tips.firmware.action", { firmware: firmwareText(here) }) };
+      if (!release.debrid && describeSource(release).group === "browser") return { title: t2("tips.browser.title", { host: describeSource(release).host }), action: t2(captureStanding(release) === "works" ? "tips.browser.capture" : "tips.browser.action") };
+      return null;
+    })();
+    const sourceWarning = job2 || !release ? null : allGone ? { title: t2("links.allGone.title"), action: t2("links.allGone.action") } : wontLaunch ? { title: t2("release.fpkg.title"), action: t2("release.fpkg.action") } : hardHost ? { title: t2("capture.hard.title", { host: describeSource(release).host }), action: t2(debridSupports(release) ? "capture.hard.torbox" : "capture.hard.action") } : release.linkHealth?.status === "unreachable" ? { title: t2("links.unreachable.title", { host: describeSource(release).host }), action: t2("links.unreachable.action") } : tip;
     const problem = browser ? {
       title: step ? t2("download.browser.partTitle", step) : t2("download.browser.title"),
       action: t2("download.browser.action")
-    } : error2 ? explainError(error2, Boolean(job2?.release.parts)) : lacking ? { title: t2("download.noFit"), action: spaceAdvice(roots, free, storage, need) } : shadowMount || status === "installed" ? null : { title: t2("shadowMount.offTitle"), action: t2("shadowMount.offAction") };
+    } : error2 ? explainError(error2, Boolean(job2?.release.parts)) : lacking ? { title: t2("download.noFit"), action: spaceAdvice(roots, free, storage, need) } : sourceWarning ? sourceWarning : shadowMount || status === "installed" ? null : { title: t2("shadowMount.offTitle"), action: t2("shadowMount.offAction") };
     const notice = job2?.message || download.notice || switched;
-    const pick2 = (index) => {
-      if (index !== selected && job2 && !written && ["awaiting-browser", "failed", "paused"].includes(job2.state)) downloadQueue().remove(job2.id);
+    const pick2 = (index, debrid = false) => {
+      if ((index !== selected || debrid !== viaDebrid) && job2 && !written && ["awaiting-browser", "failed", "paused"].includes(job2.state)) downloadQueue().remove(job2.id);
       chosen.current = true;
       setSwitched(null);
       setSelected(index);
+      setViaDebrid(debrid);
     };
+    // A source's TorBox button: that source through TorBox, started at once.
+    const pickDebrid = (index) => {
+      pick2(index, true);
+      setStartDebrid(true);
+    };
+    // Once the button shows the TorBox form and its own download (none yet, or one paused or failed).
+    (0, useEffect)(() => {
+      if (!startDebrid || !release?.debrid) return;
+      if (job2 && (job2.requestedId ?? job2.release.id) !== release.id) return;
+      setStartDebrid(false);
+      if (["idle", "paused", "failed"].includes(status)) begin();
+    }, [startDebrid, release?.id, job2?.id, status]);
     const chooseSource = (from) => onRequestDialog({
       kind: "source",
       title: game.title,
       // The catalog's own: the picker applies link health itself, so a check run from it shows as it goes.
       releases: game.releases || [],
       selected,
-      submit: pick2,
+      submit: (index) => pick2(index),
+      // A TorBox button on each source TorBox can take, once its API key is set (state/debrid.js).
+      onDebrid: pickDebrid,
       from,
       editions,
       current: game.id,
@@ -182,8 +254,6 @@ import { colors, radius } from '../ui/colors.js';
       // Every link asked again, the dead ones too.
       checkLinks: () => checkLinksNow(game.id, game.releases || [])
     });
-    // How the chosen source's link stands, after its name and host: nothing while it answers or is unchecked.
-    const linkTag = release?.linkHealth?.status === "dead" ? t2("links.badge.dead") : release?.linkHealth?.status === "unreachable" ? t2("links.badge.unreachable") : null;
     const saved = job2?.written ? formatBytes(job2.written) : null;
     const removal = { icon: "x", label: t2("download.remove.label"), detail: t2("download.remove.detail"), onSelect: remove };
     const deletion = job2 && {
@@ -297,7 +367,8 @@ import { colors, radius } from '../ui/colors.js';
             detail: [t2("sources.cdnFastest"), release.sizeBytes && formatBytes(release.sizeBytes)].filter(Boolean).join(" \xB7 ")
           } : null,
           // What the gamer gets first ("Disk image · USA v1.10"), then where from and how big.
-          text: [describeSource(release).name, describeSource(release).host, release.sizeBytes && formatBytes(release.sizeBytes), linkTag].filter(Boolean).join(" \xB7 ")
+          // A warning (won't launch here, offline) right after the name: the line is cut to the button's width.
+          text: [describeSource(release).name, compatTag, linkTag, describeSource(release).host, release.sizeBytes && formatBytes(release.sizeBytes)].filter(Boolean).join(" \xB7 ")
         }
       ) : null,
       !job2 ? /* @__PURE__ */ (0, jsx)(

@@ -11,6 +11,7 @@ typedef struct {
     int pid;
     int64_t started_seconds, started_microseconds;
     char name[20];
+    bool unpaced; /* The baseline pass, before the browser is in front, reads without the delay. */
     atomic_bool *cancel;
     volatile sig_atomic_t *interrupted;
     time_t deadline;

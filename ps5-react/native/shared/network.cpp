@@ -130,6 +130,8 @@ struct Transfer {
   bool length_known = false;
   std::uint64_t range_begin = 0, range_end = 0, range_total = 0;
   bool content_range = false, probe = false, paused = false, active = false, draining = false, redirected = false, cut = false;
+  // Paused by the rate limit until its shared budget refills (paused waits for a free disk block).
+  bool rate_paused = false;
   // A 200 or 206 that is not the range asked for but carries the file's validators: a proxy or a busy
   // node answering oddly, retried a few times rather than taken for a changed file.
   bool glitch = false;
@@ -641,6 +643,7 @@ public:
   void cancel(std::uint32_t id);
   std::vector<Snapshot> poll();
   bool running() const { return running_; }
+  void set_rate_limit(std::uint64_t bytes_per_second) { rate_limit_ = bytes_per_second; }
 private:
   std::mutex mutex_, disk_mutex_;
   std::condition_variable wake_, disk_wake_, sync_wake_;
@@ -653,6 +656,14 @@ private:
   std::atomic<bool> stopping_{false}, writer_stopping_{false};
   std::atomic<unsigned> write_max_us_{0}, sync_max_us_{0};
   std::atomic<std::uint64_t> write_calls_{0}, write_bytes_{0};
+  // The rate limit: a budget of bytes refilled each pass of the transfer loop, which callbacks spend.
+  // Only the network thread touches the budget; the limit itself is set from JavaScript's thread.
+  std::atomic<std::uint64_t> rate_limit_{0};
+  double rate_budget_ = 0;
+  Clock::time_point rate_refilled_{};
+  std::size_t rate_turn_ = 0;
+  void refill_rate(Clock::time_point now);
+  void resume_rate_paused(Job& job);
   std::uint64_t perform_us_ = 0;
   pthread_t network_thread_{}, sync_thread_{};
   std::array<pthread_t, writer_count> writer_threads_{};
@@ -892,6 +903,29 @@ std::size_t Service::header(char* data, std::size_t size, std::size_t count, voi
   return length;
 }
 
+void Service::refill_rate(Clock::time_point now) {
+  const auto limit = static_cast<double>(rate_limit_.load(std::memory_order_relaxed));
+  const double seconds = std::min(1.0, std::chrono::duration<double>(now-rate_refilled_).count());
+  rate_refilled_ = now;
+  if (!limit) { rate_budget_ = 0; return; }
+  // At most a quarter second's worth (256 KiB at least, above any one callback) banks up.
+  rate_budget_ = std::min(rate_budget_+limit*seconds, std::max(limit/4, 256.0*1024));
+}
+
+// Resumes transfers the limit paused, starting one further along each pass so none waits long.
+void Service::resume_rate_paused(Job& job) {
+  const bool capped = rate_limit_.load(std::memory_order_relaxed) != 0;
+  for (std::size_t step = 0; step < transfers_.size(); ++step) {
+    Transfer& t = transfers_[(rate_turn_+step) % transfers_.size()];
+    if (!t.active || !t.rate_paused) continue;
+    if (capped && rate_budget_ < 64.0*1024) { rate_turn_ = (rate_turn_+step) % transfers_.size(); return; }
+    t.rate_paused = false;
+    const auto result = curl_easy_pause(t.curl, CURLPAUSE_CONT);
+    if (result != CURLE_OK) { job.fail(curl_easy_strerror(result)); return; }
+  }
+  rate_turn_ = (rate_turn_+1) % transfers_.size();
+}
+
 std::size_t Service::body(char* data, std::size_t size, std::size_t count, void* opaque) {
   auto& t = *static_cast<Transfer*>(opaque);
   if (size && count > block_size/size) { t.error = "unexpected callback block size"; return 0; }
@@ -924,6 +958,11 @@ std::size_t Service::body(char* data, std::size_t size, std::size_t count, void*
     const std::size_t keep = t.cut ? static_cast<std::size_t>(std::min<std::uint64_t>(length, limit-t.accepted)) : length;
     if (!t.cut && (t.accepted > limit || length > limit-t.accepted)) { t.error = "response exceeds expected size"; return 0; }
     if (!keep) return length;
+    if (!job.request.unlimited && t.owner->rate_limit_.load(std::memory_order_relaxed)) {
+      // Over the budget: curl hands these bytes back once the transfer loop resumes the transfer.
+      if (t.owner->rate_budget_ < static_cast<double>(keep)) { t.rate_paused = true; return CURL_WRITEFUNC_PAUSE; }
+      t.owner->rate_budget_ -= static_cast<double>(keep);
+    }
     if (t.block && block_size-t.fill < keep) t.owner->flush(t);
     if (!t.block) {
       t.block = t.owner->take_block();
@@ -946,7 +985,7 @@ bool Service::configure(Transfer& t) {
   t.headers = nullptr; t.status = 0; t.header_bytes = 0;
   t.etag.clear(); t.last_modified.clear(); t.encoding.clear(); t.error.clear(); t.content_type.clear();
   t.response_headers.clear(); t.html_prefix.clear(); t.sample.clear();
-  t.content_range = false; t.length_known = false; t.paused = false; t.retry_after = 0; t.glitch = false;
+  t.content_range = false; t.length_known = false; t.paused = false; t.rate_paused = false; t.retry_after = 0; t.glitch = false;
   t.requested = t.length; t.cut = false;
   Job& job = *t.job;
   bool ok = true;
@@ -1396,7 +1435,11 @@ void Service::run_job(const std::shared_ptr<Job>& job) {
   for (Transfer& t : transfers_) t.probe = false;
   if (prepared && !job->cancelled && !job->recovering) {
     { std::lock_guard lock(job->mutex); job->snapshot.state = "downloading"; }
-    const unsigned limit = job->ranged ? job->request.connections : 1;
+    // A capped download needs few connections: about one per MB/s, so each gets bytes often enough to
+    // stay over curl's low-speed cutoff (1 byte/s for 30 s) between its turns.
+    const std::uint64_t capped = job->request.unlimited ? 0 : rate_limit_.load();
+    const unsigned limit = !job->ranged ? 1 : !capped ? job->request.connections :
+      std::min(std::max(static_cast<unsigned>(capped/(1024*1024)), 2u), job->request.connections);
     const unsigned initial = job->request.adaptive ? std::min(8u, limit) : limit;
     std::vector<Window> windows;
     const auto window_for = [&](const std::string& url) {
@@ -1444,6 +1487,8 @@ void Service::run_job(const std::shared_ptr<Job>& job) {
         platform_log("download: resumed after a suspension; ranges it cut retry without counting");
       }
       last_pass = now; last_wall = wall;
+      refill_rate(now);
+      resume_rate_paused(*job);
       unsigned in_flight = 0;
       for (Transfer& t : transfers_) if (t.active || t.draining) ++in_flight;
       if (job->request.adaptive) for (Window& w : windows) w.grow(now, limit);
@@ -1648,6 +1693,7 @@ void stop() { service.stop(); }
 std::uint32_t enqueue(Request request, std::string& error) { return service.enqueue(std::move(request), error); }
 void cancel(std::uint32_t id) { service.cancel(id); }
 std::vector<Snapshot> poll() { return service.poll(); }
+void set_rate_limit(std::uint64_t bytes_per_second) { service.set_rate_limit(bytes_per_second); }
 bool downloading() { return downloading_file; }
 bool running() { return service.running(); }
 const char* version() { return curl_version(); }
@@ -1661,6 +1707,7 @@ std::uint32_t enqueue(Request, std::string& error) {
 }
 void cancel(std::uint32_t) {}
 std::vector<Snapshot> poll() { return {}; }
+void set_rate_limit(std::uint64_t) {}
 bool downloading() { return false; }
 bool running() { return false; }
 const char* version() { return "disabled"; }

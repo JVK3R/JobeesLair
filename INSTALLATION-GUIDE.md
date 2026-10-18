@@ -1,6 +1,6 @@
 # Jobee'sLair installation guide
 
-Jobee'sLair 0.2.3 · Title ID `PPSA99058` · created by JVK3R
+Jobee'sLair 0.3.0 · Title ID `PPSA99058` · created by JVK3R
 
 This guide takes you from the `.exfat` image to a working install. It then covers pairing your
 phone with the companion (port `34177`, a PIN you choose) and adding your own JSON catalog feeds

@@ -509,6 +509,13 @@ export const Downloads = {
   enqueueManifest({manifest, destination, ...options}) {
     return Downloads.enqueue({...options, ...normalizeDownloadManifest(manifest), destination});
   },
+  /** Bytes per second every file download shares, 0 for no limit (ABI v21). It applies at once,
+   * to running downloads too; one enqueued with `unlimited: true` (an app's own update) is exempt. */
+  setRateLimit(bytesPerSecond) {
+    if (!Number.isFinite(bytesPerSecond) || bytesPerSecond < 0)
+      throw new TypeError('Downloads.setRateLimit: expected bytes per second, 0 for no limit.');
+    host().network.setRateLimit(Math.floor(bytesPerSecond));
+  },
   get transportVersion() { return host().network.version(); },
 };
 
@@ -620,8 +627,8 @@ export const LocalServer = Object.freeze({
 
 /** Read-only, filename-bound Vikingfile capture on PS5; no browser data is retained. */
 export const BrowserCapture = Object.freeze({
-  capture({prefix = 'https://vikingfile.com/d/', suffix, timeoutSeconds = 180}) {
-    const id = host().browser.capture(prefix, suffix, timeoutSeconds);
+  capture({prefix = 'https://vikingfile.com/d/', suffix, timeoutSeconds = 180, rejected = [], resume = false}) {
+    const id = host().browser.capture(prefix, suffix, timeoutSeconds, rejected, Boolean(resume));
     return networkTask(id, 'BrowserCapture.capture', '', 'browser');
   },
 });

@@ -6,6 +6,7 @@ import '../assets/Exo2.ttf';
 import { jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useState } from 'react';
 import { URLDialog } from '../downloads/URLDialog.jsx';
+import { BrowserCaptureDialog } from '../downloads/BrowserCaptureDialog.jsx';
 import { About } from './About.jsx';
 import { GameFacts } from './GameFacts.jsx';
 import { GameHero } from './GameHero.jsx';
@@ -69,6 +70,8 @@ import { colors, radius } from '../ui/colors.js';
       const timer = setTimeout(() => setToast(null), TOAST_MS);
       return () => clearTimeout(timer);
     }, [toast]);
+    // A download of this game whose file link is being captured from the browser (BrowserCaptureDialog).
+    const [captureJob, setCaptureJob] = (0, useState)(null);
     (0, useEffect)(() => {
       let known;
       const queued = (jobs) => jobs.filter((job2) => job2.gameId === game.id).length;
@@ -77,6 +80,7 @@ import { colors, radius } from '../ui/colors.js';
           const count = queued(jobs);
           if (known !== void 0 && count > known) setToast("started");
           known = count;
+          setCaptureJob(jobs.find((job2) => job2.gameId === game.id && job2.captureState) || null);
         });
       } catch {
         return void 0;
@@ -110,6 +114,7 @@ import { colors, radius } from '../ui/colors.js';
         setDialog(null);
         focusLater(dialog.from ?? `download:${game.id}`);
       } }) : null,
+      captureJob ? /* @__PURE__ */ (0, jsx)(BrowserCaptureDialog, { job: captureJob }, captureJob.id) : null,
       /* @__PURE__ */ (0, jsx)(AnimatePresence, { children: toast ? /* @__PURE__ */ (0, jsx)(InstallToast, { game, started: toast === "started" }, toast) : null })
     ] }) });
   }

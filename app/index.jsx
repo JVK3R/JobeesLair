@@ -27,6 +27,7 @@ import { downloadQueue } from './state/downloads.js';
 import { colors, useThemeEpoch } from './ui/colors.js';
 import { watchQueue } from './ui/lightBar.js';
 import { startInstaller, startUpdateChecks } from './state/update.js';
+import { applySpeedLimit } from './state/speed-limit.js';
 import { NavProvider, useIsImmersive, useNavActions, useNavState } from './state/nav.jsx';
 import { StoreFreeze, StoreProvider } from './state/store.jsx';
 import { Header } from './ui/Header.jsx';
@@ -117,6 +118,8 @@ import { logical } from './ui/scale.js';
     // This build says it started right away (state/update.js startInstaller): after an update the updater
     // waits for that, and the startup notice below can stay up for as long as the player likes.
     (0, useEffect)(() => startInstaller(), []);
+    // The saved download speed limit, handed to the engine before any download starts.
+    (0, useEffect)(() => applySpeedLimit(), []);
     (0, useEffect)(() => {
       if (!booted) return void 0;
       const id = setTimeout(() => setCurtain(false), 1200);
