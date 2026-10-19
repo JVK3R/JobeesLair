@@ -12,6 +12,8 @@
 import { jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useState } from 'react';
 import { AppRegistry, FocusScope, View, motion } from '@ps5-react/core';
+// First of the app's own imports: the earlier version's files are carried over before any module reads one.
+import { migrationLog } from './state/title-migration-run.js';
 import { BrowsePage } from './browse/BrowsePage.jsx';
 import { DownloadsScreen } from './downloads/DownloadsScreen.jsx';
 import { FilesScreen } from './files/FilesScreen.jsx';
@@ -129,6 +131,8 @@ import { useInterfaceSounds } from './ui/sounds.js';
       } catch {
       }
       installLogger(facts);
+      // What the title-ID migration did as the app loaded, now that the debug log is open.
+      for (const line of migrationLog) console.log(line);
     }, []);
     (0, useEffect)(() => startInstaller(), []);
     // The saved download speed limit, handed to the engine before any download starts.

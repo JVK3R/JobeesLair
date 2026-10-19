@@ -12,351 +12,144 @@
 
 <p align="center">
   <b>An open-source homebrew download manager for the PS5.</b><br>
-  Version 0.4.0 · Title ID <code>PPSA99058</code> · created by JVK3R<br>
+  Version 0.4.1 · Title ID <code>PPSA99471</code> · created by JVK3R<br>
   <i>Proudly created alongside AI by JVK3R</i>
 </p>
 
 <p align="center">
-  <a href="https://buymeacoffee.com/jvk3r"><img src="https://img.shields.io/badge/%E2%98%95_Support_the_project-Buy_me_a_coffee-FFDD00?style=flat-square&labelColor=1f2937" alt="Support the project: buy me a coffee (optional)"></a>
-</p>
-
-<p align="center">
-  <a href="INSTALLATION-GUIDE.md">Installation guide</a> ·
-  <a href="#why-this-project-exists">Why it exists</a> ·
-  <a href="#features">Features</a> ·
+  <a href="https://github.com/JVK3R/JobeesLair/releases/latest"><b>Download</b></a> ·
+  <a href="INSTALLATION-GUIDE.md">Install guide</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
   <a href="FEEDS.md">Catalog feeds</a> ·
-  <a href="#origin-and-independence">Origin</a> ·
-  <a href="#content-neutrality--dmca-notice">Content neutrality &amp; DMCA</a> ·
-  <a href="#build-it-yourself">Build it yourself</a> ·
-  <a href="#support-the-project">Support</a> ·
-  <a href="#credits">Credits</a>
+  <a href="https://buymeacoffee.com/jvk3r">☕ Support</a>
 </p>
 
 > [!WARNING]
-> **You are responsible for what you download.** Jobee'sLair downloads files directly to your
-> console from the sources you point it at. Only download content you **legally own** or have
-> **explicit permission** to access: your own backups, homebrew, freeware, and content whose
-> rights holder allows it. Do not use Jobee'sLair to obtain games or other material you have no
-> right to. The developer does not host or distribute any copyrighted content (see the
-> [Content Neutrality &amp; DMCA Notice](#content-neutrality--dmca-notice)), and you alone are
-> accountable for complying with the laws where you live.
+> **You are responsible for what you download.** Only download content you legally own or have
+> permission to access: your own backups, homebrew, freeware. Jobee'sLair hosts and distributes
+> nothing; see the [Content Neutrality & DMCA Notice](#content-neutrality--dmca-notice).
 
 <p align="center">
-  <img src=".github/readme/home.png" alt="The Jobee'sLair home screen: a floating navigation dock, a featured game and rows of rounded cards" width="100%">
+  <img src=".github/readme/home.png" alt="The Jobee'sLair home screen: a floating navigation dock, a featured game and rows of cards" width="100%">
 </p>
 
-## Why this project exists
+Jobee'sLair is a catalog browser and download manager that runs on a jailbroken PS5 with
+[ShadowMount+](https://github.com/drakmor/ShadowMountPlus). It is open source so it can't be locked away
+or disappear: anyone can read, build, fix and fork it.
 
-Jobee'sLair is in **active, ongoing development**. The goal is simple: to become the best
-open-source homebrew download manager on the PS5, and to stay that way.
+## What it does
 
-It is open source because tools like this should never disappear or be locked away. Closed
-homebrew can vanish overnight: a developer moves on, a server shuts down, a download link dies,
-and everyone who relied on it is left with nothing. With every line of source public, anyone can
-audit it, build it, fix it, fork it and carry it forward. Nobody, including its own developer, can
-take it away from the people who use it.
-
-### Where we stand
-
-We believe that **people who buy hardware should own it**. Sony has repeatedly made choices that
-work against its own customers: purchased digital content that can be pulled from libraries,
-consoles that will not run software their owners write themselves, ever more of the experience
-gated behind subscriptions and online services that can be switched off, and repair and
-preservation made harder rather than easier. We think that is the wrong direction.
-
-Jobee'sLair is part of pushing back: open tools, documented in public, that give owners more
-control over the machines they paid for and help preserve the ability to use them long after a
-storefront or service is gone. We want **change and freedom for all gamers**: the freedom to run
-your own software, to keep and back up what you own, and to decide how your own console is used.
-
-Pushing for freedom is not a licence to take other people's work. Supporting the developers and
-artists who make the games you love is part of the same fight. **Download only what you own or
-are allowed to download.**
-
-## Features
-
-- **A modern, controller-first interface**: a floating navigation dock, rounded cards that rise
-  smoothly under the accent focus frame, screens that slide in, and a deep dark theme with monospace
-  telemetry readouts where numbers matter
-- **A live library counter** in the dock and on the dashboard: total indexed titles and how many of
-  them have a direct download, counted across the bundled catalog and every feed you added, and
-  updated as feeds refresh or fall back to a mirror
-- **Downloads dashboard**: a live telemetry band (throughput with a one-minute trace, overall queue
-  progress and time left, counts by state, free space per drive) above a card for every job, with
-  progress meters, speed, and Pause, Resume, Retry, Install and Cancel controls
-- **Downloads straight to the console**, to internal storage or a USB or extended drive, with the
-  drive's space read off the interface thread so a sleeping drive cannot freeze the screen
-- **Link health**: a game's download links are checked in the background while you look at it (a
-  HEAD request each, only while no download needs the network), or all at once with **Check link
-  health** in its source list. A link that looks gone (404 or 410, confirmed by a second request) is
-  tagged **Broken link** and ranked last, but stays in the list and can still be tried; one that keeps
-  timing out is tagged **Offline** and ranked after the hosts that answer. Rate-limited hosts are left
-  alone, and nothing is marked on a single failed request
-- **No typing links with the controller**: for a host only the console's browser can get past, you pass
-  its check and Jobee'sLair catches the file link out of the browser by itself, checks it is the game's
-  file (its title ID in the name, or its size), and downloads it in the app. VikingFile is back, and
-  FileKeeper downloads without the browser at all
-- **Learns which hosts work on your console**: every browser capture is remembered per host. Hosts
-  that work are marked **Auto-capture** and come first; hosts that keep failing are marked **Rarely
-  works here**, ranked last and never picked for you, with a note before you're sent to them. Nothing
-  is hidden
-- **TorBox (optional)**: add your TorBox API key in Settings and every source on a host TorBox supports
-  (1fichier, Rapidgator, Gofile and more) gets a **TorBox** button that downloads it in the app at full
-  speed, with no browser step. **TorBox Instant** marks files TorBox already holds. The key stays on the
-  console and goes only to api.torbox.app
-- **Download speed limit** in Settings (no limit, 25, 10 or 5 MB/s) to leave bandwidth for other
-  devices; app updates are never limited
-- **Files that are what they say**: a download whose format the catalog doesn't state is routed by its
-  header or its name (an image to `homebrew/`, a PKG to install), a small web page sent in place of a
-  game says so instead of finishing as a useless `.binary`, older `.binary` downloads are fixed at
-  launch, and a PKG whose header names another game is flagged
-- **Tips when they matter**: a short note under Download for backport-files-only, DLC, a label asking
-  for newer firmware than the console reports, or what to do on a browser host's page; no extra screen
-  before every download
-- **13.60 compatibility badges**: each source shows what it is (**Folder Dump**, **.exfat Image**,
-  **FFPKG**, **FFPFS Image**, **Backport**) and whether it runs on firmware 13.60 with ShadowMount+
-  (**13.60 Ready**; not shown on PS4 backports, where the backport advice says whether one is needed). A PS5 fake package is marked **FPKG (<=11.60)**: it installs on 13.60 but does not
-  launch, so it is ranked after the sources that do and a note under Download says why. A source whose
-  name doesn't say what it holds gets no claim either way
-- **A couch library** of the games on the console, each tile with its readiness (Installed, Played,
-  Won't start) and its **play time** ("42 hours played · Last played yesterday"), read from
-  ShadowMount+'s session log; sort by last played, most played, size or newest
-- **Make Room**: when a download doesn't fit, or from the library, a side sheet frees the drive
-  safest first: leftovers no game needs (unpacked archives, stale partial files, archive notes,
-  backports of removed games), then the games you haven't played in a while moved to another drive,
-  then only the games you tick for deleting. Bars show each drive before and after; downloads pause
-  until the drive has room and the waiting download starts once it does. Games you keep on internal
-  storage and your five most played stay put
-- **Moving games between drives** from a tile's Options: copied on a background thread, read back
-  byte for byte against the original (and its download receipt), and only then removed from where it
-  was; a move that is cut off resumes from where it stopped. ShadowMount+ is told the game's new
-  place
-- **Delete from disk** from the library, the Files screen or a game's page: a mounted image is
-  unmounted first and never deleted while mounted; the game's image or folder, its partial files,
-  extracted files, backport and `-extras` notes go; then ShadowMount+ is asked to uninstall it. While
-  Jobee'sLair is open ShadowMount+ refuses uninstalls, and the app says the tile goes once it is
-  closed. A download in progress pauses for the few seconds this takes and resumes after
-- **Deeper ShadowMount+ integration**: readiness from ShadowMount+'s own log, with **See why** for
-  a game that won't start (the log lines of its last launch); a monitor that flags a game whose file
-  ShadowMount+ can no longer reach; games moved by another tool are followed to their new place.
-  Background requests never queue behind a download and back off when ShadowMount+ stops answering
-- **Your own catalog feeds, built to survive takedowns**: add up to 4 JSON feeds from the controller
-  or your phone, each with **mirror addresses** (yours, and the ones the feed lists itself). If a
-  feed's domain goes down, a refresh falls back to a mirror, and the last good copy stays on the
-  console when everything is down ([FEEDS.md](FEEDS.md))
-- **Phone companion** on port `34177`: browse and queue from your phone, watch the queue and storage
-  live, manage feeds and their mirrors, and use it as a virtual remote. **You choose its 6-digit PIN
-  the first time you turn it on**; it is kept on the console and only you can change it
-- **Updates**: Jobee'sLair looks at the latest release of
-  [JVK3R/JobeesLair](https://github.com/JVK3R/JobeesLair) at launch and every 24 hours, and shows a
-  badge in the header when a newer build exists. **Download and install** fetches the release's
-  `update.zip` and `JobeesLair.exfat` in the background, while your own downloads are idle. Each file
-  is checked against GitHub's SHA-256, and `update.zip` must name this title and version. The image is
-  staged beside the installed one. **Restart to apply** closes the app; a small payload
-  (`updater.elf`) swaps the image in once ShadowMount+ has released it, then opens the app again. If
-  the new version does not start, the payload puts the old one back. With **Install updates
-  automatically** on in Settings, this happens by itself the next time the app closes
-  ([details](INSTALLATION-GUIDE.md#7-updating-and-removing))
-- **Theme profiles**: six accent colors (Electric, Crimson, Emerald, Amber, Violet, Graphite) over
-  the dark base, saved separately for each PS5 user profile
-- **DualSense status light**: a slow breath in your accent when idle, green that brightens with
-  download progress, amber when paused, red on errors (can be turned off in Settings)
-- **Built-in Source Addition Guide** in Settings, haptic feedback as you move, and **13 languages**
-- Made for the controller: <kbd>L1</kbd> <kbd>R1</kbd> to switch sections, <kbd>✕</kbd> to select,
-  <kbd>○</kbd> to go back, <kbd>□</kbd> to pause or resume a download, <kbd>△</kbd> for its game page;
-  in the library <kbd>□</kbd> twice deletes a game and <kbd>Options</kbd> opens its menu (move, keep on
-  internal storage, Make Room)
+- **Browse and download** a bundled catalog of games and homebrew, plus up to 4 catalog feeds of your own
+  (with mirror addresses, so a feed survives its domain going down). Downloads go straight to internal
+  storage or a USB drive.
+- **Labels every source** before you download: what it is (Folder Dump, .exfat Image, FFPKG, Backport),
+  whether it runs on firmware 13.60 (**13.60 Ready**), and whether its link still works (**Broken link**,
+  **Offline**). Nothing is hidden, only ranked.
+- **Catches file links from the console's browser** for you, so there is no typing links with a
+  controller, and **learns which hosts work** on your console (**Auto-capture** / **Rarely works here**).
+- **TorBox (optional):** add your API key in Settings and supported hosts download at full speed with no
+  browser step.
+- **Library, play time and Make Room:** see what's installed and how long you played it, free up space
+  safely, move games between drives, and find out **why a game won't start**.
+- **Phone companion:** browse, queue downloads and manage feeds from your phone. Off until you turn it
+  on, and you choose its 6-digit PIN.
+- **Updates from the app**, a **download speed limit**, six accent colors, DualSense light-bar status,
+  and 13 languages.
 
 <p align="center">
-  <img src=".github/readme/library.png" alt="The library: wide game tiles three to a row, each with its readiness badge, drive, play time and last played" width="49%">
-  <img src=".github/readme/make-room.png" alt="Make Room: drive bars before and after, then the Reclaim, Move to another drive and Delete tiers with a tick on each row" width="49%">
+  <img src=".github/readme/library.png" alt="The library: game tiles with readiness, drive and play time" width="49%">
+  <img src=".github/readme/make-room.png" alt="Make Room: drive bars before and after, and what can be freed" width="49%">
 </p>
 
 <p align="center">
-  <img src=".github/readme/dashboard.png" alt="The downloads dashboard: the live library counter, throughput, queue progress and job counts" width="49%">
-  <img src=".github/readme/settings-theme.png" alt="Settings: theme, status light, update check, the About card and the content neutrality notice" width="49%">
+  <img src=".github/readme/dashboard.png" alt="The downloads dashboard: throughput, queue progress and job counts" width="49%">
+  <img src=".github/readme/settings-theme.png" alt="Settings: phone companion, speed limit, theme and TorBox" width="49%">
 </p>
 
 ## Install
 
-The full walkthrough, from copying the image to choosing your phone PIN and adding feeds, is in
-**[INSTALLATION-GUIDE.md](INSTALLATION-GUIDE.md)**. In short:
+Full steps are in the **[installation guide](INSTALLATION-GUIDE.md)**. In short:
 
-1. You need a **jailbroken PS5** running **[ShadowMount+](https://github.com/drakmor/ShadowMountPlus)**.
-2. Copy `JobeesLair.exfat` into a folder named `homebrew` at the top of an exFAT USB drive.
-3. Plug the drive into the PS5. ShadowMount+ installs it and shows a notification.
-4. Open **Jobee'sLair** from the home screen.
+1. Have a **jailbroken PS5** running **ShadowMount+**.
+2. Copy `JobeesLair.exfat` into a folder named `homebrew` on an exFAT USB drive (or `/data/homebrew`).
+3. Plug it in. ShadowMount+ installs it. Open **Jobee'sLair** from the home screen.
 
 > [!IMPORTANT]
-> The phone companion is **off until you turn it on**, and it asks you to choose a PIN first. Pick
-> one you do not use elsewhere. Anyone on the same network who knows the PIN can sign in while the
-> companion is on. Wrong guesses are slowed down and locked out after 20, but on a shared or public
-> network, keep the companion off when you are not using it.
-
-## Origin and independence
-
-Jobee'sLair was originally inspired by an open-source fork of Overdrive. Since then its interface,
-phone companion, feed system, download dashboard and update check have been redesigned and rewritten,
-and it is developed independently under its own name, by its own author, from its own repository.
-It is not affiliated with, endorsed by, or a continuation of Overdrive or its authors. The people and
-projects it builds on are credited below.
+> The phone companion asks you to choose a PIN before it turns on. Pick one you don't use elsewhere, and
+> keep the companion off on a shared or public network.
 
 ## Content Neutrality & DMCA Notice
 
-Jobee'sLair is an open-source, user-driven utility: a download manager and catalog browser for
-homebrew on a jailbroken PS5. It is a tool for fetching the files you point it at, not a content
-service.
+Jobee'sLair is a user-driven download tool, not a content service.
 
-- **No copyrighted files are hosted here.** Jobee'sLair does not host, store, stream or distribute
-  copyrighted binary media or proprietary game data: not on any server run by the project, not in
-  this repository, and not inside the app image (there are no game packages, disc images, keys or
-  firmware in it). When you start a download, your console fetches the file directly from the
-  third-party address named in the source.
-- **What the repository does contain.** A bundled catalog (`app/data/`) of titles, identifiers,
-  descriptions, cover-image links and references to third-party download addresses, so the store
-  has something to show before you add anything. It is an index, not the files. The project does
-  not operate, control or vouch for the servers behind those addresses.
-- **Your feeds and mirrors are yours.** The feed addresses and mirror lists you add are chosen and
-  configured by you, and they are fetched and parsed on your console (client-side) when you refresh.
-  The project runs no feed server, does not see which feeds you add or what you download, and does
-  not curate them. A mirror is only used to fetch the feed file; it changes nothing about how a
-  game downloads.
-- **You are responsible for what you add and download.** Use Jobee'sLair only with content you own
-  or have permission to access.
+- **No copyrighted files are hosted here:** not on a project server, not in this repository, not in the app
+  image. Your console fetches files directly from the third-party addresses you choose.
+- **The bundled catalog** (`app/data/`) is an index of titles, descriptions, cover links and references to
+  third-party addresses. It is not the files, and the project does not run or vouch for those servers.
+- **Your feeds and mirrors are yours.** They are fetched and read on your console. The project runs no feed
+  server and does not see what you add or download.
 
-### Reporting an infringing feed manifest or catalog entry
+**To report an infringing catalog entry, feed or mirror,** open a
+[takedown issue](https://github.com/JVK3R/JobeesLair/issues/new?template=takedown.yml) or use GitHub's
+[DMCA process](https://docs.github.com/en/site-policy/content-removal-policies/dmca-takedown-policy), naming
+this repository. Include the work and its owner, where the entry is (its file and title ID, or the exact
+address), your contact details, a good-faith statement that the use is not authorized, and a statement under
+penalty of perjury that the notice is accurate and you are the owner or authorized to act. A complete notice
+is reviewed promptly and the entries it identifies are removed in a following release. A feed hosted by
+someone else is outside the project's control; send the notice to its host too. A counter-notice is handled
+as the DMCA and GitHub's process provide.
 
-If you hold the rights to a work and believe a catalog entry in this repository, or a feed or mirror
-address published in its documentation, infringes them:
-
-1. Open a **[Takedown / copyright notice](https://github.com/JVK3R/JobeesLair/issues/new?template=takedown.yml)**
-   issue, or send the same information through GitHub's own
-   [DMCA process](https://docs.github.com/en/site-policy/content-removal-policies/dmca-takedown-policy)
-   naming this repository (issues are public, so use that route if you would rather not post your
-   contact details). Include:
-   - the copyrighted work, and who owns the rights;
-   - where the infringing entry is: for a bundled entry, its file and title ID (for example
-     `app/data/releases/PPSA00000.json`); for a feed or mirror, its exact address;
-   - your name and a way to contact you or the rights holder;
-   - a statement that you have a good-faith belief the use is not authorized by the owner, its agent
-     or the law;
-   - a statement, under penalty of perjury, that the notice is accurate and that you are the owner
-     or authorized to act for the owner, with your physical or electronic signature.
-2. A complete notice is reviewed promptly. The entries it identifies in this repository are removed
-   or disabled in a following commit and release.
-3. A feed or mirror hosted by someone else is outside the project's control, and the project cannot
-   remove a file from a server it does not run. Send the notice to whoever hosts it as well. Only
-   the person who added a feed to their own console can remove it from that console.
-4. Whoever is responsible for a removed entry may reply with a counter-notice containing the same
-   details, and it is handled as the DMCA and GitHub's process provide.
-
-This notice describes how the project is built and run. It is not legal advice, and it does not
-change the license in [LICENSE](LICENSE).
-
-## Status
-
-Jobee'sLair 0.4.0 is a stability release: no new features, but every one of the 13
-translations now covers the whole app (until now about half of it showed in English), the catalog's search
-and filters do roughly a third of the work they did, the source list ranks faster, the download queue is
-split into smaller parts, the app writes a debug log you can read over FTP
-(`/data/ps5-react/PPSA99058/logs/jobeeslair.log`, with keys, tokens, email addresses and link query strings blanked out), and the tests
-run on every push. Jobee'sLair 0.3.0 labels each source by whether it runs on 13.60 with ShadowMount+, catches file links from the console's browser for you (VikingFile is back), learns which hosts work on your console, adds optional TorBox support and a download speed limit, and ports Overdrive 1.0.6's fixes for unknown-format files and multi-part sets. Broken-link checks no longer hide sources. 0.2.3 added link health checks and fixed the space check for downloads of unknown size, and 0.2.1 added installing updates from the app. The 0.1.1 betas were tested on a PS5
-running firmware 13.60 with ShadowMount+ 1.7. Every build passes its automated tests (the app's logic suites, the framework's
-tests, and the native server and drive-probe tests under AddressSanitizer, UndefinedBehaviorSanitizer
-and ThreadSanitizer), but not every feature has been confirmed on PS5 hardware yet. Report what you
-find, with your firmware and loader.
+This notice is not legal advice and does not change the [LICENSE](LICENSE).
 
 ## Build it yourself
 
 <details>
-<summary><b>What's in this repository</b></summary>
+<summary><b>Repository layout and build steps</b></summary>
 <br>
 
 | Path | What it is |
 | --- | --- |
-| `app/` | The application: JSX sources, state, assets, catalog data, and `app.json` (title ID `PPSA99058`, package version `01.004.000`, capabilities) |
-| `app/version.js` | The app version (`0.4.0`), the creator credit (`JVK3R`) and the official repository the update check reads |
-| `app/ui/JLMark.jsx` | The "JL" monogram as native vector paths (`.github/readme/logo.svg` is the same mark as a file) |
-| `app/state/library-count.js` | The live indexed-titles and direct-downloads counter |
-| `LICENSE` | GPL-3.0-or-later, followed by the content neutrality and DMCA notice |
-| `ps5-react/` | The framework it runs on, vendored from [half144/ps5-react](https://github.com/half144/ps5-react), with its native host and tests |
-| `packaging/make-exfat.sh` | Builds the exFAT image ShadowMount+ installs |
-| `packaging/stage-docs.sh` | Adds this documentation to the image, as `/docs` |
-| `tests/` | The app's tests (`npm test` for its logic, `npm run test:render` for its screens) and benchmarks (`tests/bench/`) |
-| `INSTALLATION-GUIDE.md` | Installing, choosing the phone PIN and adding feeds |
-| `FEEDS.md` | The catalog feed format, including mirrors |
-| `CHANGELOG.md` | What changed in each version |
+| `app/` | The application (JSX, state, catalog data) and `app.json` (title ID `PPSA99471`) |
+| `ps5-react/` | The framework it runs on, vendored from [half144/ps5-react](https://github.com/half144/ps5-react) |
+| `tests/` | The app's tests and benchmarks |
+| `packaging/` | Builds the exFAT image and adds these docs to it |
+| `INSTALLATION-GUIDE.md`, `FEEDS.md`, `CHANGELOG.md` | Install steps, the feed format, what changed |
 
-</details>
-
-<details>
-<summary><b>Building</b></summary>
-<br>
-
-On any Linux (or WSL) with `clang-18`, `llvm-18`, `cmake`, `ninja-build`, `nodejs`, `npm`,
-`zlib1g-dev`, `build-essential`, `pkg-config`, `unzip`, `curl`, `exfatprogs`, and Pillow from
-`ps5-react/requirements.txt`:
+On Linux (or WSL) with `clang-18`, `llvm-18`, `cmake`, `ninja-build`, `nodejs`, `npm`, `zlib1g-dev`,
+`build-essential`, `pkg-config`, `unzip`, `curl`, `exfatprogs` and Pillow (`ps5-react/requirements.txt`):
 
 ```sh
 cd ps5-react
 python3 tools/build_ps5.py --app-dir ../app --llvm /usr/bin
-cp -a dist/PPSA99058 ../stage                 # a copy, so dist stays as verify.py checked it
-../packaging/stage-docs.sh ../stage           # adds these docs to the image as /docs
+cp -a dist/PPSA99471 ../stage
+../packaging/stage-docs.sh ../stage
 sudo ../packaging/make-exfat.sh ../stage ../JobeesLair.exfat JOBEESLAIR
 ```
 
-The build downloads its pinned dependencies into `ps5-react/.deps`, writes the app folder, a `.zip`
-and a `.receipt.json` into `ps5-react/dist`, and verifies the result itself (`tools/verify.py`).
-The image is a plain exFAT volume whose root is the app folder, with 64 KiB clusters and the label
-`JOBEESLAIR`.
+The tests need only Node.js 22+ and run on every push: `npm test` (logic), `npm run test:render`
+(screens), `npm run test:all` (both).
 
-The app's own tests need only Node.js 22 or newer, no PS5 toolchain, and run on every push and pull
-request (`.github/workflows/test.yml`):
-
-```sh
-npm test               # the app's logic: queue, sources, link health, TorBox, translations, logger...
-npm run test:render    # its screens rendered against the bundled catalog
-npm run test:all       # both, as the build workflow runs them first
-```
-
-To publish a build, raise the version in `app/version.js`, run the build workflow, test the draft's
-image on a console, then publish the draft with a tag of the same version (`v0.4.0`): the
-update check in installed copies compares that tag with their own version. To let installed copies
-install it themselves, attach both `JobeesLair.exfat` and `update.zip` (`ps5-react/dist/PPSA99058.zip`
-renamed). GitHub publishes each asset's SHA-256, and a release without both files only offers the
-release page.
+To publish: raise the version in `app/version.js`, build, test the image on a console, then publish a
+release tagged with the same version (`v0.4.1`). Attach `JobeesLair.exfat` and `update.zip`
+(`ps5-react/dist/PPSA99471.zip` renamed) so installed copies can update themselves.
 
 </details>
 
 ## Support the project
 
-Jobee'sLair is free and open source, and it stays that way. Every feature, download and update is
-there for everyone. Nothing is locked, limited or held back, and the app never asks for money: no
-pop-ups, no reminders.
-
-If you'd like to support its development and future PS5 homebrew tools, you can
-**[buy me a coffee ☕](https://buymeacoffee.com/jvk3r)**. The same link is under
-**Settings → About → Support development** in the app, as a QR code for your phone. Thank you.
+Jobee'sLair is free and open source, and stays that way. Nothing is locked or limited and the app never asks
+for money. If you'd like to support it, you can **[buy me a coffee ☕](https://buymeacoffee.com/jvk3r)**
+(also under **Settings → About**). Thank you.
 
 ## Credits
 
-- **JVK3R**, creator of Jobee'sLair.
-- **[MyLuxy](https://github.com/MyLuxy)**, author of the open-source Overdrive fork that Jobee'sLair
-  was originally inspired by. Its 1.0.6 browser link capture, download speed limit, FileKeeper resolver,
-  file routing by name and multi-part set fix are adapted here.
-- **[saawant12](https://github.com/saawant12/orbit-store-ps5)**, Orbit Store, whose browser capture
-  (GPL-3.0-or-later) Overdrive's is adapted from.
-- **BlackBox**, whose UI layout concepts, payload mounting structures and way of organizing a PS5 homebrew
-  catalog inspired parts of Jobee'sLair. Thank you for the work you have put into the PS5 ecosystem.
+- **JVK3R**, creator of Jobee'sLair
+- **MyLuxy** ([Overdrive](https://github.com/MyLuxy/overdrive))
+- **saawant12** ([Orbit Store](https://github.com/saawant12/orbit-store-ps5))
+- **BlackBox**
+- **drakmor** ([ShadowMount+](https://github.com/drakmor/ShadowMountPlus))
 - **PS5 React — created by half144 and PS5 React contributors.**
   [github.com/half144/ps5-react](https://github.com/half144/ps5-react)
-- **[ShadowMount+](https://github.com/drakmor/ShadowMountPlus)** by drakmor, which installs it.
 
-Jobee'sLair is distributed under the GPL-3.0-or-later (see [LICENSE](LICENSE)), the license of the
-PS5 React framework it is built on. `ps5-react/` also carries its own `LICENSE`,
-`LICENSE-ATTRIBUTION` and `NOTICE`.
-Every dependency notice is copied into `notices/` inside the built app, and
-`ps5-react/docs/DEPENDENCIES.md` lists them with their sources.
-
-<sub>Jobee'sLair is an unofficial homebrew project and is not affiliated with or endorsed by Sony
-Interactive Entertainment. PlayStation and PS5 are trademarks of Sony Interactive Entertainment.</sub>
+Distributed under the GPL-3.0-or-later ([LICENSE](LICENSE)). Third-party notices are in `notices/` inside the
+app and in `ps5-react/docs/DEPENDENCIES.md`.

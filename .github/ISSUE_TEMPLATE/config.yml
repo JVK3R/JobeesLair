@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/JVK3R/JobeesLair/blob/main/INSTALLATION-GUIDE.md
     about: How to install Jobee'sLair with ShadowMount+, step by step.
   - name: Troubleshooting
-    url: https://github.com/JVK3R/JobeesLair/blob/main/INSTALLATION-GUIDE.md#8-troubleshooting
+    url: https://github.com/JVK3R/JobeesLair/blob/main/INSTALLATION-GUIDE.md#troubleshooting
     about: Jobee'sLair doesn't show up, a new build will not install, and other common problems.

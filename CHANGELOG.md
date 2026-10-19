@@ -4,6 +4,24 @@ What changed in each version of Jobee'sLair. Each release on
 [GitHub](https://github.com/JVK3R/JobeesLair/releases) carries the full notes, the files and their
 SHA-256 checksums.
 
+## 0.4.1 (2026-10-18)
+
+**Install this one by hand:** copy the new `JobeesLair.exfat` over the old one in `homebrew/`. Updating from
+inside the app can't cross this change.
+
+### Fixed
+- **Jobee'sLair can now be installed next to Overdrive.** The two shared one app ID, so the console treated
+  them as the same app and only one could be installed at a time (and they wrote to the same saved queue
+  file). Jobee'sLair now has its own ID.
+
+### Update note
+- Your **download list and play time carry over**. **Settings, favorites, feeds and your TorBox API key start
+  fresh**, so set them up again. The old home-screen icon can be deleted.
+- This is the one update that has to be done by hand. Updates install themselves again from here on.
+
+### Changed
+- A shorter README and installation guide, with new screenshots.
+
 ## 0.4.0 (2026-10-18)
 
 A stability release: nothing new to learn, but the app is faster, fully translated and easier to debug.
@@ -69,9 +87,7 @@ A stability release: nothing new to learn, but the app is faster, fully translat
   place of a game fails as "Not a game file" instead of finishing as a useless `.binary`.
 - "Backport files" downloads are no longer grouped into broken multi-part sets.
 
-Browser capture, the speed limit, the FileKeeper resolver, file routing and the set fix are adapted
-from [Overdrive 1.0.6](https://github.com/MyLuxy/overdrive) by MyLuxy, whose capture is adapted from
-Orbit Store by saawant12 (GPL-3.0-or-later).
+Thanks to MyLuxy (Overdrive) and saawant12 (Orbit Store).
 
 ## 0.2.3 (2026-10-17)
 

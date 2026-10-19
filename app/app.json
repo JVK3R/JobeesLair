@@ -1,9 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/half144/ps5-react/main/app.schema.json",
-  "titleId": "PPSA99058",
-  "contentId": "UP9000-PPSA99058_00-JOBEESLAIR000000",
+  "titleId": "PPSA99471",
+  "contentId": "UP9000-PPSA99471_00-JOBEESLAIR000000",
   "name": "Jobee'sLair",
-  "version": "01.004.000",
+  "version": "01.004.001",
   "render": { "width": 1920, "height": 1080 },
   "surface": { "width": 1920, "height": 1080 },
   "refreshRate": 60,
@@ -11,6 +11,6 @@
   "resources": ["data/releases", "data/pages", "i18n/locales"],
   "filesystemAccess": "console",
   "networking": true,
-  "userAgent": "JobeesLair/0.4.0 (PS5)",
+  "userAgent": "JobeesLair/0.4.1 (PS5)",
   "timeoutSeconds": 0
 }

@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time to report this. If Jobee'sLair doesn't show up on the home screen
-        or a new build won't install, the [Troubleshooting](https://github.com/JVK3R/JobeesLair/blob/main/INSTALLATION-GUIDE.md#8-troubleshooting)
+        or a new build won't install, the [Troubleshooting](https://github.com/JVK3R/JobeesLair/blob/main/INSTALLATION-GUIDE.md#troubleshooting)
         section may already have the answer.
 
   - type: input

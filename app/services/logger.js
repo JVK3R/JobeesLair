@@ -1,6 +1,6 @@
 // The app's own debug log, for finding out what happened on a real console. On the PS5 console.log goes to
 // the console's kernel log through a background writer, with no file to read afterwards; this keeps a file
-// of its own in the app's data folder (on the console /data/ps5-react/PPSA99058/logs/jobeeslair.log, beside the
+// of its own in the app's data folder (on the console /data/ps5-react/<title ID>/logs/jobeeslair.log, beside the
 // download queue, where FTP reaches it; elsewhere <data>/JobeesLair/logs), and tees everything the app already writes with console.log / warn / error
 // into it, so the 100-odd existing log lines (the download queue, browser capture, link health, the
 // updater) are captured without touching each one. New events use log(category, message).

@@ -13,8 +13,12 @@
 import { useEffect, useState } from 'react';
 import { localDay } from './clock.js';
 import { isRecord, readJSON } from './read-json.js';
+import { OLD_TITLE_ID } from './title-migration.js';
+import { TITLE_ID } from '../version.js';
 
-  var SELF = "PPSA99058";
+  // Jobee'sLair's own launches are not games: this version's title ID and the one 0.4.0 and Overdrive use.
+  var SELF = TITLE_ID;
+  var OLD_SELF = OLD_TITLE_ID;
   var CLOCK = /^\[(\d{2}):(\d{2}):(\d{2})\]/;
   var STARTED = /\[GAME\] started: ([A-Z]{4}\d{5}) pid=(\d+)/;
   var ENDED = /\[GAME\] (?:process exited[^:]*|finalizing stopped application): ([A-Z]{4}\d{5}) pid=(\d+)/;
@@ -59,7 +63,7 @@ import { isRecord, readJSON } from './read-json.js';
       const begun = open.get(`${end[1]}|${end[2]}`);
       if (!begun) continue;
       open.delete(`${end[1]}|${end[2]}`);
-      if (end[1] === self) continue;
+      if (end[1] === self || end[1] === OLD_SELF) continue;
       sessions.push({
         key: `${end[1]}|${end[2]}|${begun.clock}`,
         title: end[1],

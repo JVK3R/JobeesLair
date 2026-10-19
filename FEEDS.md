@@ -3,7 +3,7 @@
 A catalog feed is a JSON file, served over `http://` or `https://`, that adds games to Jobee'sLair
 or adds sources to games its catalog already lists. Add one in **Settings → Storage & feeds → Add a feed**
 by typing its full address, or from the phone companion's **Feeds** tab. Up to 4 feeds, each at most 2 MiB.
-Step-by-step instructions, including hosting a feed, are in [INSTALLATION-GUIDE.md](INSTALLATION-GUIDE.md#5-configure-custom-json-feeds).
+Step-by-step instructions, including hosting a feed, are in [INSTALLATION-GUIDE.md](INSTALLATION-GUIDE.md#catalog-feeds).
 
 > [!WARNING]
 > Only add feeds that point to content you legally own or have explicit permission to download, such as your

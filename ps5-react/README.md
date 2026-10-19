@@ -1,5 +1,5 @@
 > [!NOTE]
-> **This copy of PS5 React is vendored inside Jobee'sLair** (version 0.1.0, title ID `PPSA99058`,
+> **This copy of PS5 React is vendored inside Jobee'sLair** (version 0.1.0, title ID `PPSA99471`,
 > created by JVK3R), an open-source PS5 homebrew download manager in active development. For the app
 > itself, see the [project README](../README.md) and the [installation guide](../INSTALLATION-GUIDE.md).
 > This file documents the framework and is kept as upstream wrote it, apart from this note.

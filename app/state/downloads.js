@@ -19,11 +19,15 @@ import { createMountMonitor, mountMonitor } from './mount-monitor.js';
 import { createPlaytime, playtimeStore } from './playtime.js';
 import { parseStamp } from './clock.js';
 import { deviceFacts } from './device.js';
+import { OLD_TITLE_ID } from './title-migration.js';
+import { TITLE_ID } from '../version.js';
 import { Archives, BrowserCapture, DeviceInfo, DownloadFormats, Downloads, FileSystem, Http, Linking, Notifications, Packages, Platform, Power } from '@ps5-react/core';
 
   var instance;
+  // Jobee'sLair's own launches (this version's title ID, and the one 0.4.0 and Overdrive use) are not games played.
+  var OWN_TITLES = [TITLE_ID, OLD_TITLE_ID];
   var mocked = () => Platform.OS !== "ps5" && FileSystem.exists(`${DATA_DIR}/mock-downloads`);
-  var stateDir = Platform.OS === "ps5" ? "/data/ps5-react/PPSA99058/queue" : void 0;
+  var stateDir = Platform.OS === "ps5" ? `/data/ps5-react/${TITLE_ID}/queue` : void 0;
   var utcOffset = (ms) => {
     try {
       return DeviceInfo.utcOffset(ms);
@@ -38,7 +42,7 @@ import { Archives, BrowserCapture, DeviceInfo, DownloadFormats, Downloads, FileS
     client: createShadowClient({ http: Http, transferring: () => downloadQueue().transferring?.() ?? false, quiet: (reason, work) => downloadQueue().quietNetwork(reason, work) }),
     fs: FileSystem,
     parse: (value) => parseStamp(value, utcOffset(Date.now())),
-    onLaunch: (title, at) => title !== "PPSA99058" && playtime.played(title, at)
+    onLaunch: (title, at) => !OWN_TITLES.includes(title) && playtime.played(title, at)
   }));
   var downloadQueue = () => instance ?? (instance = mocked() ? createMockDownloadQueue() : createDownloadQueue({
     fs: FileSystem,

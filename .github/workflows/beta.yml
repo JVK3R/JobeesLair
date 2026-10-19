@@ -89,11 +89,11 @@ jobs:
       - name: Package
         run: |
           # The image is made from a copy of the verified build with the documentation added as /docs.
-          cp -a ps5-react/dist/PPSA99058 stage
+          cp -a ps5-react/dist/PPSA99471 stage
           bash packaging/stage-docs.sh stage
           sudo bash packaging/make-exfat.sh stage JobeesLair.exfat JOBEESLAIR
           # The app folder as installed copies download it to check an update (app/state/auto-update.js).
-          cp ps5-react/dist/PPSA99058.zip update.zip
+          cp ps5-react/dist/PPSA99471.zip update.zip
           ls -l JobeesLair.exfat update.zip ps5-react/dist/
 
       - name: Upload
@@ -103,7 +103,7 @@ jobs:
           path: |
             JobeesLair.exfat
             update.zip
-            ps5-react/dist/PPSA99058.receipt.json
+            ps5-react/dist/PPSA99471.receipt.json
           if-no-files-found: error
 
       - name: Rolling beta pre-release
