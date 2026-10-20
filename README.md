@@ -24,6 +24,10 @@
   <a href="https://buymeacoffee.com/jvk3r">☕ Support</a>
 </p>
 
+> [!IMPORTANT]
+> **All official communications are here on Discord or Twitter:**
+> [Discord](https://discord.gg/w5dtAMBVgZ) · [Twitter / X (@jvk3r_)](https://x.com/jvk3r_)
+
 > [!WARNING]
 > **You are responsible for what you download.** Only download content you legally own or have
 > permission to access: your own backups, homebrew, freeware. Jobee'sLair hosts and distributes
