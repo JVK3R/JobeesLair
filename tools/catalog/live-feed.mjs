@@ -241,6 +241,12 @@ async function main() {
     ratings = Object.fromEntries(Object.entries(JSON.parse(readFileSync(join(ROOT, 'catalog', 'ratings.json'), 'utf8')))
       .filter(([, entry]) => entry.count > 0).map(([id, entry]) => [id, [entry.stars, entry.count]]));
   } catch {}
+  // 0.5.1: the day each game the app does not bundle was first listed here (catalog/first-seen.json), for the
+  // app's "New this week". Pegasus's own createdAt is when it imported a package, the same week for all of them.
+  const FIRST_SEEN = join(ROOT, 'catalog', 'first-seen.json');
+  let firstSeen = {};
+  try { firstSeen = JSON.parse(readFileSync(FIRST_SEEN, 'utf8')); } catch {}
+  const today = new Date().toISOString().slice(0, 10);
   const out = [];
   let links = 0, bytes = 200 + Buffer.byteLength(JSON.stringify(ratings)), fresh = 0, regrouped = 0;
   for (const game of candidates) {
@@ -256,7 +262,7 @@ async function main() {
     const entry = {
       id: game.id,
       title: game.title,
-      ...(known ? {} : { art: game.cover ? { cover: game.cover } : {}, summary: game.about.slice(0, 2).join(' ').slice(0, 300), about: game.about }),
+      ...(known ? {} : { art: game.cover ? { cover: game.cover } : {}, summary: game.about.slice(0, 2).join(' ').slice(0, 300), about: game.about, addedAt: firstSeen[game.id] ??= today }),
       releases: chosen.flatMap((set) => set.links.map((link) => ({
         url: link.url,
         // Hosts name files "file" or nothing at all: the download is named after the game and the link instead.
@@ -284,6 +290,7 @@ async function main() {
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, `${JSON.stringify(feed)}\n`);
   writeFileSync(NAMES, `${JSON.stringify(Object.fromEntries(Object.entries(names).sort()), null, 0)}\n`);
+  writeFileSync(FIRST_SEEN, `${JSON.stringify(Object.fromEntries(Object.entries(firstSeen).sort()), null, 1)}\n`);
   console.log(`catalogs: ${counts.join(', ')}`);
   console.log(`ratings: ${Object.keys(ratings).length} games`);
   console.log(`file names: ${Object.keys(names).length} known (${looked} pages read this run), ${regrouped} sets regrouped by them`);
