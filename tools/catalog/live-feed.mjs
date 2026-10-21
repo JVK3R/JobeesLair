@@ -81,6 +81,89 @@ function setsOf(links) {
     .filter((set) => !set.parted || set.links.every((link, index) => link.part === index + 1));
 }
 
+// 0.5.1 Pre Release 1: DLPS numbers a game's AkiraBox links "part 1, 2, 3" in page order, whether they are
+// the volumes of one archive or whole files side by side (PPSA21564: two complete .rar uploads and an .ffpkg,
+// as "part 1-3"; the app then waited for a "part 1" no page held). AkiraBox and Rootz say a file's name in
+// the page title, so those links are read once (catalog/names.json keeps what was read) and regrouped by
+// the names: volumes of one name together, any other file a download of its own.
+const NAMES = join(ROOT, 'catalog', 'names.json');
+const NAMED_HOST = /^(?:www\.)?(?:akirabox\.(?:com|to)|rootz\.so)$/;
+const DEAD = 'dead';
+// "Game.part02.rar", "Game.7z.002", "Game.r00": a volume of the archive named without it.
+function volumeOf(name) {
+  let m = /^(.*)\.part0*(\d{1,3})\.rar$/i.exec(name);
+  if (m) return { base: `${m[1]}.rar`, part: Number(m[2]) };
+  m = /^(.*\.(?:7z|zip|rar))\.0*(\d{1,3})$/i.exec(name);
+  if (m) return { base: m[1], part: Number(m[2]) };
+  m = /^(.*)\.r(\d\d)$/i.exec(name);
+  if (m) return { base: `${m[1]}.rar`, part: Number(m[2]) + 2, old: true };
+  return null;
+}
+// A page's file name, DEAD for a removed file, or null when the page said nothing (asked again next run).
+async function pageName(url) {
+  try {
+    const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html' }, redirect: 'follow', signal: AbortSignal.timeout(20000) });
+    if (response.status === 404 || response.status === 410) return DEAD;
+    if (!response.ok) return null;
+    const title = (/<title>([^<]*)<\/title>/i.exec(await response.text())?.[1] ?? '').replace(/&amp;/g, '&').replace(/\s*·\s*AkiraBox\s*$/i, '').trim();
+    if (/^AkiraBox\b/i.test(title)) return DEAD;
+    return /\.[a-z0-9]{2,6}$/i.test(title) && title.length <= 200 ? title : null;
+  } catch {
+    return null;
+  }
+}
+async function readNames(urls, names) {
+  const queue = urls.filter((url) => !(url in names));
+  let looked = 0;
+  const worker = async () => {
+    while (queue.length) {
+      const url = queue.shift();
+      const name = await pageName(url);
+      if (name) names[url] = name;
+      looked++;
+    }
+  };
+  await Promise.all(Array.from({ length: 6 }, worker));
+  return looked;
+}
+// A chosen set split by its files' names. A set whose names are not all known keeps its catalog grouping.
+function byNames(set, names) {
+  if (!set.links.every((link) => names[link.url])) return [set];
+  const live = set.links.filter((link) => names[link.url] !== DEAD);
+  const groups = new Map();
+  for (const link of live) {
+    const name = names[link.url];
+    const volume = volumeOf(name);
+    const key = volume ? `v|${volume.base.toLowerCase()}` : `f|${link.url}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ ...link, file: name, part: volume ? volume.part : 0 });
+  }
+  const out = [];
+  const kinds = {};
+  for (const [key, links] of groups) {
+    links.sort((a, b) => a.part - b.part);
+    // An old-style set starts with the .rar itself: Game.rar, Game.r00, Game.r01.
+    if (key.startsWith('v|') && links[0].part === 2) {
+      const first = live.find((link) => names[link.url].toLowerCase() === key.slice(2));
+      if (first) links.unshift({ ...first, file: names[first.url], part: 1 });
+    }
+    if (key.startsWith('f|') && live.some((link) => volumeOf(names[link.url])?.old && volumeOf(names[link.url]).base.toLowerCase() === names[links[0].url].toLowerCase())) continue;
+    const parted = key.startsWith('v|') && links.length > 1;
+    if (parted && !links.every((link, index) => link.part === index + 1)) continue; // a volume missing
+    const kind = (/\.([a-z0-9]+)$/i.exec(links[0].file)?.[1] ?? 'file').toUpperCase();
+    kinds[kind] = (kinds[kind] ?? 0) + 1;
+    out.push({ build: set.build, name: `${set.name} (${kind}${kinds[kind] > 1 ? ` ${kinds[kind]}` : ''})`, parted, named: true, links: parted ? links : links.map((link) => ({ ...link, part: 0 })) });
+  }
+  return out;
+}
+// A download's file name: the page's, kept to the characters a console path takes, after the game and the link.
+function fileName(game, link, label) {
+  if (!link.file) return `${game.id}-${slug(label).slice(0, 60) || link.build}-${tag(link.url)}`;
+  const prefix = `${game.id}-${tag(link.url)}-`;
+  // The end of a long name is kept: it holds ".part02.rar" or ".ffpkg".
+  return prefix + link.file.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/_+/g, '_').slice(-(150 - prefix.length));
+}
+
 // Whole sets, every build's first set before any build's second, up to max links (a first set always fits).
 function pick(links, max) {
   const byBuild = new Map();
@@ -146,12 +229,30 @@ async function main() {
 
   const candidates = [...games.values()].filter((game) => game.links.length)
     .sort((a, b) => Number(bundledIds.has(a.id)) - Number(bundledIds.has(b.id)) || b.at - a.at || a.id.localeCompare(b.id));
+  // The file names of the AkiraBox and Rootz links the feed may take, read once and kept.
+  let names = {};
+  try { names = JSON.parse(readFileSync(NAMES, 'utf8')); } catch {}
+  const wanted = candidates.slice(0, MAX_GAMES + 200).flatMap((game) => pick(game.links, bundledIds.has(game.id) ? KNOWN_GAME_LINKS : NEW_GAME_LINKS))
+    .flatMap((set) => set.links.map((link) => link.url)).filter((url) => NAMED_HOST.test(new URL(url).host));
+  const looked = await readNames(wanted, names);
+  // Every game's store rating (tools/catalog/ratings.mjs), listed here or not: the console's Top Rated.
+  let ratings = {};
+  try {
+    ratings = Object.fromEntries(Object.entries(JSON.parse(readFileSync(join(ROOT, 'catalog', 'ratings.json'), 'utf8')))
+      .filter(([, entry]) => entry.count > 0).map(([id, entry]) => [id, [entry.stars, entry.count]]));
+  } catch {}
   const out = [];
-  let links = 0, bytes = 200, fresh = 0;
+  let links = 0, bytes = 200 + Buffer.byteLength(JSON.stringify(ratings)), fresh = 0, regrouped = 0;
   for (const game of candidates) {
     if (out.length >= MAX_GAMES || links >= MAX_LINKS) break;
     const known = bundledIds.has(game.id);
-    const chosen = pick(game.links, Math.min(known ? KNOWN_GAME_LINKS : NEW_GAME_LINKS, MAX_LINKS - links));
+    const chosen = pick(game.links, Math.min(known ? KNOWN_GAME_LINKS : NEW_GAME_LINKS, MAX_LINKS - links)).flatMap((set) => {
+      if (!set.links.some((link) => NAMED_HOST.test(new URL(link.url).host))) return [set];
+      const split = byNames(set, names);
+      if (split[0] !== set) regrouped++;
+      return split;
+    });
+    if (!chosen.length) continue;
     const entry = {
       id: game.id,
       title: game.title,
@@ -159,8 +260,8 @@ async function main() {
       releases: chosen.flatMap((set) => set.links.map((link) => ({
         url: link.url,
         // Hosts name files "file" or nothing at all: the download is named after the game and the link instead.
-        filename: `${game.id}-${slug(link.label).slice(0, 60) || link.build}-${tag(link.url)}`,
-        label: link.label,
+        filename: fileName(game, link, link.label),
+        label: set.named ? (link.part ? `${set.name} part ${link.part}` : set.name) : link.label,
         ...(link.part ? { volume: `part ${link.part}` } : {}),
         ...(link.host ? { provider: link.host.toLowerCase() } : {}),
         ...(link.version ? { version: link.version } : {}),
@@ -179,10 +280,13 @@ async function main() {
     out.push(entry);
   }
 
-  const feed = { version: 1, name: "Jobee'sLair live catalog", source: 'pegasus-dl.dev', games: out };
+  const feed = { version: 1, name: "Jobee'sLair live catalog", source: 'pegasus-dl.dev', ratings, games: out };
   mkdirSync(dirname(OUT), { recursive: true });
   writeFileSync(OUT, `${JSON.stringify(feed)}\n`);
+  writeFileSync(NAMES, `${JSON.stringify(Object.fromEntries(Object.entries(names).sort()), null, 0)}\n`);
   console.log(`catalogs: ${counts.join(', ')}`);
+  console.log(`ratings: ${Object.keys(ratings).length} games`);
+  console.log(`file names: ${Object.keys(names).length} known (${looked} pages read this run), ${regrouped} sets regrouped by them`);
   console.log(`wrote catalog/live.json: ${out.length} games (${fresh} new to the app), ${links} links, ${(bytes / 1048576).toFixed(2)} MiB; ${candidates.length - out.length} left for a later run`);
 }
 
