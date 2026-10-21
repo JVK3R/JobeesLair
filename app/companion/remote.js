@@ -21,7 +21,7 @@ import { useEffect, useRef } from 'react';
       }
     }
   }
-  // `handler(action)`: "home" | "downloads" | "search" | "settings" (the latest handler is called).
+  // `handler(action)`: "home" | "downloads" | "search" | "settings" | "homebrew" (the latest handler is called).
   function useRemoteShortcuts(handler) {
     const latest = (0, useRef)(handler);
     latest.current = handler;

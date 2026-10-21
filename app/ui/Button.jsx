@@ -3,6 +3,8 @@
 // MODIFIED: Jobee'sLair buttons. Rounded (radius.md), flat fills: the primary is the theme's accent and
 // brightens when focused; the secondary is a raised surface; the outline sits solid over any art; the ghost
 // is text alone. A press eases the button in by 3 % and back. Focus draws the accent frame (FocusRing).
+// MODIFIED (0.5.0 Pre Release 2): `tint` ({accent, hi, fg, fgHi}) fills a primary and draws the focus frame in another
+// color (the Homebrew section's own).
 
 import '../assets/Exo2.ttf';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
@@ -31,16 +33,16 @@ import { Text, motion, useIsFocused } from '@ps5-react/core';
   var TEXT_SIZE = { sm: { fontSize: 21, lineHeight: 30 }, md: { fontSize: 22, lineHeight: 30 }, lg: { fontSize: 24 }, icon: { fontSize: 21, lineHeight: 30 } };
   var press2 = { scale: 0.97 };
   var pressMotion = { type: "tween", duration: 0.12, ease: "easeOut" };
-  var ink = (variant, focused) => variant === "primary" ? colors.accentFg : variant === "ghost" && !focused ? colors.muted : colors.fg;
-  function Content({ variant, size, label, icon, iconFill }) {
+  var ink = (variant, focused, tint) => variant === "primary" ? tint ? focused ? tint.fgHi ?? tint.fg : tint.fg : colors.accentFg : variant === "ghost" && !focused ? colors.muted : colors.fg;
+  function Content({ variant, size, label, icon, iconFill, tint }) {
     const focused = useIsFocused();
-    const color = ink(variant, focused);
+    const color = ink(variant, focused, tint);
     return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
       icon && /* @__PURE__ */ (0, jsx)(Icon, { name: icon, size: size === "icon" ? 22 : 18, color, fill: iconFill ? color : "none" }),
       label && /* @__PURE__ */ (0, jsx)(Text, { style: [TEXT, TEXT_SIZE[size], { color }], children: label })
     ] });
   }
-  function Button2({ variant = "secondary", size = "md", label, icon, iconFill, children, onPress, style, ...rest2 }) {
+  function Button2({ variant = "secondary", size = "md", label, icon, iconFill, tint, children, onPress, style, ...rest2 }) {
     return /* @__PURE__ */ (0, jsxs)(
       motion.View,
       {
@@ -50,12 +52,13 @@ import { Text, motion, useIsFocused } from '@ps5-react/core';
         transition: pressMotion,
         style: ({ focused }) => {
           const box = looks();
-          return [BASE, SIZE2[size], box[variant], focused && box.focused[variant], style];
+          const own = tint && variant === "primary" ? { backgroundColor: focused ? tint.hi : tint.accent } : null;
+          return [BASE, SIZE2[size], box[variant], focused && box.focused[variant], own, style];
         },
         children: [
-          /* @__PURE__ */ (0, jsx)(FocusRing, {}),
+          /* @__PURE__ */ (0, jsx)(FocusRing, { color: tint?.hi }),
           children,
-          /* @__PURE__ */ (0, jsx)(Content, { variant, size, label, icon, iconFill })
+          /* @__PURE__ */ (0, jsx)(Content, { variant, size, label, icon, iconFill, tint })
         ]
       }
     );

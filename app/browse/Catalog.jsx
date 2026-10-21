@@ -146,4 +146,4 @@ import { colors, radius } from '../ui/colors.js';
     ] }) });
   }
 
-export { Catalog };
+export { Catalog, Grid as GameGrid };

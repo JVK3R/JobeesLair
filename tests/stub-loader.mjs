@@ -16,6 +16,7 @@ export const FileSystem = { dataDir: '/download0', exists: () => false, readFile
 export const Platform = { OS: 'desktop' };
 export const Http = {};
 export const Downloads = {};
+export const Payloads = { send: () => ({ ok: false, error: 'stub' }) };
 export const DeviceInfo = { utcOffset: () => 0, get: () => ({}) };
 export default {};
 `;

@@ -33,11 +33,13 @@ set(ERUI_XFORM_CACHE_SLOTS 2 CACHE STRING "" FORCE)
 set(ERUI_MAX_ANIM_VALUES 1024 CACHE STRING "" FORCE)
 set(ERUI_MAX_VALUE_BINDINGS 8 CACHE STRING "" FORCE)
 # Photos are baked at half size and scaled bilinearly. The scaler and gradient assemble rows of up to
-# 2560 px (+7 KB per worker each over 800 px) and render wider ones in chunks. 256 image slots cost
-# +11 KB at 88 B per slot.
+# 2560 px (+7 KB per worker each over 800 px) and render wider ones in chunks. Image slots cost 88 B
+# each. MODIFIED (Jobee'sLair 0.5.0): 384 slots (was 256). The remote image cache keeps up to 256
+# decoded images (images::kCacheEntries), so with 256 slots it could take every one and leave none for
+# bundled images: pages of small icons then failed with "the engine image registry is full".
 set(ERUI_BILINEAR_SCALE ON CACHE BOOL "" FORCE)
 set(ERUI_MAX_IMG_ROW_PIXELS 2560 CACHE STRING "" FORCE)
-set(ERUI_IMAGE_REGISTRY_MAX 256 CACHE STRING "" FORCE)
+set(ERUI_IMAGE_REGISTRY_MAX 384 CACHE STRING "" FORCE)
 # View backgroundGradient (linear and radial; also <Svg> gradient fills): about 5 KB of code, an 8 KB
 # colour ramp and a 10 KB row per render worker; nodes without a gradient pay nothing per frame.
 set(ERUI_GRADIENT ON CACHE BOOL "" FORCE)

@@ -13,13 +13,16 @@ import '../assets/JetBrainsMono-Regular.ttf';
 import supportQr from '../assets/support-qr.png';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useState } from 'react';
-import { CREATOR, choosePin, setCompanion, useCompanion } from '../companion/service.js';
+import { CREATOR, choosePin, setCompanion, setCompanionAway, useCompanion } from '../companion/service.js';
 import { URLDialog } from '../downloads/URLDialog.jsx';
 import { formatDate2 } from '../i18n/core.js';
 import { chooseLanguage, languageChoice, systemLocale, useT } from '../i18n/index.js';
 import { LOCALES } from '../i18n/locales.js';
 import { setTorBoxKey, testTorBox, useDebrid } from '../state/debrid.js';
 import { LIMITS as SPEED_LIMITS, setSpeedLimit, useSpeedLimit } from '../state/speed-limit.js';
+import { setAutoContinueParts, useAutoContinueParts } from '../state/auto-continue.js';
+import { setScreenSaver, showScreenSaver, useScreenSaverOn } from '../state/screen-saver.js';
+import { useNavActions } from '../state/nav.jsx';
 import { downloadQueue, driveName } from '../state/downloads.js';
 import { useDrives } from '../state/drives.js';
 import { MAX_FEEDS, MAX_MIRRORS, addFeed, addMirror, refreshFeeds, removeFeed, removeMirror, useFeeds } from '../state/feeds.js';
@@ -33,6 +36,7 @@ import { Icon } from './Icon.jsx';
 import { Menu, MenuDivider, MenuItem } from './Menu.jsx';
 import { PinDialog } from './PinDialog.jsx';
 import { ProgressBar } from './ProgressBar.jsx';
+import { QRCode } from './QRCode.jsx';
 import { chooseTheme, colors, commitTheme, radius } from './colors.js';
 import { setNavigationHaptics, useNavigationHaptics } from './haptics.js';
 import { onStatusLight, setStatusLight, statusLightOn } from './lightBar.js';
@@ -111,13 +115,18 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     if (status === "error") body = /* @__PURE__ */ (0, jsx)(Callout, { tone: "error", children: t2("settings.companion.failed", { error: companion.error }) });
     else if (status === "starting") body = /* @__PURE__ */ (0, jsx)(Callout, { children: t2("settings.companion.starting") });
     else if (status !== "off" && !companion.address) body = /* @__PURE__ */ (0, jsx)(Callout, { tone: "warn", children: t2("settings.companion.offline") });
+    // 0.5.0 Pre Release 4: a QR code of the address beside it, so a phone camera opens the page (typing an IP
+    // on a phone is where it most often went wrong).
     else if (status !== "off") body = /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 14 }, children: [
-      /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.companion.open") }),
-      /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 20 }, children: [
-        /* @__PURE__ */ (0, jsx)(View, { style: { flex: 1, borderRadius: radius.md, backgroundColor: colors.canvas2, paddingHorizontal: 22, paddingVertical: 14 }, children: /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 25, lineHeight: 34, color: colors.fg }, children: companion.url }) }),
-        /* @__PURE__ */ (0, jsxs)(View, { style: { alignItems: "center", borderRadius: radius.md, backgroundColor: colors.canvas2, paddingHorizontal: 24, paddingVertical: 8 }, children: [
-          /* @__PURE__ */ (0, jsx)(Text, { style: text(16, colors.subtle, { fontWeight: 600, letterSpacing: 2 }), children: t2("settings.companion.pin") }),
-          /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 36, lineHeight: 46, letterSpacing: 6, color: colors.glow }, children: companion.pin })
+      /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 28 }, children: [
+        /* @__PURE__ */ (0, jsx)(QRCode, { text: companion.url, size: 216 }),
+        /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, gap: 14 }, children: [
+          /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.companion.open") }),
+          /* @__PURE__ */ (0, jsx)(View, { style: { borderRadius: radius.md, backgroundColor: colors.canvas2, paddingHorizontal: 22, paddingVertical: 14 }, children: /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 25, lineHeight: 34, color: colors.fg }, children: companion.url }) }),
+          /* @__PURE__ */ (0, jsxs)(View, { style: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 18, borderRadius: radius.md, backgroundColor: colors.canvas2, paddingHorizontal: 22, paddingVertical: 6 }, children: [
+            /* @__PURE__ */ (0, jsx)(Text, { style: text(16, colors.subtle, { fontWeight: 600, letterSpacing: 2 }), children: t2("settings.companion.pin") }),
+            /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 36, lineHeight: 46, letterSpacing: 6, color: colors.glow }, children: companion.pin })
+          ] })
         ] })
       ] }),
       companion.locked ? /* @__PURE__ */ (0, jsx)(Callout, { tone: "warn", children: t2("settings.companion.locked") }) : companion.phones ? /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.companion.phones", { count: companion.phones }) }) : null
@@ -128,8 +137,10 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     };
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "globe", title: t2("settings.card.companion"), right: /* @__PURE__ */ (0, jsx)(Chip, { status }) }),
-      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:companion", autoFocus: true, name: t2("settings.companion"), detail: t2("settings.companion.detail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: companion.enabled }), onPress: toggle }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:companion", name: t2("settings.companion"), detail: t2("settings.companion.detail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: companion.enabled }), onPress: toggle }),
       body,
+      // Experimental: the helper that answers the phone while the app is closed (companion/service.js).
+      companion.enabled ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:companionAway", name: t2("settings.companion.away"), detail: companion.away && companion.awayAnswer && !["ready", "updated", "sent", "sending", "stopped"].includes(companion.awayAnswer) ? t2("settings.companion.awayFailed", { error: companion.awayAnswer }) : t2("settings.companion.awayDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: companion.away }), onPress: () => setCompanionAway(!companion.away) }) : null,
       companion.hasPin ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:pin", name: t2("settings.companion.changePin"), detail: t2("settings.companion.changePinDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "chevronRight", color: colors.muted }), onPress: () => onChoosePin("change") }) : /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.subtle), children: t2("settings.companion.noPin") })
     ] });
   }
@@ -140,6 +151,16 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "star", title: t2("settings.card.feedback") }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:vibration", name: t2("settings.vibration"), detail: t2("settings.vibrationDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: vibration }), onPress: () => setNavigationHaptics(!vibration) }),
       /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.subtle), children: t2("settings.sounds") })
+    ] });
+  }
+  // The screen saver (0.5.0 Pre Release 4; ui/ScreenSaver.jsx): on or off, and a look at it now.
+  function ScreenSaverCard() {
+    const t2 = useT();
+    const on = useScreenSaverOn();
+    return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
+      /* @__PURE__ */ (0, jsx)(CardHead, { icon: "disc", title: t2("settings.card.screenSaver") }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:screenSaver", name: t2("settings.screenSaver"), detail: t2("settings.screenSaverDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on }), onPress: () => setScreenSaver(!on) }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:screenSaverNow", name: t2("settings.screenSaverNow"), detail: t2("settings.screenSaverNowDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "play", color: colors.muted }), onPress: showScreenSaver })
     ] });
   }
   // One swatch per preset: its accent filled, the accent frame when focused, a check on the chosen one.
@@ -269,16 +290,25 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       }, value)) })
     ] });
   }
-  function StorageCard({ onAdd, onMirror }) {
+  // Drives, the speed limit and whether a download in parts opens the browser for its next part by itself.
+  function DownloadsCard() {
     const t2 = useT();
-    const feeds = useFeeds();
     const drives = useDrives();
+    const autoParts = useAutoContinueParts();
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
-      /* @__PURE__ */ (0, jsx)(CardHead, { icon: "hardDrive", title: t2("settings.card.storage") }),
-      ...drives.roots.map((root) => /* @__PURE__ */ (0, jsx)(Drive, { root, usage: drives.usage[root] }, root)),
+      /* @__PURE__ */ (0, jsx)(CardHead, { icon: "download", title: t2("settings.card.downloads") }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:autoParts", name: t2("settings.autoParts"), detail: t2("settings.autoPartsDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: autoParts }), onPress: () => setAutoContinueParts(!autoParts) }),
       /* @__PURE__ */ (0, jsx)(View, { style: { height: 1, marginVertical: 8, backgroundColor: colors.line } }),
       /* @__PURE__ */ (0, jsx)(SpeedLimitRow, {}),
       /* @__PURE__ */ (0, jsx)(View, { style: { height: 1, marginVertical: 8, backgroundColor: colors.line } }),
+      ...drives.roots.map((root) => /* @__PURE__ */ (0, jsx)(Drive, { root, usage: drives.usage[root] }, root))
+    ] });
+  }
+  function FeedsCard({ onAdd, onMirror }) {
+    const t2 = useT();
+    const feeds = useFeeds();
+    return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
+      /* @__PURE__ */ (0, jsx)(CardHead, { icon: "layers", title: t2("settings.card.feeds") }),
       /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.feeds.detail") }),
       ...feeds.map((feed) => /* @__PURE__ */ (0, jsx)(FeedRow, { feed, onMirror }, feed.url)),
       feeds.length < MAX_FEEDS ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:feeds:add", name: t2("settings.feeds.add"), detail: t2("settings.feeds.addHint", { count: MAX_FEEDS }), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "external", color: colors.muted }), onPress: onAdd }) : null,
@@ -372,9 +402,13 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
   // The optional donation link: a QR code for the phone and a short note, shown only when the row is
   // opened. Nothing in the app depends on it, asks for it or reminds anyone of it.
   var SUPPORT_URL = "https://buymeacoffee.com/jvk3r";
-  function SupportPanel() {
+  // The panel takes focus when it opens, so the page scrolls until the whole code shows and stays there for a
+  // phone to scan (only the rows around it could take focus before, and either one scrolled half the code
+  // away). Cross on it folds it again.
+  function SupportPanel({ onClose }) {
     const t2 = useT();
-    return /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 28, borderRadius: radius.md, backgroundColor: colors.surface2, padding: 22 }, children: [
+    return /* @__PURE__ */ (0, jsxs)(View, { focusKey: "settings:support:qr", onPress: onClose, style: { position: "relative", flexDirection: "row", alignItems: "center", gap: 28, borderRadius: radius.md, backgroundColor: colors.surface2, padding: 22 }, children: [
+      /* @__PURE__ */ (0, jsx)(FocusRing, { round: "md" }),
       // Drawn at the image's own size (packaging/support-qr.py: 37 modules x 6 px), so no module edge blurs.
       /* @__PURE__ */ (0, jsx)(View, { style: { borderRadius: radius.md, backgroundColor: "#ffffff", padding: 6 }, children: /* @__PURE__ */ (0, jsx)(Image, { source: supportQr, resizeMode: "contain", style: { width: 222, height: 222 } }) }),
       /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, gap: 12 }, children: [
@@ -391,6 +425,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     const install = useInstall();
     const automatic = useAutoInstall();
     const [support, setSupport] = (0, useState)(false);
+    const { focusLater } = useNavActions();
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "star", title: t2("settings.card.about") }),
       /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 24 }, children: [
@@ -409,8 +444,14 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
         } catch {
         }
       } }),
-      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:support", name: t2("settings.support.row"), detail: t2("settings.support.detail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: support ? "chevronUp" : "chevronDown", color: colors.muted }), onPress: () => setSupport((value) => !value) }),
-      support ? /* @__PURE__ */ (0, jsx)(SupportPanel, {}) : null,
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:support", name: t2("settings.support.row"), detail: t2("settings.support.detail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: support ? "chevronUp" : "chevronDown", color: colors.muted }), onPress: () => {
+        setSupport(!support);
+        if (!support) focusLater("settings:support:qr");
+      } }),
+      support ? /* @__PURE__ */ (0, jsx)(SupportPanel, { onClose: () => {
+        setSupport(false);
+        focusLater("settings:support");
+      } }) : null,
       /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.about.origin") }),
       /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.subtle), children: t2("settings.about.credits") })
     ] });
@@ -433,58 +474,96 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       } })
     ] });
   }
-  function Settings({ onClose }) {
+  // ---- The section (0.5.0 Pre Release 3) -------------------------------------------------------------------
+  // Settings is a section like Downloads and Files: the island's gear, or L1/R1, opens it, and Circle goes back.
+  // Its categories are on the left: focusing one shows its cards on the right (Right or Cross goes into
+  // them, Left comes back to the category). Every dialog it opens hands focus back to the row that opened it:
+  // a dialog that closed without doing so left focus nowhere, and the page could not be moved or left.
+  var CATEGORIES = [
+    { id: "companion", icon: "globe", label: "settings.companion" },
+    { id: "downloads", icon: "download", label: "settings.card.downloads" },
+    { id: "feeds", icon: "layers", label: "settings.card.feeds" },
+    { id: "debrid", icon: "zap", label: "settings.card.debrid" },
+    { id: "look", icon: "disc", label: "settings.card.look" },
+    { id: "guide", icon: "list", label: "settings.card.guide" },
+    { id: "about", icon: "star", label: "settings.card.about" }
+  ];
+  var RAIL = 420;
+  function CategoryFace({ icon, label, selected }) {
+    const focused = useIsFocused();
+    const lit = selected || focused;
+    return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
+      /* @__PURE__ */ (0, jsx)(FocusRing, { round: "md" }),
+      /* @__PURE__ */ (0, jsx)(View, { style: { width: 5, height: 30, borderRadius: radius.pill, backgroundColor: selected ? colors.accentHi : "transparent" } }),
+      /* @__PURE__ */ (0, jsx)(Icon, { name: icon, size: 20, color: lit ? colors.glow : colors.muted }),
+      /* @__PURE__ */ (0, jsx)(Text, { style: text(23, lit ? colors.fg : colors.muted, { flex: 1, fontWeight: selected ? 600 : 400, numberOfLines: 1, ellipsizeMode: "tail" }), children: label })
+    ] });
+  }
+  function SettingsScreen({ onBack, start = "companion" }) {
     const t2 = useT();
+    const { focusLater } = useNavActions();
+    const [category, setCategory] = (0, useState)(start);
     const [adding, setAdding] = (0, useState)(false);
     const [mirrorOf, setMirrorOf] = (0, useState)(null);
     const [pinMode, setPinMode] = (0, useState)(null);
     const [keying, setKeying] = (0, useState)(false);
-    // Drawn again in a newly chosen accent while open; the rest of the store follows once it closes,
-    // whichever way it closes (Back, or a phone shortcut).
+    // Drawn again in a newly chosen accent while open; the rest of the store follows once it is left.
     useActiveTheme();
     (0, useEffect)(() => () => commitTheme(), []);
-    return /* @__PURE__ */ (0, jsxs)(motion.View, {
-      style: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 55, backgroundColor: colors.canvas },
-      initial: { x: 90 },
-      animate: { x: 0 },
-      transition: ENTER,
-      children: [
-        /* @__PURE__ */ (0, jsx)(FocusScope, { trap: true, autoFocus: true, onBack: () => {
-          onClose();
-          return true;
-        }, children: /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1 }, children: [
-          /* @__PURE__ */ (0, jsxs)(View, { style: { height: 160, flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingHorizontal: 72, paddingBottom: 28 }, children: [
-            /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 24 }, children: [
-              /* @__PURE__ */ (0, jsx)(JLMark, { height: 56 }),
-              /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 2 }, children: [
-                /* @__PURE__ */ (0, jsx)(Text, { style: text(46, colors.fg, { fontWeight: 600 }), children: t2("settings.title") }),
-                /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 19, lineHeight: 28, color: colors.subtle }, children: `Jobee'sLair  v${VERSION_LABEL}` })
-              ] })
-            ] }),
-            /* @__PURE__ */ (0, jsx)(Text, { style: text(21, colors.subtle), children: t2("settings.closeHint") })
-          ] }),
-          /* @__PURE__ */ (0, jsx)(ScrollView, { style: { flex: 1, paddingHorizontal: 72, paddingBottom: 72 }, children: /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", gap: 36, paddingTop: 12 }, children: [
-            /* @__PURE__ */ (0, jsxs)(View, { style: { width: COLUMN, gap: 32 }, children: [
-              /* @__PURE__ */ (0, jsx)(CompanionCard, { onChoosePin: setPinMode }),
-              /* @__PURE__ */ (0, jsx)(FeedbackCard, {}),
-              /* @__PURE__ */ (0, jsx)(ThemeCard, {}),
-              /* @__PURE__ */ (0, jsx)(LanguageCard, {})
-            ] }),
-            /* @__PURE__ */ (0, jsxs)(View, { style: { width: COLUMN, gap: 32 }, children: [
-              /* @__PURE__ */ (0, jsx)(StorageCard, { onAdd: () => setAdding(true), onMirror: setMirrorOf }),
-              /* @__PURE__ */ (0, jsx)(DebridCard, { onKey: () => setKeying(true) }),
-              /* @__PURE__ */ (0, jsx)(GuideCard, {}),
-              /* @__PURE__ */ (0, jsx)(AboutCard, {}),
-              /* @__PURE__ */ (0, jsx)(NoticeCard, {})
+    // A closed dialog gives focus back to the row it came from.
+    const closed = (key) => focusLater(key);
+    const cards = {
+      companion: [/* @__PURE__ */ (0, jsx)(CompanionCard, { onChoosePin: setPinMode }, "companion")],
+      downloads: [/* @__PURE__ */ (0, jsx)(DownloadsCard, {}, "downloads")],
+      feeds: [/* @__PURE__ */ (0, jsx)(FeedsCard, { onAdd: () => setAdding(true), onMirror: setMirrorOf }, "feeds")],
+      debrid: [/* @__PURE__ */ (0, jsx)(DebridCard, { onKey: () => setKeying(true) }, "debrid")],
+      look: [/* @__PURE__ */ (0, jsx)(ThemeCard, {}, "theme"), /* @__PURE__ */ (0, jsx)(LanguageCard, {}, "language"), /* @__PURE__ */ (0, jsx)(FeedbackCard, {}, "feedback"), /* @__PURE__ */ (0, jsx)(ScreenSaverCard, {}, "screenSaver")],
+      guide: [/* @__PURE__ */ (0, jsx)(GuideCard, {}, "guide")],
+      about: [/* @__PURE__ */ (0, jsx)(AboutCard, {}, "about"), /* @__PURE__ */ (0, jsx)(NoticeCard, {}, "notice")]
+    };
+    return /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1 }, children: [
+      /* @__PURE__ */ (0, jsx)(FocusScope, { autoFocus: true, onBack: () => {
+        onBack();
+        return true;
+      }, children: /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, flexDirection: "row", gap: 48, paddingHorizontal: 48 }, children: [
+        /* @__PURE__ */ (0, jsxs)(View, { style: { width: RAIL, gap: 6, paddingTop: 18 }, children: [
+          /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 18, marginBottom: 24 }, children: [
+            /* @__PURE__ */ (0, jsx)(JLMark, { height: 44 }),
+            /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 0 }, children: [
+              /* @__PURE__ */ (0, jsx)(Text, { style: text(36, colors.fg, { fontWeight: 700, letterSpacing: 1 }), children: t2("settings.title") }),
+              /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 17, lineHeight: 24, color: colors.subtle }, children: `v${VERSION_LABEL}` })
             ] })
-          ] }) })
-        ] }) }),
-        adding ? /* @__PURE__ */ (0, jsx)(URLDialog, { title: t2("settings.feeds.add"), detail: t2("settings.feeds.addDetail"), submit: addFeed, onClose: () => setAdding(false) }) : null,
-        mirrorOf ? /* @__PURE__ */ (0, jsx)(URLDialog, { title: t2("settings.feeds.addMirror"), detail: t2("settings.feeds.mirrorDetail"), submit: (value) => addMirror(mirrorOf, value), onClose: () => setMirrorOf(null) }) : null,
-        keying ? /* @__PURE__ */ (0, jsx)(URLDialog, { title: t2("settings.debrid.keyTitle"), detail: t2("settings.debrid.keyDetail"), initial: "", submit: setTorBoxKey, onClose: () => setKeying(false) }) : null,
-        pinMode ? /* @__PURE__ */ (0, jsx)(PinDialog, { mode: pinMode, onDone: choosePin, onClose: () => setPinMode(null) }) : null
-      ]
-    });
+          ] }),
+          /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "settings:categories", children: CATEGORIES.map((item, index) => /* @__PURE__ */ (0, jsx)(View, {
+            focusKey: `settings:cat:${item.id}`,
+            autoFocus: item.id === start,
+            onFocus: () => setCategory(item.id),
+            onPress: () => focusLater("settings:content"),
+            style: (state) => [{ position: "relative", height: 64, flexDirection: "row", alignItems: "center", gap: 16, borderRadius: radius.md, paddingHorizontal: 14 }, category === item.id || state.focused ? { backgroundColor: colors.surface2 } : null],
+            children: /* @__PURE__ */ (0, jsx)(CategoryFace, { icon: item.icon, label: t2(item.label), selected: category === item.id })
+          }, item.id)) })
+        ] }),
+        /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "settings:content", ends: ["down"], children: /* @__PURE__ */ (0, jsx)(ScrollView, { style: { flex: 1, gap: 32, paddingTop: 18, paddingBottom: 72 }, children: cards[category] }, category) })
+      ] }) }),
+      adding ? /* @__PURE__ */ (0, jsx)(URLDialog, { title: t2("settings.feeds.add"), detail: t2("settings.feeds.addDetail"), submit: addFeed, onClose: () => {
+        setAdding(false);
+        closed("settings:feeds:add");
+      } }) : null,
+      mirrorOf ? /* @__PURE__ */ (0, jsx)(URLDialog, { title: t2("settings.feeds.addMirror"), detail: t2("settings.feeds.mirrorDetail"), submit: (value) => addMirror(mirrorOf, value), onClose: () => {
+        const url = mirrorOf;
+        setMirrorOf(null);
+        closed(`settings:feed:${url}`);
+      } }) : null,
+      keying ? /* @__PURE__ */ (0, jsx)(URLDialog, { title: t2("settings.debrid.keyTitle"), detail: t2("settings.debrid.keyDetail"), initial: "", submit: setTorBoxKey, onClose: () => {
+        setKeying(false);
+        closed("settings:torbox:key");
+      } }) : null,
+      pinMode ? /* @__PURE__ */ (0, jsx)(PinDialog, { mode: pinMode, onDone: choosePin, onClose: () => {
+        const mode = pinMode;
+        setPinMode(null);
+        closed(mode === "change" ? "settings:pin" : "settings:companion");
+      } }) : null
+    ] });
   }
 
-export { Settings };
+export { SettingsScreen };

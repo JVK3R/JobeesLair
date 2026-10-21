@@ -4,12 +4,16 @@
 // filter (none now: Vikingfile and AkiraBox are back, their file links captured from the browser).
 // MODIFIED: games from catalog feeds (state/feeds.js) are merged in before anything is derived.
 // MODIFIED: bundledIndex keeps the bundled titles' ids and direct flags for the live game counter.
+// MODIFIED: each game carries `formats`, the kinds of download it has (state/formats.js), for the Format filter:
+// the bundled games' from data/formats.js, a feed's releases sorted when the feeds load.
 
 import { features, games, twins } from '../data/catalog.js';
+import { formats as bundledFormats } from '../data/formats.js';
 import { formatDate2, t } from '../i18n/core.js';
 import { createPageCache } from './page-cache.js';
 import { loadFeedGames } from './feeds.js';
 import { createReleaseCache } from './release-cache.js';
+import { KINDS, gameFormats, ready1360 } from './formats.js';
 import { FileSystem, Image } from '@ps5-react/core';
 
   var COVER_WIDTH = 440;
@@ -92,6 +96,12 @@ import { FileSystem, Image } from '@ps5-react/core';
     (_a = game.art).cover && (_a.cover = coverSize(game.art.cover));
     if (game.art.coverFallbacks) game.art.coverFallbacks = game.art.coverFallbacks.map(coverSize);
   }
+  for (const game of entries) {
+    const bundled = bundledFormats[game.id]?.split(" ") ?? [];
+    const fed = feedReleases.get(game.id);
+    const fromFeed = fed?.length ? gameFormats(fed, game.platform) : [];
+    game.formats = fromFeed.length ? KINDS.filter((kind) => bundled.includes(kind) || fromFeed.includes(kind)) : bundled;
+  }
   var editionsByWork = /* @__PURE__ */ new Map();
   for (const game of entries) if (game.work) editionsByWork.set(game.work, [...editionsByWork.get(game.work) ?? [], game]);
   var listed = new Set(games);
@@ -144,6 +154,7 @@ import { FileSystem, Image } from '@ps5-react/core';
     transfer: "Transfer.it"
   };
   var MIN_HOST_GAMES = 20;
+  var MIN_KIND_GAMES = 5;
   var hostCounts = /* @__PURE__ */ new Map();
   for (const game of games) for (const host2 of game.providers ?? []) hostCounts.set(host2, (hostCounts.get(host2) ?? 0) + 1);
   function slug(value) {
@@ -174,6 +185,17 @@ import { FileSystem, Image } from '@ps5-react/core';
       any: true,
       options: [{ value: "ps5", name: "PS5" }, { value: "ps4", name: "PS4" }],
       has: (game, value) => game.platform === value
+    },
+    // What kind of download a game has. "13.60 Ready" first: a folder dump or a disk image, what ShadowMount+
+    // runs on 13.60. Only the kinds at least MIN_KIND_GAMES games have are offered.
+    {
+      key: "format",
+      any: true,
+      options: [
+        { value: "ready", label: "release.compat.ready", name: "13.60 Ready" },
+        ...KINDS.filter((kind) => games.filter((game) => game.formats.includes(kind)).length >= MIN_KIND_GAMES).map((kind) => ({ value: kind, label: `release.type.${kind}`, name: kind }))
+      ],
+      has: (game, value) => value === "ready" ? ready1360(game.formats) : game.formats.includes(value)
     },
     // A source the app downloads by itself, with no CAPTCHA page to pass in a browser.
     { key: "access", options: [{ value: "direct", label: "filters.access.direct" }], has: (game) => Boolean(game.direct) },
@@ -210,9 +232,9 @@ import { FileSystem, Image } from '@ps5-react/core';
   var genreLabel = (genre) => optionLabel({ label: `genre.${slug(genre)}`, name: genre });
   var featureLabel = (feature) => optionLabel({ label: `feature.${slug(feature)}`, name: feature });
   var NO_FILTERS = { ...Object.fromEntries(FACETS.map((facet) => [facet.key, []])), wishlist: false };
-  var activeCount = (filters) => FACETS.reduce((sum, facet) => sum + filters[facet.key].length, Number(filters.wishlist));
+  var activeCount = (filters) => FACETS.reduce((sum, facet) => sum + (filters[facet.key]?.length ?? 0), Number(filters.wishlist));
   var toggleValue = (list, value) => list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
-  var passes = (game, facet, picked) => !picked.length || (facet.any ? picked.some((value) => facet.has(game, value)) : picked.every((value) => facet.has(game, value)));
+  var passes = (game, facet, picked) => !picked?.length || (facet.any ? picked.some((value) => facet.has(game, value)) : picked.every((value) => facet.has(game, value)));
   // What a search matches against, lowercased once per game rather than on every keystroke for every game.
   var searchTexts = /* @__PURE__ */ new WeakMap();
   function searchText(game) {

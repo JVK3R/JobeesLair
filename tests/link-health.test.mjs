@@ -404,3 +404,23 @@ test('integration: a local server answering 200, 302, 404, 410, 503-then-200, 42
   assert.deepEqual(sourceSections(shown).map(({ group, items }) => [group, items.length]), [['direct', 8]]);
   assert.equal(shown[preferredRelease(shown)].id, 'ok', 'a link that answered is picked first');
 });
+
+// 0.5.0 Pre Release 4: a source listed without a size shows the one its file link answered with.
+test('a file link answering with its size gives the source that size; a web page, a small answer or a set does not', async () => {
+  const PAGE = 'https://files.example.net/landing';
+  const { health, done } = world({ table: {
+    [ARCHIVE]: [{ status: 200, headers: { 'content-length': String(42 * 1024 ** 3), 'content-type': 'application/octet-stream' } }],
+    [MIRROR]: [{ status: 200, headers: { 'content-length': '512', 'content-type': 'application/octet-stream' } }],
+    [PAGE]: [{ status: 200, headers: { 'content-length': String(5 * 1024 ** 2), 'content-type': 'text/html' } }],
+  } });
+  const releases = [direct('a', ARCHIVE, { sizeBytes: null }), direct('b', MIRROR, { sizeBytes: null }), direct('c', PAGE, { sizeBytes: null }), direct('d', ARCHIVE, { sizeBytes: 7 })];
+  health.want('game', releases);
+  await done('game');
+  const shown = health.overlay(releases);
+  assert.equal(shown[0].sizeBytes, 42 * 1024 ** 3);
+  assert.equal(shown[0].sizeFromCheck, true);
+  assert.equal(shown[1].sizeBytes, null, 'a 512-byte answer is not a game');
+  assert.equal(shown[2].sizeBytes, null, 'a web page says nothing of the file');
+  assert.equal(shown[3].sizeBytes, 7, 'a size the catalog lists stays');
+  assert.equal(health.recordOf(ARCHIVE).b, 42 * 1024 ** 3, 'kept with the link, so it shows next time without asking');
+});

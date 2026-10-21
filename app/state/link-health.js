@@ -92,6 +92,15 @@ import { sourceKind, webURL } from './download-sources.js';
     if (status >= 200 && status < 400) return { verdict: "active", code: status };
     return { verdict: "unknown", code: status };
   }
+  // 0.5.0 Pre Release 4: the size a file link's answer gives (Content-Length), so a source the catalog lists
+  // without one shows it before the download. Only a direct file link's, never a web page's, and only past
+  // 1 MB (a smaller answer is an error page or a stub, not a game).
+  var MIN_SIZE = 1024 * 1024;
+  function sizeOf(link, response) {
+    if (link.kind !== "direct" || /(?:text\/html|application\/xhtml)/i.test(response.headers?.["content-type"] || "")) return null;
+    const bytes = Number(response.headers?.["content-length"]);
+    return Number.isSafeInteger(bytes) && bytes >= MIN_SIZE ? bytes : null;
+  }
   // A release's standing from its links: dead when any is, unreachable when any is, active when all are.
   function judge(links, recordOf) {
     if (!links.length) return null;
@@ -112,6 +121,14 @@ import { sourceKind, webURL } from './download-sources.js';
   // had no check), so only a download that fails takes it out of the running.
   var HEALTH = { active: "ok", unreachable: "flaky", dead: "dead" };
   var withVerdict = (release, verdict) => ({ ...release, health: HEALTH[verdict.status], linkHealth: verdict });
+  // A single-file release with no size of its own takes the size its link answered with (a set's parts are
+  // checked by their first part only, so a set's whole size is never known this way).
+  function withSize(release, recordOf) {
+    if (release.sizeBytes || release.parts) return release;
+    const links = linksOf(release);
+    const bytes = links.length === 1 ? recordOf(links[0].url)?.b : null;
+    return bytes ? { ...release, sizeBytes: bytes, sizeFromCheck: true } : release;
+  }
   var stopped = () => Object.assign(new Error("Link check stopped."), { stopped: true });
   function createLinkHealth({
     http,
@@ -170,11 +187,11 @@ import { sourceKind, webURL } from './download-sources.js';
       saving = true;
       wait(SAVE_MS).then(save, save);
     }
-    function remember(url, status, code) {
+    function remember(url, status, code, bytes = null) {
       const before = load()[url];
-      records[url] = { s: status, c: code ?? null, at: now() };
+      records[url] = { s: status, c: code ?? null, at: now(), ...bytes && { b: bytes } };
       saveSoon();
-      if (before?.s !== status || before?.c !== (code ?? null)) {
+      if (before?.s !== status || before?.c !== (code ?? null) || (before?.b ?? null) !== bytes) {
         version++;
         emit();
       }
@@ -213,7 +230,9 @@ import { sourceKind, webURL } from './download-sources.js';
       }, REQUEST_MS);
       try {
         const response = await http.request(link.url, { method: "HEAD", maxBytes: 4096, signal });
-        return classify(link, response);
+        const answer = classify(link, response);
+        const bytes = answer.verdict === "active" ? sizeOf(link, response) : null;
+        return bytes ? { ...answer, bytes } : answer;
       } catch (error) {
         if (run.stop) throw stopped();
         return { verdict: "transient", code: timedOut ? "timeout" : "network", detail: error.message };
@@ -240,7 +259,7 @@ import { sourceKind, webURL } from './download-sources.js';
         }
         if (last.verdict !== "transient") {
           hosts.delete(link.host);
-          return { status: last.verdict, code: last.code };
+          return { status: last.verdict, code: last.code, bytes: last.bytes ?? null };
         }
       }
       return { status: "unreachable", code: last.code };
@@ -266,7 +285,7 @@ import { sourceKind, webURL } from './download-sources.js';
           if (!verdict) summary.skipped++;
           else {
             summary[verdict.status]++;
-            remember(link.url, verdict.status, verdict.code);
+            remember(link.url, verdict.status, verdict.code, verdict.bytes);
           }
         }
         setProgress(job.key, { done: progress.get(job.key).done + 1 });
@@ -350,9 +369,10 @@ import { sourceKind, webURL } from './download-sources.js';
         let changed = false;
         const result = releases.map((release) => {
           const verdict = judge(linksOf(release), recordOf);
-          if (!verdict) return release;
+          const sized = withSize(release, recordOf);
+          if (!verdict && sized === release) return release;
           changed = true;
-          return withVerdict(release, verdict);
+          return verdict ? withVerdict(sized, verdict) : sized;
         });
         const shown = changed ? result : releases;
         memo.set(releases, { version, result: shown });

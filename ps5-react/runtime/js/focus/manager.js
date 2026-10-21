@@ -200,6 +200,8 @@ export class FocusManager {
       if (scope.props.trap) return false;
       // A row ends at its ends: Left and Right never land in the rows around it.
       if (scope.props.row && (direction === 'left' || direction === 'right')) return false;
+      // `ends` names the directions a scope stops at (a column's last row does not drop into its neighbour).
+      if (scope.props.ends?.includes(direction)) return false;
     }
     return false;
   }
@@ -337,9 +339,24 @@ export class FocusManager {
     for (let frame = node.frame; frame; frame = frame.parent) {
       let anchor = node.anchor;
       while (anchor && anchor.frame !== frame) anchor = anchor.parent;
-      frame.reveal(rect, anchor?.rect ?? null);
+      frame.reveal(rect, anchor?.rect ?? null, {first: !frame.props?.horizontal && this.firstIn(node, rect, frame)});
       rect = scrolledBy(rect, frame);
     }
+  }
+
+  /**
+   * MODIFIED (Jobee'sLair 0.5.0 Pre Release 3): whether `node` is the top-most focusable element of `frame`'s
+   * content (nested horizontal rows included), so revealing it scrolls the frame back to its very top: a title
+   * or header above the first button is not focusable, and going up stopped short of it.
+   */
+  firstIn(node, rect, frame) {
+    for (const other of this.nodes) {
+      if (other === node || !other.rect || other.props.disabled || !navigable(other.scope)) continue;
+      let inside = other.frame;
+      while (inside && inside !== frame) inside = inside.parent;
+      if (inside && other.rect.y + other.rect.height <= rect.y + 1) return false;
+    }
+    return true;
   }
 
   /** After the focused node unmounted: a dead scope's previous focus, else the nearest survivor. */

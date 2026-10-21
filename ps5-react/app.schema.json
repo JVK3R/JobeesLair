@@ -150,6 +150,38 @@
       "type": "boolean",
       "default": false,
       "description": "Plays video with <Video> (FFmpeg demuxing and decoding). Adds about 16 MB to the PS5 build; streams over http(s) also need networking."
+    },
+    "payloads": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "name"
+        ],
+        "properties": {
+          "source": {
+            "type": "string",
+            "pattern": "\\.c$",
+            "description": "A C source in the app folder, relative to it."
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,40}\\.elf$",
+            "description": "The .elf it is built into, in the app folder."
+          },
+          "libs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^-l[A-Za-z0-9_]+$"
+            }
+          }
+        }
+      },
+      "description": "The app's own payloads for the console's payload loader, built with the PS5 Payload SDK like the engine's updater.elf and shipped in the app folder (Payloads.send('/app0/<name>'))."
     }
   },
   "additionalProperties": false,

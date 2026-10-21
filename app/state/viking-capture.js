@@ -127,4 +127,14 @@ import { sourceKind, webURL } from './download-sources.js';
       throw new Error(`Captured file is not part ${part}. Reopen the page and download that part.`);
   }
 
-export { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetadata, requirePart, validateVikingCapture, vikingLinkPage };
+  // MODIFIED (0.5.0 Pre Release 3): any set's part, on any host. The part before is often still in the browser,
+  // named for the same game: a file whose name says it is another part is refused (a name with no part number
+  // says nothing either way). Taking it downloaded a copy of that part, and the set failed to extract as one
+  // with a volume missing, after every part had downloaded.
+  function refuseOtherPart(part, filename) {
+    const named = /part[\s._-]*0*(\d+)(?!\d)/i.exec(filename || "");
+    if (part && named && Number(named[1]) !== part)
+      throw new Error(`Captured file is part ${named[1]}, not part ${part}. Reopen the page and download that part.`);
+  }
+
+export { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetadata, refuseOtherPart, requirePart, validateVikingCapture, vikingLinkPage };

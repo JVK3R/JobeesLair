@@ -12,7 +12,7 @@
 
 <p align="center">
   <b>An open-source homebrew download manager for the PS5.</b><br>
-  Version 0.4.1 · Title ID <code>PPSA99471</code> · created by JVK3R<br>
+  Version 0.5.0 · Title ID <code>PPSA99471</code> · created by JVK3R<br>
   <i>Proudly created alongside AI by JVK3R</i>
 </p>
 
@@ -43,7 +43,10 @@ or disappear: anyone can read, build, fix and fork it.
 
 ## What it does
 
-- **Browse and download** a bundled catalog of games and homebrew, plus up to 4 catalog feeds of your own
+- **Homebrew, its own section:** 200+ open-source PS5 apps, emulators, ports and payloads, each with its
+  own art, installed and kept up to date straight from its author's GitHub release (nothing is rehosted).
+  Apps land in `homebrew/` for ShadowMount+; payloads run through your ELF loader with one button.
+- **Browse and download** a bundled catalog of games, plus up to 4 catalog feeds of your own
   (with mirror addresses, so a feed survives its domain going down). Downloads go straight to internal
   storage or a USB drive.
 - **Labels every source** before you download: what it is (Folder Dump, .exfat Image, FFPKG, Backport),
@@ -55,8 +58,9 @@ or disappear: anyone can read, build, fix and fork it.
   browser step.
 - **Library, play time and Make Room:** see what's installed and how long you played it, free up space
   safely, move games between drives, and find out **why a game won't start**.
-- **Phone companion:** browse, queue downloads and manage feeds from your phone. Off until you turn it
-  on, and you choose its 6-digit PIN.
+- **Phone companion:** a live dashboard, the queue, games and homebrew (install, update, run) and a remote,
+  from your phone. Off until you turn it on, and you choose its 6-digit PIN. Experimental: it can stay
+  reachable while Jobee'sLair is closed, to open the app or run a payload.
 - **Updates from the app**, a **download speed limit**, six accent colors, DualSense light-bar status,
   and 13 languages.
 
@@ -67,7 +71,12 @@ or disappear: anyone can read, build, fix and fork it.
 
 <p align="center">
   <img src=".github/readme/dashboard.png" alt="The downloads dashboard: throughput, queue progress and job counts" width="49%">
-  <img src=".github/readme/settings-theme.png" alt="Settings: phone companion, speed limit, theme and TorBox" width="49%">
+  <img src=".github/readme/settings.png" alt="Settings: the phone companion with its QR code, and the other categories" width="49%">
+</p>
+
+<p align="center">
+  <img src=".github/readme/homebrew.png" alt="The Homebrew section: 200+ open-source apps, emulators and payloads" width="49%">
+  <img src=".github/readme/search.png" alt="Search: the catalog as a cover grid, with the 13.60 Ready and format filters" width="49%">
 </p>
 
 ## Install
@@ -133,8 +142,13 @@ sudo ../packaging/make-exfat.sh ../stage ../JobeesLair.exfat JOBEESLAIR
 The tests need only Node.js 22+ and run on every push: `npm test` (logic), `npm run test:render`
 (screens), `npm run test:all` (both).
 
+The Homebrew section's list is nexgen999's [PS5 Repository List](https://github.com/nexgen999/PS5-Repository-List),
+read live, plus `homebrew/sources.json` (our own picks and categories, how his categories map to ours, and
+what is never listed); `node tools/homebrew/build-index.mjs` builds `homebrew/index.json` from each project's
+own GitHub data, and the `homebrew index` workflow does it every six hours.
+
 To publish: raise the version in `app/version.js`, build, test the image on a console, then publish a
-release tagged with the same version (`v0.4.1`). Attach `JobeesLair.exfat` and `update.zip`
+release tagged with the same version (`v0.5.0`). Attach `JobeesLair.exfat` and `update.zip`
 (`ps5-react/dist/PPSA99471.zip` renamed) so installed copies can update themselves.
 
 </details>
@@ -150,8 +164,11 @@ for money. If you'd like to support it, you can **[buy me a coffee ☕](https://
 - **JVK3R**, creator of Jobee'sLair
 - **MyLuxy** ([Overdrive](https://github.com/MyLuxy/overdrive))
 - **saawant12** ([Orbit Store](https://github.com/saawant12/orbit-store-ps5))
-- **BlackBox**
+- **BlackBox** ([D3ATHLY/blackbox](https://github.com/D3ATHLY/blackbox))
 - **drakmor** ([ShadowMount+](https://github.com/drakmor/ShadowMountPlus))
+- **nexgen999** ([PS5 Repository List](https://github.com/nexgen999/PS5-Repository-List)): the Homebrew section's
+  list comes from it, with his permission, and grows with it
+- **Every homebrew developer** whose work the Homebrew section lists
 - **PS5 React — created by half144 and PS5 React contributors.**
   [github.com/half144/ps5-react](https://github.com/half144/ps5-react)
 

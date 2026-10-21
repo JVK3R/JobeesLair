@@ -6,24 +6,31 @@
 // MODIFIED: after the startup notice the store comes out of a vortex reveal (ui/Reveal.jsx).
 // MODIFIED: every launch shows the terms of use and legal notice (ui/Disclaimer.jsx) between the intro and the
 // store; plain text, it stays until the player presses ✕ (Continue), then the store mounts.
+// MODIFIED (0.5.0 Pre Release 4): a one-time "What's new" panel (ui/WhatsNew.jsx) and the screen saver
+// (ui/ScreenSaver.jsx) sit over the whole app.
 // MODIFIED: the DualSense status light follows the download queue (ui/lightBar.js), and a theme chosen in
 // Settings redraws the store in its accent when Settings closes (the store is keyed on the theme epoch).
 
 import { jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useState } from 'react';
-import { AppRegistry, FocusScope, View, motion } from '@ps5-react/core';
+import { AppRegistry, FocusScope, ReleaseImages, View, motion } from '@ps5-react/core';
 // First of the app's own imports: the earlier version's files are carried over before any module reads one.
 import { migrationLog } from './state/title-migration-run.js';
 import { BrowsePage } from './browse/BrowsePage.jsx';
 import { DownloadsScreen } from './downloads/DownloadsScreen.jsx';
 import { FilesScreen } from './files/FilesScreen.jsx';
 import { LibraryScreen } from './library/LibraryScreen.jsx';
+import { HomebrewScreen } from './homebrew/HomebrewScreen.jsx';
+import { HomebrewApp } from './homebrew/HomebrewApp.jsx';
+import { SettingsScreen } from './ui/Settings.jsx';
+import { startHomebrewRefresh } from './state/homebrew-store.js';
 import { GameScreen } from './game/index.jsx';
 import { LocaleProvider, useLocale } from './i18n/index.js';
 import { SearchScreen } from './search/index.jsx';
 import { getGame, warmCovers } from './state/catalog.js';
 import { refreshFeeds } from './state/feeds.js';
 import { startCompanionIfEnabled } from './companion/service.js';
+import { startSandboxSweeper } from './state/sandbox-sweeper.js';
 import { refreshDrives } from './state/drives.js';
 import { downloadQueue } from './state/downloads.js';
 import { colors, useThemeEpoch } from './ui/colors.js';
@@ -41,17 +48,24 @@ import { Splash } from './ui/Splash.jsx';
 import { Reveal } from './ui/Reveal.jsx';
 import { Disclaimer } from './ui/Disclaimer.jsx';
 import { UpdateDialog } from './ui/UpdateDialog.jsx';
+import { ScreenSaver } from './ui/ScreenSaver.jsx';
+import { WhatsNew } from './ui/WhatsNew.jsx';
 import { useInterfaceHaptics } from './ui/haptics.js';
 import { useInterfaceSounds } from './ui/sounds.js';
 
   function Screen({ screen: screen2 }) {
-    const { openGame, pop } = useNavActions();
+    const { openGame, pop, push } = useNavActions();
     const openCard = (game) => openGame(game.id, `card:${game.id}`);
     if (screen2.name === "game") return /* @__PURE__ */ (0, jsx)(GameScreen, { game: getGame(screen2.id), download: screen2.download, onBack: pop, onOpenGame: openCard });
     if (screen2.name === "downloads") return /* @__PURE__ */ (0, jsx)(DownloadsScreen, { onBack: pop, onOpenGame: openGame });
     // The Files section opens on the library (the games); its files are one level down ("storage").
     if (screen2.name === "files") return /* @__PURE__ */ (0, jsx)(LibraryScreen, { onBack: pop, onOpenGame: openGame });
     if (screen2.name === "storage") return /* @__PURE__ */ (0, jsx)(FilesScreen, { onBack: pop });
+    // The Homebrew section and one app's page in it (homebrew/).
+    if (screen2.name === "homebrew") return /* @__PURE__ */ (0, jsx)(HomebrewScreen, { onBack: pop, onOpenApp: (id, from) => push({ name: "homebrew-app", id }, from) });
+    if (screen2.name === "homebrew-app") return /* @__PURE__ */ (0, jsx)(HomebrewApp, { id: screen2.id, onBack: pop });
+    // Settings, a section since 0.5.0 Pre Release 3.
+    if (screen2.name === "settings") return /* @__PURE__ */ (0, jsx)(SettingsScreen, { onBack: pop });
     return /* @__PURE__ */ (0, jsx)(SearchScreen, { onBack: pop, onOpenGame: openCard });
   }
   // Pages start under the top island (Header.jsx: 24 from the top, 80 tall) with a gap, and end above
@@ -64,8 +78,10 @@ import { useInterfaceSounds } from './ui/sounds.js';
   // A screen slides in over the one it replaces: the full-screen container is translated, never faded or
   // scaled (a full-screen fade repaints every frame of it).
   var SCREEN_FADE = { type: "tween", duration: 0.32, ease: [0.22, 1, 0.36, 1] };
+  // While another page is up, the store's art goes (ReleaseImages): the engine registers at most 256
+  // images, and the Homebrew section alone draws a few dozen.
   function BrowseLayer({ shown }) {
-    return /* @__PURE__ */ (0, jsx)(View, { style: shown ? { position: "absolute", left: 0, right: 0, top: PAGE_TOP, bottom: PAGE_BOTTOM } : { position: "absolute", left: 0, right: 0, top: PAGE_TOP, bottom: PAGE_BOTTOM, display: "none" }, children: /* @__PURE__ */ (0, jsx)(StoreFreeze, { frozen: !shown, children: /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "page", autoFocus: true, inert: !shown, children: /* @__PURE__ */ (0, jsx)(BrowsePage, {}) }) }) });
+    return /* @__PURE__ */ (0, jsx)(View, { style: shown ? { position: "absolute", left: 0, right: 0, top: PAGE_TOP, bottom: PAGE_BOTTOM } : { position: "absolute", left: 0, right: 0, top: PAGE_TOP, bottom: PAGE_BOTTOM, display: "none" }, children: /* @__PURE__ */ (0, jsx)(ReleaseImages, { when: !shown, children: /* @__PURE__ */ (0, jsx)(StoreFreeze, { frozen: !shown, children: /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "page", autoFocus: true, inert: !shown, children: /* @__PURE__ */ (0, jsx)(BrowsePage, {}) }) }) }) });
   }
   var WARM_DELAY_MS = 3e3;
   // After the covers warm: a feed's new copy is only read at the next launch, so nothing here waits on it.
@@ -82,6 +98,9 @@ import { useInterfaceSounds } from './ui/sounds.js';
       return () => clearTimeout(id);
     }, []);
     (0, useEffect)(() => startCompanionIfEnabled(), []);
+    // MODIFIED (0.5.0 Pre Release 4): the helper that clears this app's sandbox once it closes, so
+    // ShadowMount+ can let go of the title (state/sandbox-sweeper.js).
+    (0, useEffect)(() => startSandboxSweeper(), []);
     // The drives and their space are read once at launch, on the probe worker, so the first screen that
     // wants them finds them in the cache.
     (0, useEffect)(() => {
@@ -91,9 +110,11 @@ import { useInterfaceSounds } from './ui/sounds.js';
     (0, useEffect)(() => watchQueue((listener) => downloadQueue().subscribe(listener)), []);
     // The update check: once at launch (after the store is up), then every 24 hours.
     (0, useEffect)(() => startUpdateChecks(), []);
+    // The Homebrew section's live index, fetched once a while after launch (state/homebrew-store.js).
+    (0, useEffect)(() => startHomebrewRefresh(), []);
     const { top } = useNavState();
     const onBrowse = top.name === "browse";
-    const key = top.name === "game" ? `game:${top.id}` : top.name;
+    const key = top.name === "game" ? `game:${top.id}` : top.name === "homebrew-app" ? `homebrew-app:${top.id}` : top.name;
     const immersive = useIsImmersive();
     const { rtl } = useLocale();
     return (
@@ -108,7 +129,10 @@ import { useInterfaceSounds } from './ui/sounds.js';
           ),
           immersive ? null : /* @__PURE__ */ (0, jsx)(Legend, { screen: top.name }),
           /* @__PURE__ */ (0, jsx)(UpdateDialog, {})
-        ] })
+        ] }),
+        // 0.5.0 Pre Release 4: the one-time What's new, and the screen saver over everything.
+        /* @__PURE__ */ (0, jsx)(WhatsNew, {}),
+        /* @__PURE__ */ (0, jsx)(ScreenSaver, {})
       ] })
     );
   }

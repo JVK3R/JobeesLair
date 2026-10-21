@@ -80,6 +80,10 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       delete job2.captureError;
       delete job2.captureFile;
       delete job2.captureMode;
+      delete job2.autoOpenAt;
+      delete job2.aheadAt;
+      delete job2.aheadState;
+      delete job2.aheadPart;
       if (job2.state === "installing") return { ...job2, state: "installer-required" };
       // An earlier build counted a title at rest (whose runtime ShadowMount mounts only at launch) as not
       // mounted; it is checked again.
@@ -127,6 +131,10 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     // The play-time store (state/playtime.js): it reads the sessions out of ShadowMount's log each time the
     // queue reads that log for launches.
     playtime = null,
+    // MODIFIED (0.5.0 Pre Release 3): whether a download in parts opens the browser for its next part by
+    // itself (state/auto-continue.js, Settings), after AUTO_OPEN_MS with a countdown on its card.
+    autoContinue = () => false,
+    autoOpenMs = 10e3,
     wait = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms))
   }) {
     // Builds before the rename kept the queue in "overdrive"; it is read from there until the first save here.
@@ -139,6 +147,34 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     let active2 = null;
     // Browser captures in progress, one at a time: job id -> { cancel, task, decide }.
     const captures = /* @__PURE__ */ new Map();
+    // MODIFIED (0.5.0 Pre Release 3): a download in parts that reaches a part only the browser can fetch,
+    // after an earlier part finished, opens that part's capture by itself: its card counts down
+    // (job.autoOpenAt) and "Wait" stops it. Only on the console, where the capture reads the link itself.
+    const AUTO_OPEN_MS = autoOpenMs;
+    const autoTimers = /* @__PURE__ */ new Map();
+    let queueApi = null;
+    function scheduleNextPart(job2) {
+      if (!browserCapture || !job2.parts || !job2.partIndex || !job2.parts[job2.partIndex - 1]?.completed || !autoContinue()) return;
+      clearTimeout(autoTimers.get(job2.id));
+      job2.autoOpenAt = Date.now() + AUTO_OPEN_MS;
+      notifications.show(t("downloads.notice.nextPart", { part: job2.partIndex + 1, parts: job2.parts.length }), job2.title);
+      autoTimers.set(job2.id, setTimeout(() => {
+        autoTimers.delete(job2.id);
+        if (!job2.autoOpenAt || job2.state !== "awaiting-browser" || !jobs.includes(job2)) return;
+        delete job2.autoOpenAt;
+        try {
+          queueApi.openBrowser(job2.id);
+        } catch (error2) {
+          job2.message = error2.message;
+        }
+        change();
+      }, AUTO_OPEN_MS));
+    }
+    function stopNextPart(job2) {
+      clearTimeout(autoTimers.get(job2.id));
+      autoTimers.delete(job2.id);
+      delete job2.autoOpenAt;
+    }
     // The capture flows (state/capture-flow.js) work on this queue's jobs through these; change, pump and
     // continueJob are the queue's, reached when called, not when the flows are built.
     const { stopCapture, captureVikingfile, captureBrowserLink } = createCaptureFlow({
@@ -154,6 +190,107 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       notifications,
       onCapture
     });
+    // MODIFIED (0.5.0 Pre Release 4): the next part's link, captured ahead. While one part of a set downloads,
+    // the next one's browser check opens by itself after the same countdown (its card's "Wait" stops it), so
+    // its link is ready when the part before ends and the set goes straight on. The capture works on a stand-in
+    // for that part, through a capture flow of its own over the stand-ins; the link it validates is kept as the
+    // part's download options. A link that expired by the time its part comes is refused before a byte is
+    // written and the part asks for the browser as before (the captured-link rule in execute).
+    const aheads = /* @__PURE__ */ new Map();
+    const needsBrowser = (source2) => {
+      try {
+        return Boolean(source2) && (source2.requiresBrowser === true || sourceKind(source2) === "vikingfile" || Boolean(vikingLinkPage(source2)));
+      } catch {
+        return false;
+      }
+    };
+    const aheadFlow = createCaptureFlow({
+      captures,
+      jobs: () => [...aheads.values()].map((ahead) => ahead.stand).filter(Boolean),
+      active: () => null,
+      change: () => change(),
+      pump: () => {
+      },
+      continueJob: (stand, url, options) => aheadCaptured(stand, options),
+      http,
+      linking,
+      browserCapture,
+      notifications,
+      onCapture
+    });
+    function aheadCaptured(stand, options) {
+      const job2 = jobs.find((item) => item.id === stand.jobId);
+      const ahead = aheads.get(stand.jobId);
+      const part = job2?.parts?.[ahead?.index];
+      if (!part || !options || part.completed) return;
+      part.options = options;
+      part.aheadAt = Date.now();
+      console.log(`[browser-capture] part ${ahead.index + 1} of ${job2.id} captured ahead`);
+      try {
+        save({ sync: false });
+      } catch {
+      }
+    }
+    function endAhead(job2, state) {
+      const ahead = job2 && aheads.get(job2.id);
+      if (!ahead) return;
+      clearTimeout(ahead.timer);
+      if (ahead.stand) aheadFlow.stopCapture(ahead.stand);
+      aheads.delete(job2.id);
+      delete job2.aheadAt;
+      if (state) job2.aheadState = state;
+      else {
+        delete job2.aheadState;
+        delete job2.aheadPart;
+      }
+      ahead.resolve();
+      change();
+    }
+    function scheduleAhead(job2, index) {
+      if (!browserCapture || !autoContinue() || aheads.has(job2.id)) return;
+      const part = job2.parts?.[index];
+      const source2 = part && job2.release.parts[index]?.sources?.[part.sourceIndex || 0];
+      if (!part || part.completed || part.options || !needsBrowser(source2)) return;
+      const ahead = { index, timer: null, stand: null, resolve: null, done: null };
+      ahead.done = new Promise((resolve) => {
+        ahead.resolve = resolve;
+      });
+      aheads.set(job2.id, ahead);
+      job2.aheadPart = index;
+      job2.aheadState = "waiting";
+      job2.aheadAt = Date.now() + AUTO_OPEN_MS;
+      ahead.timer = setTimeout(() => openAhead(job2), AUTO_OPEN_MS);
+      change();
+    }
+    function openAhead(job2) {
+      const ahead = aheads.get(job2.id);
+      if (!ahead) return;
+      ahead.timer = null;
+      delete job2.aheadAt;
+      const part = job2.parts?.[ahead.index];
+      const source2 = part && job2.release.parts[ahead.index]?.sources?.[part.sourceIndex || 0];
+      // Another capture holds the browser, or the part needs none by now: the set asks when it gets there.
+      if (!jobs.includes(job2) || captures.size || !part || part.options || part.completed || !source2) return endAhead(job2, null);
+      let viking = false;
+      try {
+        viking = sourceKind(source2) === "vikingfile" || Boolean(vikingLinkPage(source2));
+      } catch {
+      }
+      if (!viking && !captureAnchor(job2.titleId)) return endAhead(job2, null);
+      const stand = { id: `${job2.id}:ahead`, jobId: job2.id, state: "awaiting-browser", title: job2.title, titleId: job2.titleId, release: job2.release, parts: job2.parts, partIndex: ahead.index, browserUrl: source2.browserUrl || source2.url };
+      ahead.stand = stand;
+      const session = { cancel: cancellation(), task: null };
+      captures.set(stand.id, session);
+      job2.aheadState = "capturing";
+      notifications.show(t("downloads.notice.aheadPart", { part: ahead.index + 1, parts: job2.parts.length }), job2.title);
+      console.log(`[browser-capture] opening part ${ahead.index + 1} of ${job2.id} ahead, while part ${ahead.index} downloads`);
+      change();
+      const run = viking ? aheadFlow.captureVikingfile(stand, source2, session) : aheadFlow.captureBrowserLink(stand, source2, session);
+      Promise.resolve(run).catch(() => {
+      }).then(() => {
+        if (aheads.get(job2.id) === ahead) endAhead(job2, part.options && part.aheadAt ? "ready" : "failed");
+      });
+    }
     // A download's files checked and set in place (state/payload-checks.js).
     const { transferProblem, checkTransfer, verifyImages, verifyGameFolder, keepExtras, placeBackport, orderImages, changedPayload } = createPayloadChecks({
       fs,
@@ -520,6 +657,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
             job2.browserUrl = (expired ? null : error2.url) || job2.currentSource?.browserUrl || job2.currentSource?.url || job2.release.browserUrl || job2.release.url;
             delete job2.options;
             if (job2.parts) delete job2.parts[job2.partIndex].options;
+            scheduleNextPart(job2);
           } else if (!job2.cancelling) notifications.show(t("downloads.notice.failed"), job2.title);
         }
       } finally {
@@ -924,6 +1062,26 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
           change();
           const source2 = job2.release.parts[index].sources[part.sourceIndex || 0];
           job2.currentSource = source2;
+          // A capture ahead still open for this part: the set waits for it rather than open a second browser.
+          const ahead = aheads.get(job2.id);
+          if (ahead?.index === index && !part.options) {
+            if (ahead.stand) {
+              job2.message = t("downloads.aheadWaiting", { part: index + 1 });
+              change();
+              await Promise.race([ahead.done, new Promise((resolve) => signal.aborted ? resolve() : signal.addEventListener("abort", resolve))]);
+              if (job2.state === "pausing" || signal.aborted) return;
+            } else endAhead(job2, null);
+          }
+          // A link captured ahead is a captured link like any other: refused before a byte, it expired.
+          if (part.options && part.aheadAt) {
+            job2.capturedLink = true;
+            delete part.aheadAt;
+            if (job2.aheadPart === index) {
+              endAhead(job2, null);
+              delete job2.aheadState;
+              delete job2.aheadPart;
+            }
+          }
           if (!part.options) {
             const resolved = await sources.resolve(source2, { signal, directURL: job2.directURL });
             part.options = { ...resolved, expectedBytes: source2.sizeBytes || void 0, sha256: source2.sha256 || void 0 };
@@ -945,6 +1103,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
             recoverCompleted: true
           });
           active2.task = task;
+          if (index + 1 < job2.parts.length) scheduleAhead(job2, index + 1);
           const off = task.subscribe((progress) => {
             if (job2.state === "pausing") return;
             if (ACTIVE.includes(progress.state)) job2.state = progress.state;
@@ -1546,7 +1705,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     }
     // Coming back to Jobee'sLair is when a game was just tried: what its launch did is read now.
     if (platform === "ps5") void refreshLaunches();
-    return {
+    return queueApi = {
       snapshot,
       subscribe(listener) {
         listeners4.add(listener);
@@ -1653,6 +1812,8 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       remove(id) {
         const job2 = find(id);
         if (!["paused", "failed", "awaiting-browser", ...COMPLETE].includes(job2.state) || active2?.job === job2) return;
+        stopNextPart(job2);
+        endAhead(job2, null);
         stopCapture(job2);
         const previous = jobs;
         jobs = jobs.filter((item) => item !== job2);
@@ -1664,6 +1825,15 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         }
         emit2();
         pump();
+      },
+      // 0.5.0 Pre Release 4: ✕ on a finished card only tidies the Downloads list. The job stays (the library is
+      // built from the finished jobs), hidden from Downloads; deleting a game is the library's, never the queue's.
+      clear(id) {
+        const job2 = find(id);
+        if (!COMPLETE.includes(job2.state)) return;
+        job2.cleared = true;
+        save();
+        emit2();
       },
       /**
        * Uninstalls a finished game from ShadowMount and, once ShadowMount's image list shows none of the
@@ -1739,8 +1909,16 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         delete job2.extras;
         change();
       },
+      /** Stops a download in parts from opening its next part's browser by itself (its card's "Wait"). */
+      waitForPart(id) {
+        stopNextPart(find(id));
+        endAhead(find(id), null);
+        change();
+      },
       openBrowser(id) {
         const job2 = find(id);
+        stopNextPart(job2);
+        endAhead(job2, null);
         if (job2.state !== "awaiting-browser") return;
         const source2 = job2.parts ? job2.currentSource : job2.release;
         let viking = false;

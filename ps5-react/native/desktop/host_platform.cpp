@@ -22,7 +22,12 @@
 #include <sys/sysinfo.h>
 #include <sys/utsname.h>
 #endif
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #include <cerrno>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -87,6 +92,45 @@ bool arrange_relaunch(char*, std::size_t) {
 bool arm_update(const char*, char* error, std::size_t size) {
   std::snprintf(error, size, "update: the desktop preview runs from no disk image to replace");
   return false;
+}
+
+// The preview has no payload loader of its own: a plain TCP connection to 127.0.0.1:`port`, so tests can
+// stand one in. The file is read through the preview's path mapping like any other.
+bool send_payload(const char* path, int port, const std::string& request, bool answer, std::string& reply,
+                  std::string& error) {
+  char real[PATH_MAX];
+  const char* name = std::strrchr(path, '/') ? std::strrchr(path, '/') + 1 : path;
+  FILE* file = resolve_path(path, real, sizeof real) ? std::fopen(real, "rb") : nullptr;
+  if (!file) { error = std::string("Payloads.send: ") + name + " could not be opened"; return false; }
+  const int socket = ::socket(AF_INET, SOCK_STREAM, 0);
+  sockaddr_in address{};
+  address.sin_family = AF_INET;
+  address.sin_port = htons(static_cast<std::uint16_t>(port));
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  timeval timeout{3, 0};
+  bool ok = socket >= 0 && setsockopt(socket, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof timeout) == 0 &&
+            setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof timeout) == 0 &&
+            ::connect(socket, reinterpret_cast<sockaddr*>(&address), sizeof address) == 0;
+  if (!ok) error = "Payloads.send: the payload loader on port " + std::to_string(port) + " did not answer; load an ELF loader and retry";
+  const auto send_all = [&](const char* data, std::size_t size) {
+    while (ok && size) {
+      const ssize_t count = ::send(socket, data, size, 0);
+      if (count <= 0) ok = false;
+      else { data += count; size -= static_cast<std::size_t>(count); }
+    }
+  };
+  char buffer[65536];
+  for (std::size_t count; ok && (count = std::fread(buffer, 1, sizeof buffer, file)) > 0;) send_all(buffer, count);
+  std::fclose(file);
+  send_all(request.data(), request.size());
+  if (!ok && error.empty()) error = std::string("Payloads.send: ") + name + " could not be sent";
+  if (ok && answer) {
+    ::shutdown(socket, SHUT_WR);
+    char byte;
+    while (reply.size() < 255 && ::recv(socket, &byte, 1, 0) == 1 && byte != '\n') reply += byte;
+  }
+  if (socket >= 0) ::close(socket);
+  return ok;
 }
 
 int list_mounts(MountEntry* mounts, int max) {

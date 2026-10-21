@@ -16,7 +16,7 @@ import urllib.request
 import zipfile
 
 from rar_worker import build as build_rar_worker, unrar_source
-from common import layouts, layout_directory, resource_files, ROOT, DEPS, LOCK, run, digest, verify, fetch, app_files, bundle, dependency, stb_image, refresh_rate_mask
+from common import layouts, layout_directory, resource_files, app_payloads, ROOT, DEPS, LOCK, run, digest, verify, fetch, app_files, bundle, dependency, stb_image, refresh_rate_mask
 from network_ports import ports, copy_notices
 import ffmpeg
 from text_fonts import harfbuzz, sheenbidi
@@ -263,6 +263,13 @@ def main():
          ROOT / "native/ps5/payloads/browser_capture.c", browser / "browser_platform.c",
          browser / "browser_scan.c", browser / "browser_match.c", browser / "browser_url.c", "-lkernel_sys"],
         env=env, log=BUILD / "browser-capture.log")
+    # The app's own loader payloads (app.json "payloads"), built the same way.
+    own_payloads = []
+    for source, name, flags in app_payloads(app_dir, config):
+        out = BUILD / name
+        run([sdk / "bin/prospero-clang", "-std=gnu11", "-O2", "-Wall", "-Wextra", "-Werror", "-o", out, source, *flags],
+            env=env, log=BUILD / f"{name}.log")
+        own_payloads.append(out)
     if args.compile_only:
         print(f"PS5 ELF linked: {elf}; no application package generated")
         return
@@ -276,6 +283,8 @@ def main():
     shutil.copy2(relauncher, app / "relauncher.elf")
     shutil.copy2(updater, app / "updater.elf")
     shutil.copy2(capture, app / "browser-capture.elf")
+    for out in own_payloads:
+        shutil.copy2(out, app / out.name)
     param = json.loads((hui / "sce_sys/param.json").read_text())
     if refresh_rate_mask(config) & 2:
         param["attribute3"] = param.get("attribute3", 0) | 0x80040  # The console grants 120 Hz output only with these bits.
@@ -285,9 +294,10 @@ def main():
     param.update(titleId=TITLE, conceptId=TITLE[4:], contentId=config["contentId"], contentVersion=config["version"])
     param["localizedParameters"]["en-US"]["titleName"] = config["name"]
     (app / "sce_sys/param.json").write_text(json.dumps(param, indent=2) + "\n")
-    # An app's own home-screen art (icon0.png 512x512, pic0.png 1920x1080) replaces the proof icon.
+    # An app's own home-screen art (icon0.png 512x512, pic0.png 1920x1080) replaces the proof icon. Its pic0.dds and
+    # pic1.dds (3840x2160 BC7) are what the home screen shows behind the app, so they come along as they are.
     art = sorted((app_dir / "sce_sys").glob("*.png"))
-    for path in art:
+    for path in (*art, *sorted((app_dir / "sce_sys").glob("*.dds"))):
         shutil.copy2(path, app / "sce_sys" / path.name)
     if not any(path.name == "icon0.png" for path in art):
         # A reproducible proof icon in the demo's existing colors, without kit artwork.

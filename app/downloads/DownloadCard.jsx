@@ -14,7 +14,7 @@ import { memo, useEffect, useState } from 'react';
 import { SpeedChart } from './SpeedChart.jsx';
 import { STALE_PARTIAL, cause, explainError } from './errors.js';
 import { formatSpeed, formatTimeLeft } from './format.js';
-import { WAITING, clearAction, shownState, stateLabel } from './labels.js';
+import { WAITING, clearAction, formatOf, partOf, shownState, stateLabel } from './labels.js';
 import { fractionOf, shapeOf, useProgress } from './useQueue.js';
 import { useThroughput } from './useThroughput.js';
 import { isCdnProvider } from '../game/sources.js';
@@ -48,7 +48,13 @@ import { Text, View, motion } from '@ps5-react/core';
     if (["paused", "pausing", "awaiting-browser"].includes(job2.state)) return AMBER;
     return colors.accentHi;
   }
-  function primary({ state, error: error2 }, run, openGame, ready) {
+  // MODIFIED (0.5.0 Pre Release 3): a download in parts waiting on the browser opens it from here ("Wait"
+  // while it counts down to opening it by itself), not from the game page.
+  function primary({ state, error: error2, parts, autoOpenAt, aheadAt }, run, openGame, ready) {
+    if (state === "awaiting-browser" && autoOpenAt) return { icon: "pause", label: "downloads.action.waitPart", onPress: () => run("waitForPart") };
+    // 0.5.0 Pre Release 4: the next part's browser about to open while this one downloads.
+    if (aheadAt && BUSY.includes(state)) return { icon: "pause", label: "downloads.action.waitPart", onPress: () => run("waitForPart") };
+    if (state === "awaiting-browser" && parts?.length > 1) return { icon: "external", label: "downloads.action.openBrowser", onPress: () => run("openBrowser") };
     if (ready?.action === "seeWhy") return { icon: "alert", label: "ready.seeWhy", onPress: () => run("seeWhy") };
     if (state === "pausing") return { icon: "pause", label: "downloads.action.pausing", onPress: () => {
     } };
@@ -81,7 +87,7 @@ import { Text, View, motion } from '@ps5-react/core';
         onBlur();
       },
       onPress: () => {
-        if (action === "remove") {
+        if (action === "remove" || action === "clear") {
           run(action);
           return;
         }
@@ -128,6 +134,31 @@ import { Text, View, motion } from '@ps5-react/core';
       /* @__PURE__ */ (0, jsx)(Text, { style: { width: 170, textAlign: "end", fontFamily: "JetBrainsMono-Regular", fontSize: 22, lineHeight: 30, color: colors.fg }, children: latest ? formatSpeed(latest) : "—" })
     ] });
   }
+  // The seconds left before the next part's browser opens by itself (download-queue.js scheduleNextPart).
+  function NextPartCountdown({ job: job2 }) {
+    const t2 = useT();
+    const [, tick] = (0, useState)(0);
+    (0, useEffect)(() => {
+      const id = setInterval(() => tick((n) => n + 1), 500);
+      return () => clearInterval(id);
+    }, []);
+    const seconds = Math.max(0, Math.ceil((job2.autoOpenAt - Date.now()) / 1e3));
+    return /* @__PURE__ */ (0, jsx)(Text, { style: font(20, AMBER, { numberOfLines: 1, ellipsizeMode: "tail" }), children: t2("downloads.nextPartIn", { part: (job2.partIndex ?? 0) + 1, seconds }) });
+  }
+  // The next part's link, captured while this part downloads (download-queue.js scheduleAhead): the countdown
+  // to its browser, then where its capture stands.
+  function AheadLine({ job: job2 }) {
+    const t2 = useT();
+    const [, tick] = (0, useState)(0);
+    (0, useEffect)(() => {
+      if (!job2.aheadAt) return void 0;
+      const id = setInterval(() => tick((n) => n + 1), 500);
+      return () => clearInterval(id);
+    }, [job2.aheadAt]);
+    const part = (job2.aheadPart ?? 0) + 1;
+    const text = job2.aheadAt ? t2("downloads.aheadIn", { part, seconds: Math.max(0, Math.ceil((job2.aheadAt - Date.now()) / 1e3)) }) : job2.aheadState === "capturing" ? t2("downloads.aheadCapturing", { part }) : job2.aheadState === "ready" ? t2("downloads.aheadReady", { part }) : t2("downloads.aheadFailed", { part });
+    return /* @__PURE__ */ (0, jsx)(Text, { style: font(20, job2.aheadState === "ready" ? GREEN : AMBER, { numberOfLines: 1, ellipsizeMode: "tail" }), children: text });
+  }
   function DownloadCardView({ job: job2, game, autoFocus, run, onOpenGame, onFocusRow }) {
     const t2 = useT();
     // Which of its controls has focus (null: none), so the card's edge lights while focus is anywhere in it,
@@ -148,7 +179,7 @@ import { Text, View, motion } from '@ps5-react/core';
       },
       onBlur: () => setWithin((current) => current === name ? null : current)
     });
-    const meta = [(job2.artifact.format || release.format || "").toUpperCase(), `${release.provider} ${release.version || ""}`.trim(), job2.root].filter(Boolean).join(" \xB7 ");
+    const meta = [formatOf(job2, release), partOf(job2), `${release.provider} ${release.version || ""}`.trim(), job2.root].filter(Boolean).join(" \xB7 ");
     const problem = job2.error && explainError(job2.error, Boolean(release.parts));
     // The file's own title id is another game's (a PKG's header, download-queue.js noteTitle): said after any problem.
     const mismatch = job2.titleMismatch ? t2("downloads.titleMismatch", { found: job2.titleMismatch, expected: job2.titleId }) : "";
@@ -168,7 +199,7 @@ import { Text, View, motion } from '@ps5-react/core';
               /* @__PURE__ */ (0, jsx)(Text, { style: mono(17, colors.subtle, { flex: 1, numberOfLines: 1, ellipsizeMode: "tail" }), children: meta })
             ] }),
             /* @__PURE__ */ (0, jsx)(Text, { style: font(27, colors.fg, { fontWeight: 600, numberOfLines: 1, ellipsizeMode: "tail", letterSpacing: 0.4 }), children: job2.title }),
-            /* @__PURE__ */ (0, jsx)(Text, { style: font(20, problem ? RED : colors.muted, { numberOfLines: 1, ellipsizeMode: "tail" }), children: note || " " })
+            job2.autoOpenAt && state === "awaiting-browser" ? /* @__PURE__ */ (0, jsx)(NextPartCountdown, { job: job2 }) : job2.aheadState && !problem && BUSY.includes(state) ? /* @__PURE__ */ (0, jsx)(AheadLine, { job: job2 }) : /* @__PURE__ */ (0, jsx)(Text, { style: font(20, problem ? RED : colors.muted, { numberOfLines: 1, ellipsizeMode: "tail" }), children: note || " " })
           ] })
         ] }),
         /* @__PURE__ */ (0, jsx)(CardMeter, {

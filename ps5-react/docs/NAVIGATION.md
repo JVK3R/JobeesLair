@@ -185,6 +185,7 @@ express the order you want, and use `nextFocus*` only for exceptions.
 | `trap` | Focus cannot leave the scope (modals, dialogs) |
 | `wrap` | Moving past the last element in a direction wraps to the first in that row/column; with nothing in that row/column (Down from a tab row), focus leaves the scope as usual unless it traps |
 | `row` | A horizontal row (a shelf of cards): Left and Right stop at its ends instead of moving into the rows around it (the move reports `blocked`). Entered for the first time it focuses its `selected` element, or else its first; after that, the one it had, as `restoreFocus` does |
+| `ends` | Directions (`['down']`) the scope stops at instead of searching its parent: a side column whose last row should not drop into the column beside it. The other directions leave as usual |
 | `restoreFocus` | Re-entering the scope focuses the element focused when it was left (default `true`) |
 | `onBack` | Handles Circle while focus is inside; return `true` to consume |
 | `onAction` | `(action) => boolean`: handles `l1`, `r1`, `l2`, `r2`, `triangle`, `square`, and `options` while focus is inside, innermost scope first; return `true` to consume |

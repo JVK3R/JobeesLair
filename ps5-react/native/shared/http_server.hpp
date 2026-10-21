@@ -47,7 +47,12 @@ struct Status {
 // Listens on 0.0.0.0 from a new worker, on the first of `ports` it can bind (0: any free port). Only the
 // worker touches sockets; this returns at once. False with `error` set when it cannot start (already
 // running, bad arguments); ports that cannot be bound are reported by status() as 'failed'.
-bool start(std::vector<std::uint16_t> ports, std::string pin, std::string page, std::string& error);
+// MODIFIED (Jobee'sLair 0.5.0): `session`, when not empty (kMinSessionChars..kMaxSessionChars of [a-z0-9]),
+// is the one session cookie every phone gets for the right PIN, and it is accepted from the first request:
+// an app that keeps it with the PIN keeps its phones signed in across restarts, and can share it with a
+// helper that serves the same page while the app is closed. A new PIN should come with a new one.
+inline constexpr std::size_t kMinSessionChars = 16, kMaxSessionChars = 64;
+bool start(std::vector<std::uint16_t> ports, std::string pin, std::string page, std::string session, std::string& error);
 // Closes the listener, refuses waiting requests and joins the worker.
 void stop();
 Status status();

@@ -120,6 +120,28 @@ def app_files(app):
 
 
 
+def app_payloads(app, config):
+    """An app's own loader payloads: C sources in the app folder, each built into an .elf in the app folder."""
+    entries = config.get("payloads", [])
+    if not isinstance(entries, list) or len(entries) > 8:
+        raise ValueError("payloads must be an array of at most 8 entries")
+    built = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) - {"source", "name", "libs"}:
+            raise ValueError("each payload needs source and name, and may list libs")
+        source, name, libs = entry.get("source"), entry.get("name"), entry.get("libs", [])
+        if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,40}\.elf", name):
+            raise ValueError("a payload name is a lowercase file name ending in .elf")
+        if not isinstance(source, str) or not source.endswith(".c") or "\\" in source or source.startswith("/") or ".." in source.split("/"):
+            raise ValueError("a payload source is a relative .c path in the app folder")
+        if not isinstance(libs, list) or any(not isinstance(lib, str) or not re.fullmatch(r"-l[A-Za-z0-9_]+", lib) for lib in libs):
+            raise ValueError("payload libs are -l<name> flags")
+        if not (app / source).is_file():
+            raise ValueError(f"payload source {source} is missing")
+        built.append((app / source, name, libs))
+    return built
+
+
 def resource_files(app, config):
     """Explicit read-only package resources, kept outside the JavaScript heap."""
     entries = config.get("resources", [])

@@ -14,7 +14,8 @@ import { colors, radius } from './colors.js';
   // The radius of the element the frame wraps, by the call sites' `round` name; `radius` overrides it.
   var HOST = { full: radius.pill, lg: radius.lg, md: radius.md };
   // `inset` draws the frame inside the element (cards clip what is drawn outside them).
-  function Frame({ host, inset = false }) {
+  // MODIFIED (0.5.0 Pre Release 2): `color` draws it in another color (the Homebrew section's own).
+  function Frame({ host, inset = false, color }) {
     const outer = inset || host >= radius.pill ? host : host + OUTSET;
     const out = inset ? 0 : -px(OUTSET);
     return /* @__PURE__ */ (0, jsx)(motion.View, {
@@ -22,11 +23,11 @@ import { colors, radius } from './colors.js';
       initial: { opacity: 0 },
       animate: { opacity: 1 },
       transition: ARRIVE,
-      style: { position: "absolute", top: out, right: out, bottom: out, left: out, borderRadius: outer, borderWidth: px(WIDTH), borderColor: colors.accentHi }
+      style: { position: "absolute", top: out, right: out, bottom: out, left: out, borderRadius: outer, borderWidth: px(WIDTH), borderColor: color ?? colors.accentHi }
     });
   }
-  function FocusRing({ round = "md", radius: host }) {
-    return useIsFocused() ? /* @__PURE__ */ (0, jsx)(Frame, { host: host ?? HOST[round] ?? radius.md }) : null;
+  function FocusRing({ round = "md", radius: host, color }) {
+    return useIsFocused() ? /* @__PURE__ */ (0, jsx)(Frame, { host: host ?? HOST[round] ?? radius.md, color }) : null;
   }
   function FocusFrame({ round = "lg", radius: host }) {
     return useIsFocused() ? /* @__PURE__ */ (0, jsx)(Frame, { host: host ?? (round === "xl" ? radius.lg : HOST[round] ?? radius.md) }) : null;

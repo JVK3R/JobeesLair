@@ -30,7 +30,9 @@ import { formatBytes } from '../state/size.js';
 import { MARGIN2 } from '../state/space.js';
 import { Button2 } from '../ui/Button.jsx';
 import { ButtonGlyph, ButtonHints } from '../ui/ButtonHints.jsx';
+import { HomebrewArt, gradientOf } from '../homebrew/HomebrewArt.jsx';
 import { Cover } from '../ui/Cover.jsx';
+import { JLMark } from '../ui/JLMark.jsx';
 import { FocusRing } from '../ui/FocusRing.jsx';
 import { Icon } from '../ui/Icon.jsx';
 import { HINT } from '../ui/Legend.jsx';
@@ -77,6 +79,10 @@ import { DeviceInfo, FocusScope, Image, ScrollView, Text, View, motion, useIsFoc
   }
   // The game's wide art; without any, its cover at the left over the game's own tint.
   function Banner({ game }) {
+    // A Homebrew app: its own picture on its category's colors; Jobee'sLair itself, its mark.
+    const app = game.homebrewApp;
+    if (app?.self) return /* @__PURE__ */ (0, jsx)(View, { style: { width: TILE, height: BANNER, alignItems: "center", justifyContent: "center", backgroundColor: colors.canvas2 }, children: /* @__PURE__ */ (0, jsx)(JLMark, { height: 64 }) });
+    if (app) return /* @__PURE__ */ (0, jsx)(View, { style: { width: TILE, height: BANNER, alignItems: "center", justifyContent: "center", backgroundGradient: gradientOf(app.category) }, children: /* @__PURE__ */ (0, jsx)(HomebrewArt, { app, size: BANNER - 40, round: radius.lg }) });
     if (game.art?.hero) return /* @__PURE__ */ (0, jsx)(Image, { source: { uri: game.art.hero }, resizeMode: "cover", style: { width: TILE, height: BANNER } });
     if (game.art?.cover) return /* @__PURE__ */ (0, jsx)(Cover, { game, label: false, style: COVER });
     return /* @__PURE__ */ (0, jsx)(View, { style: { width: TILE, height: BANNER, alignItems: "center", justifyContent: "center" }, children: /* @__PURE__ */ (0, jsx)(Icon, { name: "disc", size: 48, color: colors.subtle }) });

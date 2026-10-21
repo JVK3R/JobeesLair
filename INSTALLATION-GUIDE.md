@@ -1,6 +1,6 @@
 # Jobee'sLair installation guide
 
-Jobee'sLair 0.4.1 · Title ID `PPSA99471` · created by JVK3R
+Jobee'sLair 0.5.0 · Title ID `PPSA99471` · created by JVK3R
 
 > [!WARNING]
 > **Download only what you own or have permission to access.** You are responsible for what you
@@ -52,10 +52,23 @@ The **Terms of Use** appear on every launch; press <kbd>✕</kbd> on **Continue*
 few seconds longer while the app gets file access. Open **Settings** with the gear at the right of the top
 bar; <kbd>L1</kbd> <kbd>R1</kbd> switch sections and <kbd>○</kbd> goes back or closes.
 
+## Homebrew
+
+Select **Homebrew** in the top island. Pick an app and select **Install**: it downloads from its author's own
+GitHub release.
+
+- **Apps** go into `homebrew/`. ShadowMount+ adds them to the home screen once you **close Jobee'sLair**.
+- **Payloads** are kept in `/data/JobeesLair/payloads`. Select **Run** to send one to your ELF loader
+  (port 9021); run it again after each reboot, like any payload.
+- **Updates:** a newer release shows as **Update** on the app's tile, and the Homebrew item in the island
+  counts them. **Other files** lets you pick another file of the same release.
+- **Remove** takes a payload off the console, or takes an app out of `homebrew/` (delete its home-screen
+  icon if it stays).
+
 ## Phone companion
 
-Browse, queue downloads, watch the queue, manage feeds and use a virtual remote from your phone. The
-console serves it, so there is nothing to install.
+A live dashboard, games, homebrew (install, update and run it), the download queue, your feeds and a
+virtual remote, from your phone. The console serves it, so there is nothing to install.
 
 1. **Settings → Phone companion & remote access**, switch it on.
 2. The first time, **choose a six-digit PIN** (repeated digits like `111111` and runs like `123456` are
@@ -66,6 +79,12 @@ console serves it, so there is nothing to install.
 Change the PIN under **Change PIN** in the same card; every phone is signed out. Wrong PINs are slowed
 down and the companion locks after 20 (switch it off and on to unlock).
 
+**While Jobee'sLair is closed (experimental):** turn on **Keep it on when Jobee'sLair is closed** in the same
+card. A small helper (it needs the ELF loader on port 9021) then answers on the same address with the same
+PIN whenever the app is closed: open Jobee'sLair from your phone, see the queue, and run installed payloads.
+It steps aside while the app runs, and stops when you switch it off (or the console restarts; open
+Jobee'sLair once to start it again).
+
 > [!IMPORTANT]
 > Anyone on your network who knows the PIN can sign in while the companion is on. Pick a PIN you don't use
 > elsewhere, and keep it off on a shared network.
@@ -75,7 +94,7 @@ down and the companion locks after 20 (switch it off and on to unlock).
 A feed is a JSON file at an `http(s)` address that adds games or sources (up to 4 feeds, 2 MiB each).
 The format is in **[FEEDS.md](FEEDS.md)**; add only feeds for content you have the right to download.
 
-- **On the console:** **Settings → Storage & feeds → Add a feed**, type the full address of the `.json`
+- **On the console:** **Settings → Catalog feeds → Add a feed**, type the full address of the `.json`
   file and confirm.
 - **From your phone:** the companion's **Feeds** tab, paste the address and tap **Add**.
 - **Mirrors:** add another address that serves the same feed (**Add a mirror** on the feed, up to 4). If
@@ -93,7 +112,7 @@ app.
    let it finish.
 
 The DualSense light shows the queue: slow breath = idle, green = downloading, amber = paused, red = failed
-(turn it off under **Settings → Theme & Light Bar**).
+(turn it off under **Settings → Look & feel**).
 
 **TorBox (optional):** in **Settings → Debrid providers** enter your TorBox API key and select **Test
 connection**. Sources on hosts TorBox supports then get a **TorBox** button that downloads in the app with

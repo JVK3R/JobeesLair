@@ -16,7 +16,7 @@ import { cardPick, readinessOf } from '../state/readiness.js';
    * (files/scan.js, with `root` and `installed`). `gameOf(id)`: the catalog's game, or undefined.
    * Returns the entries, the ones that need the gamer first, then the newest.
    */
-  function shelfEntries({ jobs, files = [], gameOf }) {
+  function shelfEntries({ jobs, files = [], gameOf, homebrewOf = null }) {
     const entries = /* @__PURE__ */ new Map();
     const owned = [];
     const entryOf = (key, game, order) => {
@@ -34,8 +34,12 @@ import { cardPick, readinessOf } from '../state/readiness.js';
     for (const file of files) {
       if (file.kind !== "images" || file.backport || !file.path.includes("/homebrew/")) continue;
       if (owned.some((path) => related(path, file.path))) continue;
-      const key = file.titleId ?? file.path;
-      const game = (file.titleId && gameOf(file.titleId)) ?? { id: key, title: file.name, art: {} };
+      // An app from the Homebrew section (or one found there by its name) shows as itself: its name and picture.
+      const app = homebrewOf?.(file) ?? null;
+      // Jobee'sLair's own image is not a game of the library: nothing here should offer to delete it.
+      if (app?.self) continue;
+      const key = app ? `homebrew:${app.id}` : file.titleId ?? file.path;
+      const game = app ? { id: key, title: app.name, art: {}, homebrewApp: app } : (file.titleId && gameOf(file.titleId)) ?? { id: key, title: file.name, art: {} };
       entryOf(key, game, -1).files.push(file);
     }
     return [...entries.values()].map((entry) => {

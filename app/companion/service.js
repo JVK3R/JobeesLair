@@ -7,21 +7,34 @@
 // asks something, one quick lookup, so the render thread barely notices. The server's sockets (bind,
 // address lookup) only ever open on its own worker: here, starting it returns at once and Settings reads
 // a status snapshot.
+// MODIFIED (0.5.0): with "Keep it on when Jobee'sLair is closed" (experimental, settings.json companionAway),
+// the app also hands companion-daemon.elf (app/native/companion_daemon.c) to the payload loader: it stays
+// behind and answers on the same port, with the same PIN, whenever the app is not running (open the app,
+// see the queue, run installed payloads). It is given the current PIN at every launch and whenever the PIN
+// changes, and told to stop when either switch goes off.
+// MODIFIED (0.5.0 Pre Release 2): one session cookie per PIN (settings.json companionSession, made with the
+// PIN): every phone that signs in gets it, the server accepts it from launch, and the helper is given it too.
+// A phone stays signed in when Jobee'sLair restarts and when it closes and the helper takes over (and back);
+// a new PIN makes a new one, which signs every phone out.
 
 import { useEffect, useState } from 'react';
 import { describeSource } from '../game/sources.js';
 import { filterGames, getGame, NO_FILTERS, sortGames } from '../state/catalog.js';
+import { COMPLETE } from '../state/download-queue.js';
 import { downloadQueue, driveName } from '../state/downloads.js';
 import { driveSnapshot, refreshDrives } from '../state/drives.js';
 import { addFeed, addMirror, feedsSnapshot, refreshFeeds, removeFeed, removeMirror, replaceFeed } from '../state/feeds.js';
 import { linkHealth } from '../state/links.js';
 import { loadList, saveList } from '../state/saved.js';
-import { CREATOR, VERSION_LABEL } from '../version.js';
-import { LocalServer } from '@ps5-react/core';
+import { CREATOR, TITLE_ID, VERSION_LABEL } from '../version.js';
+import { FileSystem, LocalServer, Payloads, Platform } from '@ps5-react/core';
+import { PAYLOAD_DIR } from '../state/homebrew-store.js';
 import { createCompanionApi } from './api.js';
+import { logger } from '../services/logger.js';
 import { PAGE } from './page.js';
 import { pressRemote, runShortcut } from './remote.js';
 import { startRemoteDownload } from './remote-download.js';
+import { homebrew } from '../state/homebrew-store.js';
 
   // Tried in order; 0 lets the system pick any free port. Settings shows the one it got.
   var PORTS = [34177, 8080, 0];
@@ -35,12 +48,19 @@ import { startRemoteDownload } from './remote-download.js';
     describe: describeSource,
     releasesOf: (game) => linkHealth().overlay(game.releases),
     download: startRemoteDownload,
-    queue: () => downloadQueue().snapshot(),
+    queue: () => downloadQueue().snapshot().filter((job) => !job.cleared),
     control: {
       pause: (id) => downloadQueue().pause(id),
       resume: (id) => downloadQueue().resume(id),
       cancel: (id) => downloadQueue().cancel(id),
-      clear: (id) => downloadQueue().remove(id)
+      clear: (id) => {
+        const queue = downloadQueue();
+        // A finished download is only hidden from the list; its game stays in the library.
+        if (queue.snapshot().some((job) => job.id === id && COMPLETE.includes(job.state))) queue.clear(id);
+        else queue.remove(id);
+      },
+      // 0.5.0 Pre Release 3: a part waiting on the browser opens it on the console, from the phone.
+      browser: (id) => downloadQueue().openBrowser(id)
     },
     storage: drives,
     feeds: { list: () => feedsSnapshot(), add: addFeed, edit: replaceFeed, remove: removeFeed, refresh: refreshFeeds, addMirror, removeMirror },
@@ -49,7 +69,22 @@ import { startRemoteDownload } from './remote-download.js';
       if (action === "refresh") void refreshFeeds();
       else runShortcut(action);
     },
-    info: () => ({ app: "Jobee'sLair", version: VERSION_LABEL, creator: CREATOR })
+    info: () => ({ app: "Jobee'sLair", version: VERSION_LABEL, creator: CREATOR }),
+    // The last 512 KB of the debug log, for "Report a problem" on the phone (0.5.0 Pre Release 4).
+    logs: () => logger().tail(512 * 1024),
+    // The Homebrew section, read only when a phone first asks for it.
+    homebrew: {
+      get index() {
+        return homebrew().index;
+      },
+      app: (id) => homebrew().app(id),
+      statusOf: (id) => homebrew().statusOf(id),
+      updates: () => homebrew().updates(),
+      installedApps: () => homebrew().installedApps(),
+      install: (id, file) => homebrew().install(id, file),
+      run: (id) => homebrew().run(id),
+      cancel: (id) => homebrew().cancel(id)
+    }
   });
   // Every drive downloads can go to, with its space, from the cache: nothing here waits on a drive. The
   // phone asks again every few seconds, so asking the worker to look again is enough to keep it current.
@@ -78,11 +113,79 @@ import { startRemoteDownload } from './remote-download.js';
     return typeof pin === "string" && PIN_PATTERN.test(pin) ? pin : "";
   };
   var currentPin = () => pinNow ?? (pinNow = savedPin());
+  var SESSION_PATTERN = /^[a-z0-9]{16,64}$/;
+  var sessionNow = null;
+  function newSession() {
+    try {
+      return LocalServer.token();
+    } catch (error) {
+      console.log(`companion: no session cookie could be made: ${error.message}`);
+      return "";
+    }
+  }
+  // The saved one, or a new one saved now ("" when none could be made: each sign-in then gets its own,
+  // which the helper does not know).
+  function currentSession() {
+    if (sessionNow !== null) return sessionNow;
+    const saved = loadList(SETTINGS, "settings").companionSession;
+    if (typeof saved === "string" && SESSION_PATTERN.test(saved)) return sessionNow = saved;
+    sessionNow = newSession();
+    if (sessionNow) saveSettings({ companionSession: sessionNow });
+    return sessionNow;
+  }
   var hasPin = () => currentPin() !== "";
   // On means switched on and able to start: a console that had it on before PINs were chosen waits for one.
   var isEnabled = () => (enabledNow ?? (enabledNow = loadList(SETTINGS, "settings").companion === true)) && hasPin();
   function saveSettings(change) {
     saveList(SETTINGS, "settings", { ...loadList(SETTINGS, "settings"), companionCode: void 0, ...change });
+  }
+  // The helper for while the app is closed: on only with the companion, and only on the console.
+  var DAEMON = "/app0/companion-daemon.elf";
+  var QUEUE_FILE = `/data/ps5-react/${TITLE_ID}/queue/downloads.json`;
+  var awayNow = null, awayAnswer = "";
+  var isAway = () => awayNow ?? (awayNow = loadList(SETTINGS, "settings").companionAway === true);
+  // Hands the helper its settings (or "-" to stop it). MODIFIED (0.5.0 Pre Release 3): never waits for its
+  // answer here. Waiting for it on the render thread (up to seconds) froze the whole app, which looked like
+  // being stuck in Settings. The send itself is a quick local copy; it runs a moment after the switch, and
+  // the helper writes its answer ("ready", "updated", "stopped", "busy") to helper.txt in the payload folder,
+  // read back a few seconds later for Settings.
+  var HELPER_FILE = `${PAYLOAD_DIR}/helper.txt`;
+  var READ_ANSWER_MS = 3e3;
+  var arming = null;
+  function readAnswer(on) {
+    let text = "";
+    try {
+      text = FileSystem.exists(HELPER_FILE) ? String(FileSystem.readFile(HELPER_FILE)).trim().split("\n")[0] : "";
+    } catch {
+    }
+    awayAnswer = text || (on ? "no answer" : "stopped");
+    console.log(`companion: closed-app helper ${on ? "armed" : "stopped"}: ${awayAnswer}`);
+    changed();
+  }
+  function armAway(on) {
+    if (Platform.OS !== "ps5") return awayAnswer = "desktop";
+    clearTimeout(arming);
+    awayAnswer = "sending";
+    arming = setTimeout(() => {
+      const request = ["CMP2", TITLE_ID, String(PORTS[0]), on ? currentPin() : "-", PAYLOAD_DIR, QUEUE_FILE, (on && currentSession()) || "-"].join("\n") + "\n";
+      try {
+        try {
+          FileSystem.remove(HELPER_FILE);
+        } catch {
+        }
+        const result = Payloads.send(DAEMON, { request, answer: false });
+        if (!result.ok) {
+          awayAnswer = result.error;
+          console.log(`companion: closed-app helper not sent: ${awayAnswer}`);
+          return changed();
+        }
+      } catch (error) {
+        awayAnswer = error.message;
+        return changed();
+      }
+      arming = setTimeout(() => readAnswer(on), READ_ANSWER_MS);
+    }, 50);
+    return awayAnswer;
   }
   var timer = null;
   var problem = "";
@@ -116,7 +219,7 @@ import { startRemoteDownload } from './remote-download.js';
   function startServer() {
     if (timer || !hasPin()) return;
     try {
-      LocalServer.start({ ports: PORTS, pin: currentPin(), page: PAGE });
+      LocalServer.start({ ports: PORTS, pin: currentPin(), page: PAGE, session: currentSession() });
       problem = "";
       timer = setInterval(pump, PUMP_MS);
       console.log(`companion: starting on the first free of ${PORTS.join(", ")}`);
@@ -139,6 +242,16 @@ import { startRemoteDownload } from './remote-download.js';
   // At launch: on only if it was left on (and has its PIN).
   function startCompanionIfEnabled() {
     if (isEnabled()) startServer();
+    if (isEnabled() && isAway()) armAway(true);
+  }
+  // The experimental switch. Turning it on needs the companion on (with its PIN).
+  function setCompanionAway(on) {
+    if (on && !isEnabled()) return false;
+    awayNow = on;
+    saveSettings({ companionAway: on });
+    armAway(on);
+    changed();
+    return true;
   }
   // The switch takes effect first; the file is written after, so the screen never waits on the disk.
   // Returns false, changing nothing, when it is being turned on without a PIN: Settings then asks for one
@@ -149,6 +262,7 @@ import { startRemoteDownload } from './remote-download.js';
     if (on) startServer();
     else stopServer();
     saveSettings({ companion: on });
+    if (isAway()) armAway(on);
     return true;
   }
   var needsPin = () => !hasPin();
@@ -161,9 +275,11 @@ import { startRemoteDownload } from './remote-download.js';
     const wasRunning = timer !== null;
     pinNow = pin;
     enabledNow = true;
-    saveSettings({ companionPin: pin, companion: true });
+    sessionNow = newSession();
+    saveSettings({ companionPin: pin, companion: true, companionSession: sessionNow || void 0 });
     if (wasRunning) stopServer();
     startServer();
+    if (isAway()) armAway(true);
     changed();
   }
   // Only reads: the native status snapshot (state, the port it bound, the address its worker looked up,
@@ -188,7 +304,9 @@ import { startRemoteDownload } from './remote-download.js';
       // Nothing secret in it: the phone asks for the PIN, then keeps a session cookie.
       url: address ? `http://${address}:${status.port}/` : "",
       locked: status.locked === true,
-      phones: status.sessions || 0
+      phones: status.sessions || 0,
+      away: isAway(),
+      awayAnswer: Platform.OS === "ps5" ? awayAnswer : ""
     };
   }
   // Settings' view; while it is open the server's state is read once a second (bind result, address).
@@ -225,4 +343,4 @@ import { startRemoteDownload } from './remote-download.js';
     return state;
   }
 
-export { CREATOR, choosePin, needsPin, pinProblem, setCompanion, startCompanionIfEnabled, useCompanion };
+export { CREATOR, choosePin, needsPin, pinProblem, setCompanion, setCompanionAway, startCompanionIfEnabled, useCompanion };

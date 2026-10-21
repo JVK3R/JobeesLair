@@ -38,16 +38,19 @@ export function createFrame(parent) {
      * @param {import('./geometry.js').Rect} rect pre-scroll, like `viewport`
      * @param {import('./geometry.js').Rect | null} anchor its `scrollAnchor` ancestor in this frame, aligned
      *   on a vertical frame's y axis; the x axis and horizontal frames always move the least
-     * @param {{instant?: boolean}} [options] `instant` moves there now instead of easing (a jump far
-     *   down a list, whose rows on the way could not all mount)
+     * @param {{instant?: boolean, first?: boolean}} [options] `instant` moves there now instead of easing (a
+     *   jump far down a list, whose rows on the way could not all mount); `first`: nothing focusable is above
+     *   it, so the content's top is shown when that keeps it in view (MODIFIED, Jobee'sLair 0.5.0 Pre Release 3)
      */
-    reveal(rect, anchor, {instant = false} = {}) {
+    reveal(rect, anchor, {instant = false, first = false} = {}) {
       const {viewport, handle} = frame;
       if (!viewport || handle == null) return;
       const [fromX, fromY, maxX, maxY] = NativeUI.scrollTo(handle, NaN, NaN);
       const margin = Math.round(screen.width * MARGIN);
       const x = revealOffset(frame.x, rect.x - viewport.x, rect.width, viewport.width, maxX, margin);
-      const y = anchor && !frame.props.horizontal
+      // Content offsets (rect is pre-scroll): the first focusable fits on the first screen, so show from 0.
+      const fitsAtTop = first && !frame.props.horizontal && rect.y - viewport.y + rect.height <= viewport.height - margin;
+      const y = fitsAtTop ? 0 : anchor && !frame.props.horizontal
         ? anchorOffset(frame.y, rect.y - viewport.y, rect.height, anchor.y - viewport.y, viewport.height, maxY, margin)
         : revealOffset(frame.y, rect.y - viewport.y, rect.height, viewport.height, maxY, margin);
       if (instant) {

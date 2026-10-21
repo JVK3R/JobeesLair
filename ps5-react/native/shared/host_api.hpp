@@ -158,6 +158,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 namespace hui::audio {
 class Mixer;
@@ -232,6 +233,11 @@ bool arrange_relaunch(char* error, std::size_t size);
 // once the updater has the request (or one already waits); false with a reason in `error` otherwise, and
 // always on the desktop preview, which runs from no image.
 bool arm_update(const char* control_dir, char* error, std::size_t size);
+// ABI v22 `payloads.send(path, port, request, answer)`: sends the ELF at `path` (an app path) to the payload
+// loader on 127.0.0.1:`port`, then `request`; with `answer`, the first line it writes back goes to `reply`.
+// False with a reason in `error` when the file or the loader is not there (PS5: payloads/; desktop: a plain
+// TCP connection, for tests against a stand-in loader).
+bool send_payload(const char* path, int port, const std::string& request, bool answer, std::string& reply, std::string& error);
 
 struct DeviceInfo {
   char model[64] = "";

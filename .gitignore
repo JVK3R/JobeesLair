@@ -1,0 +1,6 @@
+
+# The homebrew index builder's cache (tools/homebrew/build-index.mjs); CI keeps it in the Actions cache.
+homebrew/cache.json
+
+# Python bytecode from the brand scripts
+__pycache__/

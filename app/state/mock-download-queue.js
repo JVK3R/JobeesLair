@@ -80,6 +80,7 @@ import { preferredRelease } from '../game/sources.js';
       cancel(id) {
         this.remove(id);
       },
+      clear: (id) => update(id, { cleared: true }),
       async deleteFromDisk(id) {
         this.remove(id);
         return { note: null };

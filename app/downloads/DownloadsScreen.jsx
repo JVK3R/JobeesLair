@@ -7,7 +7,7 @@
 
 import '../assets/Exo2.ttf';
 import { jsx, jsxs } from 'react/jsx-runtime';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CARD_WIDTH, DownloadCard, primaryKey } from './DownloadCard.jsx';
 import { Telemetry } from './Telemetry.jsx';
 import { DiagnosisSheet } from '../game/DiagnosisSheet.jsx';
@@ -85,7 +85,8 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
   }
   function DownloadsScreen({ onBack, onOpenGame }) {
     const t2 = useT();
-    const { jobs, error: error2 } = useJobs();
+    const { jobs: everyJob, error: error2 } = useJobs();
+    const jobs = useMemo(() => everyJob.filter((job2) => !job2.cleared), [everyJob]);
     (0, useEffect)(() => {
       try {
         void downloadQueue().syncInstalls();
@@ -112,7 +113,7 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
           setDiagnosing(job2);
           return;
         }
-        const target = ["remove", "cancel", "deleteFromDisk"].includes(name) ? neighbor(job2) : null;
+        const target = ["remove", "cancel", "clear", "deleteFromDisk"].includes(name) ? neighbor(job2) : null;
         setNote("");
         try {
           const done2 = Promise.resolve(downloadQueue()[name](job2.id));

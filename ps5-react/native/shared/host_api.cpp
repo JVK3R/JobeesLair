@@ -609,6 +609,31 @@ JSValue update_arm(JSContext* ctx, JSValueConst, int, JSValueConst* argv) {
   return armed ? JS_TRUE : JS_NewString(ctx, error);
 }
 
+// ABI v22: payloads.send(path, port, request, answer) -> {ok: true, answer} or {ok: false, error}. The path is
+// an absolute app path; the port one of the loaders' (9020, 9021); the request goes to the payload's standard
+// input and is at most 4 KiB. Blocks for at most a few seconds (a loader that is not there refuses at once).
+JSValue payloads_send(JSContext* ctx, JSValueConst, int, JSValueConst* argv) {
+  std::size_t path_length = 0, request_length = 0;
+  int32_t port = 0;
+  const char* path = JS_ToCStringLen(ctx, &path_length, argv[0]);
+  if (!path) return JS_EXCEPTION;
+  const char* request = JS_ToCStringLen(ctx, &request_length, argv[2]);
+  if (!request) { JS_FreeCString(ctx, path); return JS_EXCEPTION; }
+  const bool valid = path_length > 1 && path_length <= 900 && path[0] == '/' && std::strlen(path) == path_length &&
+                     !std::strstr(path, "/../") && JS_ToInt32(ctx, &port, argv[1]) == 0 && (port == 9020 || port == 9021) &&
+                     request_length <= 4096;
+  std::string reply, error;
+  bool ok = false;
+  if (valid) ok = host::send_payload(path, port, std::string(request, request_length), JS_ToBool(ctx, argv[3]), reply, error);
+  JS_FreeCString(ctx, path);
+  JS_FreeCString(ctx, request);
+  if (!valid) return JS_ThrowTypeError(ctx, "payloads.send: an absolute path, port 9020 or 9021 and a request of at most 4 KiB");
+  JSValue result = JS_NewObject(ctx);
+  JS_SetPropertyStr(ctx, result, "ok", JS_NewBool(ctx, ok));
+  JS_SetPropertyStr(ctx, result, ok ? "answer" : "error", JS_NewString(ctx, ok ? reply.c_str() : error.c_str()));
+  return result;
+}
+
 struct Function {
   const char* name;
   JSCFunction* call;
@@ -674,6 +699,7 @@ constexpr Function kDisplay[] = {{"refreshRate", display_refresh_rate, 0}, {"set
 constexpr Function kText[] = {{"setLanguage", text_set_language, 1}};
 constexpr Function kRoot[] = {{"notify", notify, 2}, {"openURL", open_url, 1}, {"exit", request_exit, 1}};
 constexpr Function kUpdate[] = {{"arm", update_arm, 1}};
+constexpr Function kPayloads[] = {{"send", payloads_send, 4}};
 } // namespace
 
 void ps5_react_install_host_api(JSContext* ctx) {
@@ -694,6 +720,7 @@ void ps5_react_install_host_api(JSContext* ctx) {
   JS_SetPropertyStr(ctx, api, "display", namespace_object(ctx, "display", kDisplay));
   JS_SetPropertyStr(ctx, api, "text", namespace_object(ctx, "text", kText));
   JS_SetPropertyStr(ctx, api, "update", namespace_object(ctx, "update", kUpdate));
+  JS_SetPropertyStr(ctx, api, "payloads", namespace_object(ctx, "payloads", kPayloads));
   JS_SetPropertyStr(ctx, api, "network", ps5_react_network_api(ctx));
   JS_SetPropertyStr(ctx, api, "archives", ps5_react_archive_api(ctx));
   JS_SetPropertyStr(ctx, api, "packages", ps5_react_package_api(ctx));

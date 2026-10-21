@@ -568,6 +568,25 @@ export const SelfUpdate = Object.freeze({
 });
 
 /**
+ * Running payloads (PS5 only): `send(path)` sends an ELF the app can read (an absolute app path: /app0/… for
+ * its own, /data/… for a downloaded one) to the payload loader on 127.0.0.1, then `request` as the payload's
+ * standard input. `port` is 9021 (an ELF loader) or 9020 (a loader of raw .bin payloads). With `answer`,
+ * the payload's first line back is returned (it waits at most 3 s). Returns `{ok: true, answer}`, or
+ * `{ok: false, error}` when the file or the loader is not there. It blocks for at most a few seconds: call it
+ * from an event, not a render. On the desktop preview it opens a plain TCP connection, for a stand-in loader.
+ */
+export const Payloads = Object.freeze({
+  send(path, {port = 9021, request = '', answer = false} = {}) {
+    if (typeof path !== 'string' || !path.startsWith('/') || /[\0\n\r]/.test(path) || path.includes('/../') || path.length > 900)
+      throw new TypeError('Payloads.send: path must be an absolute path of at most 900 characters.');
+    if (port !== 9020 && port !== 9021) throw new TypeError('Payloads.send: port must be 9020 or 9021.');
+    if (typeof request !== 'string' || request.length > 4096) throw new TypeError('Payloads.send: request must be a string of at most 4 KiB.');
+    const result = host().payloads.send(path, port, request, Boolean(answer));
+    return Object.freeze({...result});
+  },
+});
+
+/**
  * UDP broadcast on the local network, for finding services that answer one (Jellyfin and Emby on
  * 7359, for instance). Replies come from anyone on the network: check what they claim before use.
  */
@@ -612,7 +631,13 @@ export const LocalServer = Object.freeze({
    * Listens on 0.0.0.0, on the first of `ports` its worker can bind (0: any free port), or on `port`.
    * Returns at once: no socket opens on this thread. status() says which port it got, or why none.
    */
-  start({port, ports = [port], pin, page}) { host().httpServer.start(ports, pin, page); },
+  start({port, ports = [port], pin, page, session}) { host().httpServer.start(ports, pin, page, session || undefined); },
+  /**
+   * 26 random characters for `start`'s `session` (Jobee'sLair 0.5.0): with one, every phone that signs in
+   * gets that same cookie, and it is accepted from the start, so an app that keeps it with the PIN keeps its
+   * phones signed in across restarts. Make a new one with each new PIN.
+   */
+  token() { return host().httpServer.token(); },
   stop() { host().httpServer.stop(); },
   /** @returns {{state: 'stopped' | 'starting' | 'listening' | 'failed', error: string, port: number, address: string,
    *   served: number, failures: number, locked: boolean, sessions: number}} */

@@ -6,7 +6,10 @@ import { t } from '../i18n/core.js';
   var STALE_PARTIAL = /partial file|checkpoint/i;
   var TASK = /^\w+\.\w+ \/.*?: /;
   var cause = (message) => message.replace(TASK, "");
-  var INCOMPLETE_PART = /Volume (\d+) of \d+ looks incomplete/;
+  // A set's volume to download again: cut short, or (0.5.0 Pre Release 3) a copy of another part, which a
+  // link captured for the wrong part gives (the RAR worker names both).
+  var INCOMPLETE_PART = /Volume (\d+) of \d+ (?:looks incomplete|is a copy of part \d+)/;
+  var COPIED_PART = /Volume (\d+) of \d+ is a copy of part (\d+)/;
   var SHORTFALL = /^Not enough space on (\S+): needs (.+?), (.+?) free(?:( after queued downloads)(?:: (.+))?)?$/;
   var CASES = [
     // Before STALE_PARTIAL: a full disk fails "write partial file".
@@ -36,6 +39,8 @@ import { t } from '../i18n/core.js';
   function explainError(error2, set = false) {
     const message = cause(error2);
     if (PLAIN.test(message)) return { title: message, action: "" };
+    const copied = COPIED_PART.exec(message);
+    if (copied) return { title: t("errors.partCopy", { part: copied[1], copy: copied[2] }), action: t("errors.action.retryPart") };
     const part = INCOMPLETE_PART.exec(message);
     if (part) return { title: t("errors.partIncomplete", { part: part[1] }), action: t("errors.action.retryPart") };
     const shortfall = SHORTFALL.exec(message);

@@ -653,6 +653,52 @@ size_t suspect_volume(const Session& session, bool early_end) {
   return early_end && session.reading < sources.size() ? session.reading + 1 : 0;
 }
 
+// MODIFIED (Jobee'sLair 0.5.0 Pre Release 3): the first volume, 1-based, whose own header numbers it as an
+// earlier place in the set (RAR5 always; RAR 3 and later when the end block stores the number), with the part
+// it is a copy of (1-based); {0, 0} when none is. A link captured for the wrong part of a set downloads a copy
+// of another volume under this one's name: the set is the right size, but UnRAR finds a volume missing.
+// Naming that volume lets the app download it again; a volume numbered later than its place (one missing in
+// between: the source lists too few) is left to the checks below.
+std::pair<size_t, size_t> duplicate_volume(const Options& options) {
+  // Each volume's own number (0-based; -1 when it cannot be read or is not there yet). A copy is a volume that
+  // numbers itself as an earlier place which is there and numbers itself the same: a true duplicate. One whose
+  // earlier place is not there (still downloading, or the source lists too few) says nothing about a copy.
+  std::vector<long> numbers(options.sources.size(), -1);
+  for (size_t i = 0; i < options.sources.size(); ++i) {
+    const ErrorHandler saved = ErrHandler;
+    long number = -1;
+    try {
+      CommandData command;
+      use_password(command, options);
+      std::wstring name;
+      UtfToWide(options.sources[i].c_str(), name);
+      Archive archive(&command);
+      if (archive.Open(name) && archive.IsArchive(false) && archive.Format != RARFMT14) {
+        // With headers encrypted, the main header (a RAR5 volume's number) is read with the headers after
+        // opening, as place_of reads them; RAR 3 and later store theirs in the end block.
+        bool ended = false;
+        while (archive.ReadHeader() > 0) {
+          const HEADER_TYPE type = archive.GetHeaderType();
+          if (type == HEAD_ENDARC) {
+            ended = true;
+            break;
+          }
+          if (type == HEAD_FILE && archive.Format == RARFMT50) break;
+          archive.SeekToNext();
+        }
+        if (archive.Volume && archive.Format == RARFMT50) number = long(archive.VolNumber);
+        else if (archive.Volume && ended && archive.EndArcHead.StoreVolNumber) number = long(archive.EndArcHead.VolNumber);
+      }
+    } catch (...) {
+    }
+    ErrHandler = saved;
+    numbers[i] = number;
+  }
+  for (size_t i = 1; i < numbers.size(); ++i)
+    if (numbers[i] >= 0 && size_t(numbers[i]) < i && numbers[size_t(numbers[i])] == numbers[i]) return {i + 1, size_t(numbers[i]) + 1};
+  return {0, 0};
+}
+
 // What a volume's own headers say about its place in the set. Not known when they cannot be read for a
 // reason the extraction names better: no password, a wrong one, not a RAR volume. `whole` once every
 // header and entry fits in the file: a volume cut short says nothing about what follows it. `cut` when an
@@ -820,7 +866,15 @@ int main() {
     // check's reason stands as it is. A last volume cut in its end block fails with no more precise reason.
     const bool early_end = error == describe(ERAR_EOPEN) || error == describe(ERAR_EREAD) ||
                            (session.last_cut && error == describe(ERAR_UNKNOWN));
-    if (!cancelled && session.error.empty() && session.options.sources.size() > 1 && (early_end || error == describe(ERAR_BAD_DATA)))
+    // A volume that is a copy of an earlier one, named first: before decoding (its last volume is not the
+    // set's last) or during it. "... Volume 4 of 10 is a copy of part 3."
+    std::pair<size_t, size_t> duplicate{0, 0};
+    if (!cancelled && session.options.sources.size() > 1 && (early_end || error == describe(ERAR_BAD_DATA)))
+      duplicate = duplicate_volume(session.options);
+    if (duplicate.first)
+      error = describe(ERAR_EOPEN) + " Volume " + std::to_string(duplicate.first) + " of " + std::to_string(session.options.sources.size()) +
+              " is a copy of part " + std::to_string(duplicate.second) + ".";
+    else if (!cancelled && session.error.empty() && session.options.sources.size() > 1 && (early_end || error == describe(ERAR_BAD_DATA)))
       if (const size_t volume = suspect_volume(session, early_end))
         error += " Volume " + std::to_string(volume) + " of " + std::to_string(session.options.sources.size()) + " looks incomplete.";
   }

@@ -7,7 +7,7 @@
 import { t } from '../i18n/core.js';
 import { sourceKind, webURL } from './download-sources.js';
 import { LINK_PREFIX, captureAnchor, linkForLog, otherSourceLink, validateCapturedLink } from './browser-links.js';
-import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetadata, requirePart, validateVikingCapture, vikingLinkPage } from './viking-capture.js';
+import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetadata, refuseOtherPart, requirePart, validateVikingCapture, vikingLinkPage } from './viking-capture.js';
 
   // A LinkVault page adds its own check and a mirror page before the host's, so a link capture gets
   // the payload's longest window.
@@ -121,6 +121,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
         const validated = await validateVikingCapture(http, result.url, metadata, session.cancel.signal);
         if (!current()) return;
         handingOff = true;
+        if (job2.parts) refuseOtherPart(job2.partIndex + 1, metadata.filename);
         handOff(job2, source2, { ...validated, filename: metadata.filename });
       } catch (error2) {
         if (!current() && !(handingOff && jobs().includes(job2) && job2.state === "queued" && active()?.job !== job2)) return;
@@ -189,6 +190,7 @@ import { VIKING_PAGE_PREFIX, VIKING_PREFIX, describeVikingCapture, linkPageMetad
             // An AkiraBox set's parts are captured one by one, and the part before is still in the
             // browser's memory, on the same host and named for the same game: the file has to be this part.
             if (akiraPart) requirePart(akiraPart, found.filename);
+            if (job2.parts) refuseOtherPart(job2.partIndex + 1, found.filename);
           } catch (error2) {
             if (!current() || rejected.length >= 6) throw error2;
             console.log("[browser-capture] refused", linkForLog(result.url), "and scanning on:", error2.message);

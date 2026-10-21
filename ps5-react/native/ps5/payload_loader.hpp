@@ -11,6 +11,10 @@ namespace payload_loader {
 // Sends `program` from the app folder, then `request`. The connected socket, its sends and receives
 // timing out after `timeout_us`; -1 with `error` (prefixed with `what`) when the loader is not there.
 int send(const char* program, const std::string& request, int timeout_us, const char* what, std::string& error);
+// Sends the file at `logical_path` (an app path such as /app0/x.elf or /data/...) to the loader listening
+// on 127.0.0.1:`port`, then `request`; otherwise as `send`.
+int send_file(const char* logical_path, int port, const std::string& request, int timeout_us, const char* what,
+              std::string& error);
 int receive(int socket, char* data, std::size_t size);
 bool write(int socket, const char* data, std::size_t size);
 // Later receives wait at most `timeout_us`.

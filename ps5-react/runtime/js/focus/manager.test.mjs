@@ -371,6 +371,22 @@ test('a row keeps Left and Right inside, starts at its first element, and comes 
   assert.equal(t.key(), 'b1');
 });
 
+// Jobee'sLair 0.5.0 Pre Release 3: Settings' right column must not drop into the category list at its end.
+test('a scope stops at the directions it ends at, and still leaves by the others', () => {
+  const t = setup();
+  const rail = t.scope(t.focus.root);
+  const content = t.scope(t.focus.root, {ends: ['down']});
+  for (let i = 0; i < 4; i++) t.node(`r${i}`, 0, i * 120, rail);
+  t.node('c0', 400, 0, content);
+  t.focus.mountScope(rail);
+  t.focus.mountScope(content);
+  t.focus.focus(t.focus.firstOf(content));
+  assert.equal(t.focus.move('down'), false, 'the rail is below and to the left, but the column ends');
+  assert.equal(t.key(), 'c0');
+  t.focus.move('left');
+  assert.equal(t.key(), 'r0');
+});
+
 test('a row entered for the first time starts at its selected element', () => {
   const t = setup();
   const top = t.scope(t.focus.root);
@@ -453,6 +469,27 @@ test('each frame reveals with the nearest scrollAnchor ancestor that it contains
   t.focus.setRect(card, {x: 0, y: 650, width: 100, height: 100});
   t.focus.focus('card');
   assert.deepEqual(revealed, [['rail', undefined], ['outer', 600]]);
+});
+
+// Jobee'sLair 0.5.0 Pre Release 3: a page's top-most focusable element scrolls it back to its very top.
+test('revealing the top-most focusable element of a frame asks it to show its first screen', () => {
+  const t = setup();
+  const revealed = [];
+  const page = {parent: null, x: 0, y: 0, props: {}, reveal: (rect, anchor, options) => revealed.push(options?.first)};
+  const rail = {parent: page, x: 0, y: 0, props: {horizontal: true}, reveal: (rect, anchor, options) => revealed.push(`rail:${options?.first}`)};
+  const add = (key, frame, x, y) => {
+    const node = t.focus.createNode(t.focus.root, frame, {focusKey: key});
+    t.focus.register(node);
+    t.focus.setRect(node, {x, y, width: 100, height: 100});
+  };
+  add('button', page, 0, 300);
+  add('tile-a', rail, 0, 500);
+  add('tile-b', rail, 200, 500);
+  add('lower', page, 0, 900);
+  t.focus.focus('lower');
+  t.focus.focus('tile-b');
+  t.focus.focus('button');
+  assert.deepEqual(revealed, [false, 'rail:false', false, true], 'only the button, with nothing focusable above it, is first; a row never is');
 });
 
 test('entering a ScrollView from outside reaches only items it shows, moves inside reach any', () => {

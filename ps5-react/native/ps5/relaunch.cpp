@@ -41,3 +41,24 @@ bool host::arm_update(const char* control_dir, char* error, std::size_t size) {
   std::snprintf(error, size, "%s", reason.c_str());
   return false;
 }
+
+// ABI v22 `payloads.send`: any ELF the app can read, to the loader on 127.0.0.1:`port`, then `request` as
+// its standard input. With `answer`, the first line it writes back (at most 3 s) comes back in `reply`.
+// MODIFIED (Jobee'sLair 0.5.0): the loader gives the payload this socket as its stdout and stderr, so a system
+// library's own log line ("[SceLncUtil] ...") can come before the payload's answer: up to 8 of those are skipped.
+bool host::send_payload(const char* path, int port, const std::string& request, bool answer, std::string& reply,
+                        std::string& error) {
+  const int socket = payload_loader::send_file(path, port, request, 3'000'000, "Payloads.send", error);
+  if (socket < 0) return false;
+  for (int lines = 0; answer && lines < 8; ++lines) {
+    char line[256] = {};
+    std::size_t used = 0;
+    for (int count; used + 1 < sizeof line && (count = payload_loader::receive(socket, line + used, 1)) == 1;)
+      if (line[used++] == '\n') break;
+    const bool whole = used && line[used - 1] == '\n';
+    reply.assign(line, whole ? used - 1 : used);
+    if (!whole || reply.empty() || reply[0] != '[') break;
+  }
+  payload_loader::close(socket);
+  return true;
+}

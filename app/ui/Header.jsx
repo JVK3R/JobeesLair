@@ -17,7 +17,6 @@ import { ButtonGlyph } from './ButtonHints.jsx';
 import { DownloadToast } from './DownloadToast.jsx';
 import { DownloadsBadge } from './DownloadsBadge.jsx';
 import { FocusRing } from './FocusRing.jsx';
-import { Settings } from './Settings.jsx';
 import { Logo } from './Logo.jsx';
 import { QuickPreview } from './QuickPreview.jsx';
 import { Menu, MenuDivider, MenuItem } from './Menu.jsx';
@@ -25,6 +24,7 @@ import { NavItem } from './NavItem.jsx';
 import { NavPill, useNavLayouts } from './NavPill.jsx';
 import { useSections } from './useSections.js';
 import { DockCount } from './LibraryCount.jsx';
+import { useHomebrewUpdates } from '../state/homebrew-store.js';
 import { useRemoteShortcuts } from '../companion/remote.js';
 import { FocusScope, Text, View, motion } from '@ps5-react/core';
 import { VERSION } from '../version.js';
@@ -33,6 +33,7 @@ import { EASE_OUT } from './ease.js';
 import { logical, px } from './scale.js';
 import '../assets/JetBrainsMono-Regular.ttf';
 import { colors, radius } from './colors.js';
+import { hb } from '../homebrew/palette.js';
 
   // The island's place, kept clear by the pages under it (index.jsx PAGE_TOP).
   var DOCK_HEIGHT = 80, DOCK_TOP = 24;
@@ -60,6 +61,12 @@ import { colors, radius } from './colors.js';
   function VersionTab() {
     return /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", left: 0, right: 0, bottom: -(DOCK_HEIGHT - 60) / 2 - 15, alignItems: "center" }, children: /* @__PURE__ */ (0, jsx)(View, { style: { height: 26, justifyContent: "center", borderRadius: radius.pill, borderWidth: 1, borderColor: colors.glassEdge, backgroundColor: colors.surface, paddingHorizontal: 12 }, children: /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 14, lineHeight: 18, letterSpacing: 1.5, color: colors.muted }, children: SHORT_VERSION }) }) });
   }
+  // The Homebrew section's item: its name, and the number of installed apps with a newer release.
+  function HomebrewNavItem({ item, onPress }) {
+    const t2 = useT();
+    const updates = useHomebrewUpdates();
+    return item("homebrew", { icon: "package", label: t2("nav.homebrew"), tone: hb().hi, onPress, children: updates ? /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", top: 6, right: 6, minWidth: 30, height: 30, alignItems: "center", justifyContent: "center", borderRadius: radius.pill, backgroundColor: hb().hi, paddingHorizontal: 8 }, children: /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 17, fontWeight: 700, lineHeight: 22, color: hb().fgHi }, children: String(updates) }) }) : null });
+  }
   var dockArrived = false;
   // Where the island's JL mark sits on screen (dock-mark.js), for the store's reveal to fly its mark to. The
   // island is centered, so its width (the language, an update badge) moves it; in a right-to-left language the
@@ -77,7 +84,6 @@ import { colors, radius } from './colors.js';
     const nav = useNavActions();
     const { top } = useNavState();
     const [browsing, setBrowsing] = (0, useState)(false);
-    const [choosingLanguage, setChoosingLanguage] = (0, useState)(false);
     const immersive = useIsImmersive();
     const [layouts, track] = useNavLayouts();
     const { update } = useUpdate();
@@ -91,9 +97,7 @@ import { colors, radius } from './colors.js';
       }
       if (action !== "l1" && action !== "r1") return false;
       setBrowsing(false);
-      if (action === "r1" && section === "files") setChoosingLanguage(true);
-      else
-        step(action === "r1");
+      step(action === "r1");
       return true;
     };
     // Back at a page's root goes to the dock; from the dock, back into the page (`down`: its scope).
@@ -101,14 +105,14 @@ import { colors, radius } from './colors.js';
       if (!nav.pop()) nav.focusLater("nav:current");
       return true;
     };
-    // The phone's shortcuts: Settings opens over the page; the others close it and go to their section.
+    // The phone's shortcuts: each goes to its section.
     useRemoteShortcuts((action) => {
-      if (action === "settings") return setChoosingLanguage(true);
-      setChoosingLanguage(false);
       setBrowsing(false);
-      if (action === "home") on.discover();
+      if (action === "settings") on.settings();
+      else if (action === "home") on.discover();
       else if (action === "downloads") on.downloads();
       else if (action === "search") on.search();
+      else if (action === "homebrew") on.homebrew();
     });
     const dockBack = () => {
       nav.focusLater(down);
@@ -119,7 +123,6 @@ import { colors, radius } from './colors.js';
     return /* @__PURE__ */ (0, jsxs)(FocusScope, { onAction, onBack, children: [
       children,
       /* @__PURE__ */ (0, jsx)(DownloadToast, { actionRef: toastAction }),
-      choosingLanguage ? /* @__PURE__ */ (0, jsx)(Settings, { onClose: () => setChoosingLanguage(false) }) : null,
       /* @__PURE__ */ (0, jsx)(QuickPreview, {}),
       // The island: one floating glass bar at the top, centered. Pages start under it, so it never
       // covers what scrolls (and the engine keeps copying scrolled pixels instead of repainting).
@@ -170,20 +173,15 @@ import { colors, radius } from './colors.js';
         item("top", { label: t2("nav.top"), onPress: on.top }),
         item("new", { label: t2("nav.new"), onPress: on.new }),
         divider,
-        item("favorites", { icon: "heart", label: favorites ? String(favorites) : null, onPress: on.favorites }),
-        item("downloads", { icon: "download", onPress: on.downloads, children: BADGE }),
-        item("files", { icon: "grid", onPress: on.files }),
+        /* @__PURE__ */ (0, jsx)(HomebrewNavItem, { item, onPress: on.homebrew }),
+        divider,
+        item("favorites", { icon: "heart", label: favorites ? String(favorites) : null, caption: t2("filters.favorites"), onPress: on.favorites }),
+        item("downloads", { icon: "download", caption: t2("downloads.title"), onPress: on.downloads, children: BADGE }),
+        item("files", { icon: "grid", caption: t2("game.back.browse"), onPress: on.files }),
         update ? /* @__PURE__ */ (0, jsx)(UpdateNavItem, { update, down }) : null,
-        /* @__PURE__ */ (0, jsx)(
-          NavItem,
-          {
-            focusKey: "nav:language",
-            icon: "settings",
-            onPress: () => setChoosingLanguage(true),
-            nextFocusDown: down,
-            ...focusEnd(rtl, "nav:language")
-          }
-        ),
+        // MODIFIED (0.5.0 Pre Release 3): Settings is a section like the others (ui/Settings.jsx), not a
+        // screen over the page.
+        item("settings", { icon: "settings", caption: t2("settings.title"), onPress: on.settings, ...focusEnd(rtl, keyOf("settings")) }),
         /* @__PURE__ */ (0, jsx)(ButtonGlyph, { button: "r1" })
       ] }) }) })
     ] });

@@ -52,18 +52,28 @@ bool port_list(JSContext* ctx, JSValueConst value, std::vector<std::uint16_t>& o
   return true;
 }
 
+// MODIFIED (Jobee'sLair 0.5.0): an optional fourth argument, the session cookie every phone gets
+// (http_server::start); undefined or '' for one random cookie per sign-in, as before.
 JSValue start(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
   std::vector<std::uint16_t> ports;
-  std::string pin, page;
+  std::string pin, page, session;
   if (argc < 3 || !port_list(ctx, argv[0], ports) || !text(ctx, argv[1], http_server::kPinDigits, pin) ||
-      !text(ctx, argv[2], http_server::kMaxPageBytes, page))
-    return JS_ThrowTypeError(ctx, "httpServer.start: expected a port or 1..8 ports (0..65535), a 6-digit PIN and a page of at most 512 KiB");
+      !text(ctx, argv[2], http_server::kMaxPageBytes, page) ||
+      (argc > 3 && !JS_IsUndefined(argv[3]) && !text(ctx, argv[3], http_server::kMaxSessionChars, session)))
+    return JS_ThrowTypeError(ctx, "httpServer.start: expected a port or 1..8 ports (0..65535), a 6-digit PIN, a page of at most 512 KiB and an optional session");
   if (!network::running())
     return JS_ThrowPlainError(ctx, "httpServer.start: enable networking: true and filesystemAccess: console in app.json");
   std::string error;
-  if (!http_server::start(std::move(ports), std::move(pin), std::move(page), error))
+  if (!http_server::start(std::move(ports), std::move(pin), std::move(page), std::move(session), error))
     return JS_ThrowPlainError(ctx, "httpServer.start: %s", error.c_str());
   return JS_UNDEFINED;
+}
+
+// MODIFIED (Jobee'sLair 0.5.0): 16 random bytes as 26 base-32 characters, for start's session.
+JSValue token(JSContext* ctx, JSValueConst, int, JSValueConst*) {
+  const std::string value = http_server::random_token(16);
+  if (value.empty()) return JS_ThrowPlainError(ctx, "httpServer.token: no random bytes could be had");
+  return JS_NewString(ctx, value.c_str());
 }
 
 JSValue stop(JSContext*, JSValueConst, int, JSValueConst*) {
@@ -120,7 +130,8 @@ JSValue address(JSContext* ctx, JSValueConst, int, JSValueConst*) {
 
 JSValue ps5_react_http_server_api(JSContext* ctx) {
   JSValue api = JS_NewObject(ctx);
-  JS_SetPropertyStr(ctx, api, "start", JS_NewCFunction(ctx, start, "start", 3));
+  JS_SetPropertyStr(ctx, api, "start", JS_NewCFunction(ctx, start, "start", 4));
+  JS_SetPropertyStr(ctx, api, "token", JS_NewCFunction(ctx, token, "token", 0));
   JS_SetPropertyStr(ctx, api, "stop", JS_NewCFunction(ctx, stop, "stop", 0));
   JS_SetPropertyStr(ctx, api, "status", JS_NewCFunction(ctx, status, "status", 0));
   JS_SetPropertyStr(ctx, api, "poll", JS_NewCFunction(ctx, poll, "poll", 0));

@@ -34,13 +34,15 @@ import { Text, View, motion, useIsFocused } from '@ps5-react/core';
       )
     ] });
   }
-  var SortSelect = (0, memo)(function SortSelect2() {
+  // `focusKey`: the browse page's is "catalog:sort", which the header's Top and New pills focus; the search page's
+  // has its own, or a key that is on two pages at once would take the pills' focus into a page about to close.
+  var SortSelect = (0, memo)(function SortSelect2({ focusKey = "catalog:sort" }) {
     const { rtl } = useLocale();
     const { sort } = useStoreState();
     const { setSort } = useStoreActions();
     const [open, setOpen] = (0, useState)(false);
     return /* @__PURE__ */ (0, jsxs)(View, { style: { position: "relative", zIndex: 10 }, children: [
-      /* @__PURE__ */ (0, jsx)(View, { focusKey: "catalog:sort", selected: open, onPress: () => setOpen((value) => !value), style: (_state) => [
+      /* @__PURE__ */ (0, jsx)(View, { focusKey, selected: open, onPress: () => setOpen((value) => !value), style: (_state) => [
         { height: 60, flexDirection: "row", alignItems: "center", gap: 12, borderRadius: radius.md, backgroundColor: colors.surface },
         rtl ? { paddingRight: 24, paddingLeft: 18 } : { paddingLeft: 24, paddingRight: 18 },
         open ? { backgroundColor: colors.surface3 } : null,

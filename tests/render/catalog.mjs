@@ -34,3 +34,13 @@ for (const state of [all, byGenre, searched, starred]) {
   assert.deepEqual(FACETS.map((facet) => facetCounts(state, facet)), expected.counts, 'counts match a fresh count');
 }
 console.log('OK: catalog filter caches answer like a fresh search');
+
+// The Format filter (0.5.0 Pre Release 3): "13.60 Ready" first, then only the kinds some game has.
+const format = FACETS.find((facet) => facet.key === 'format');
+assert.equal(format.options[0].value, 'ready');
+const formatCounts = facetCounts(all, format);
+assert.ok(format.options.every((option) => formatCounts[option.value] > 0), 'no kind is offered that no game has');
+const ready = filterGames({ filters: { ...NO_FILTERS, format: ['ready'] }, query: '', wishlist });
+assert.ok(ready.length > 100 && ready.length < everything.length, `${ready.length} games are 13.60 ready`);
+assert.ok(ready.every((game) => game.formats.some((kind) => ['folder', 'exfat', 'ffpkg', 'ffpfs', 'image'].includes(kind))));
+console.log(`OK: format filter (${ready.length} games 13.60 ready; ${format.options.map((option) => `${option.value} ${formatCounts[option.value]}`).join(', ')})`);

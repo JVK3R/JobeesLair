@@ -45,6 +45,8 @@ Status current;
 std::string pin, page;
 // Signed-in phones' cookies, oldest first; and each device's wrong PINs and when it may try again.
 std::deque<std::string> sessions;
+// MODIFIED (Jobee'sLair 0.5.0): the app's own session cookie, when it gave one (start's `session`).
+std::string fixed_session;
 struct Guesser {
   int failures = 0;
   Clock::time_point retry_at{};
@@ -330,6 +332,7 @@ bool signed_in(const std::string& offered) {
   bool match = false;
   std::lock_guard lock(mutex);
   for (const auto& session : sessions) match |= same_token(offered, session); // every one, in constant time
+  if (!fixed_session.empty()) match |= same_token(offered, fixed_session);
   return match;
 }
 
@@ -354,15 +357,19 @@ void sign_in(int fd, const std::string& client, const std::string& body) {
       wait = static_cast<int>(std::chrono::duration_cast<std::chrono::seconds>(guesser.retry_at - now).count()) + 1;
       message = "Too many tries. Wait a moment.";
     } else if (body.size() <= 64 && digits.size() == kPinDigits && same_token(digits, pin)) {
-      cookie = random_token(16);
+      cookie = fixed_session.empty() ? random_token(16) : fixed_session;
       if (cookie.empty()) {
         status = 503;
         message = "The console could not make a session. Try again.";
       } else {
         guessers.erase(client);
-        sessions.push_back(cookie);
-        if (sessions.size() > kMaxSessions) sessions.pop_front();
-        current.sessions = sessions.size();
+        if (fixed_session.empty()) {
+          sessions.push_back(cookie);
+          if (sessions.size() > kMaxSessions) sessions.pop_front();
+          current.sessions = sessions.size();
+        } else if (current.sessions < kMaxSessions) {
+          ++current.sessions; // sign-ins: every phone shares the one cookie
+        }
         status = 200;
       }
     } else {
@@ -525,7 +532,7 @@ void run(std::vector<std::uint16_t> ports) {
 }
 } // namespace
 
-bool start(std::vector<std::uint16_t> ports, std::string code, std::string html, std::string& error) {
+bool start(std::vector<std::uint16_t> ports, std::string code, std::string html, std::string session, std::string& error) {
   if (ports.empty() || ports.size() > kMaxPorts) {
     error = "give 1..8 ports to try";
     return false;
@@ -538,6 +545,11 @@ bool start(std::vector<std::uint16_t> ports, std::string code, std::string html,
     error = "the page is larger than 512 KiB";
     return false;
   }
+  if (!session.empty() && (session.size() < kMinSessionChars || session.size() > kMaxSessionChars ||
+                           session.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789") != std::string::npos)) {
+    error = "the session must be 16..64 lowercase letters and digits";
+    return false;
+  }
   std::lock_guard lock(mutex);
   if (running) {
     error = "already running; stop it first";
@@ -545,6 +557,7 @@ bool start(std::vector<std::uint16_t> ports, std::string code, std::string html,
   }
   pin = std::move(code);
   page = std::move(html);
+  fixed_session = std::move(session);
   sessions.clear();
   guessers.clear();
   current = Status{};
@@ -575,6 +588,7 @@ void stop() {
   pin.clear();
   page.clear();
   sessions.clear(); // every phone signs in again with the PIN the server next starts with
+  fixed_session.clear();
   guessers.clear();
   current.sessions = 0;
 }

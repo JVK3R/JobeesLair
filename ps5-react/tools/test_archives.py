@@ -274,6 +274,10 @@ def main():
   result=run("rar-cut-volume",cut,password="fixture-password")
   assert result[0]=="failed" and result[-1].endswith("Volume 2 of 4 looks incomplete."),result
   assert "Volume 3 of 3 looks incomplete." in run("rar-missing-volume-named",[real[0],real[1],real[3]],password="fixture-password")[-1]
+  # A volume that is a copy of an earlier one (a link captured for the wrong part) is named, so the app
+  # downloads that one again (Jobee'sLair 0.5.0 Pre Release 3).
+  result=run("rar-duplicate-volume",[real[0],real[1],real[1],real[3]],password="fixture-password")
+  assert result[0]=="failed" and result[-1].endswith("Volume 3 of 4 is a copy of part 2."),result
   # A set without its last or first volume fails before anything is decoded, with exactly these reasons
   # (the app maps them): RAR5 and RAR4, headers encrypted or not, .partN.rar or .rar/.r00 volumes.
   def worker(parts,password=None):

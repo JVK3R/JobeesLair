@@ -21,6 +21,7 @@ import { parseStamp } from './clock.js';
 import { deviceFacts } from './device.js';
 import { OLD_TITLE_ID } from './title-migration.js';
 import { TITLE_ID } from '../version.js';
+import { autoContinueParts } from './auto-continue.js';
 import { Archives, BrowserCapture, DeviceInfo, DownloadFormats, Downloads, FileSystem, Http, Linking, Notifications, Packages, Platform, Power } from '@ps5-react/core';
 
   var instance;
@@ -62,7 +63,8 @@ import { Archives, BrowserCapture, DeviceInfo, DownloadFormats, Downloads, FileS
     packages: Packages,
     releasesOf: (id) => getGame(id)?.releases || [],
     firmware: () => deviceFacts().firmware,
-    playtime
+    playtime,
+    autoContinue: autoContinueParts
   }));
   var shadowMountUp = Platform.OS === "ps5" ? createShadowMountProbe({ http: Http, now: Date.now }) : async () => true;
   function driveName(root2) {

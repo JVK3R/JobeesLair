@@ -41,6 +41,22 @@ test('onScrollTarget reports each new focus-scroll target once, when the scroll 
   assert.equal(engine.deferred, 150, 'image fetches wait while the view moves');
 });
 
+// Jobee'sLair 0.5.0 Pre Release 3: the first focusable element brings back the title above it.
+test('the first focusable element scrolls back to the top when it fits on the first screen', () => {
+  const {frame, targets, settle} = setup(5000);
+  frame.reveal({x: 0, y: 2000, width: 100, height: 100}, null);
+  settle();
+  // A button 300 px down, under a title nobody can focus: plain minimal movement would stop at it.
+  frame.reveal({x: 0, y: 300, width: 100, height: 100}, null, {first: true});
+  assert.equal(targets.at(-1).y, 0, 'scrolled all the way up');
+  settle();
+  // One past the first screen stays where minimal movement puts it.
+  frame.reveal({x: 0, y: 4000, width: 100, height: 100}, null);
+  settle();
+  frame.reveal({x: 0, y: 1500, width: 100, height: 100}, null, {first: true});
+  assert.notEqual(targets.at(-1).y, 0);
+});
+
 test('onScrollTarget reports where the scroll settled when shrinking content clamps it', () => {
   const {engine, frame, targets, settle} = setup(5000);
   frame.reveal({x: 0, y: 1000, width: 100, height: 100}, null);

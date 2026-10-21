@@ -1398,12 +1398,12 @@ test('a set of images unpacked into one folder moves image by image, and the emp
   assert.deepEqual(state.manual, [`${usb}/Game.exfat`, `${usb}/Game-Update-1.05.exfat`]);
 });
 
-test('versions: 0.2.0 is newer than every 0.1.1 beta and 0.1.1, and the app now reports 0.4.1', async () => {
+test('versions: 0.2.0 is newer than every 0.1.1 beta and 0.1.1, and the app now reports 0.5.0', async () => {
   assert.equal(newer('v0.2.0', '0.1.1-beta.4'), true);
   assert.equal(newer('v0.2.0', '0.1.1'), true);
   assert.equal(newer('0.1.1-beta.4', '0.2.0'), false);
   const { VERSION, VERSION_LABEL } = await load('app/version.js');
-  assert.deepEqual([VERSION, VERSION_LABEL], ['0.4.1', '0.4.1']);
+  assert.deepEqual([VERSION, VERSION_LABEL], ['0.5.0', '0.5.0']);
 });
 
 
@@ -1414,16 +1414,20 @@ const { VERSION, TITLE_ID } = await load('app/version.js');
 
 const SHA = (c) => c.repeat(64);
 const releaseJson = (overrides = {}) => ({
-  tag_name: 'v0.4.2', html_url: 'https://github.com/JVK3R/JobeesLair/releases/tag/v0.4.2', body: 'notes', published_at: '2026-10-20T00:00:00Z',
+  tag_name: 'v0.5.1', html_url: 'https://github.com/JVK3R/JobeesLair/releases/tag/v0.5.1', body: 'notes', published_at: '2026-10-20T00:00:00Z',
   assets: [
-    { name: 'JobeesLair.exfat', size: 5000, digest: `sha256:${SHA('a')}`, browser_download_url: 'https://github.com/JVK3R/JobeesLair/releases/download/v0.4.2/JobeesLair.exfat' },
-    { name: 'update.zip', size: 300, digest: `sha256:${SHA('b')}`, browser_download_url: 'https://github.com/JVK3R/JobeesLair/releases/download/v0.4.2/update.zip' },
+    { name: 'JobeesLair.exfat', size: 5000, digest: `sha256:${SHA('a')}`, browser_download_url: 'https://github.com/JVK3R/JobeesLair/releases/download/v0.5.1/JobeesLair.exfat' },
+    { name: 'update.zip', size: 300, digest: `sha256:${SHA('b')}`, browser_download_url: 'https://github.com/JVK3R/JobeesLair/releases/download/v0.5.1/update.zip' },
   ],
   ...overrides,
 });
 
-test('versions: 0.4.1 is newer than 0.4.0 and its own pre-releases; its package version is 01.004.001', () => {
-  assert.equal(VERSION, '0.4.1');
+test('versions: 0.5.0 is newer than 0.4.1 and every 0.5.0 pre-release, and older than 0.5.1; its package version is 01.005.000', () => {
+  assert.equal(VERSION, '0.5.0');
+  assert.equal(newer('v0.5.0', '0.5.0-pre.4'), true, 'testers on Pre Release 4 are offered 0.5.0');
+  assert.equal(newer('0.5.0', '0.4.1'), true, 'and so is everyone on 0.4.1');
+  assert.equal(newer('v0.5.1', '0.5.0'), true, '0.5.1 will be offered to 0.5.0');
+  assert.equal(contentVersionOf('0.5.0'), '01.005.000');
   assert.equal(newer('0.2.1-beta.1', '0.2.0'), true);
   assert.equal(newer('v0.2.1', '0.2.1-beta.1'), true);
   assert.equal(newer('0.2.0', '0.2.1-beta.1'), false);
@@ -1455,20 +1459,20 @@ test('versions: 0.4.1 is newer than 0.4.0 and its own pre-releases; its package 
 test("release assets: offered only at the release's own download path, with GitHub's SHA-256 and a size", () => {
   const offered = describeRelease(releaseJson(), 'JVK3R/JobeesLair');
   assert.deepEqual(offered.assets, {
-    image: { url: 'https://github.com/JVK3R/JobeesLair/releases/download/v0.4.2/JobeesLair.exfat', size: 5000, sha256: SHA('a') },
-    zip: { url: 'https://github.com/JVK3R/JobeesLair/releases/download/v0.4.2/update.zip', size: 300, sha256: SHA('b') },
+    image: { url: 'https://github.com/JVK3R/JobeesLair/releases/download/v0.5.1/JobeesLair.exfat', size: 5000, sha256: SHA('a') },
+    zip: { url: 'https://github.com/JVK3R/JobeesLair/releases/download/v0.5.1/update.zip', size: 300, sha256: SHA('b') },
   });
   assert.deepEqual(Object.values(ASSETS), ['JobeesLair.exfat', 'update.zip']);
   const without = (change) => describeRelease(releaseJson({ assets: releaseJson().assets.map((asset) => asset.name === 'JobeesLair.exfat' ? change(asset) : asset) }), 'JVK3R/JobeesLair');
   assert.equal(without((asset) => ({ ...asset, digest: undefined })).assets, null, 'no digest, nothing to check it against');
   assert.equal(without((asset) => ({ ...asset, digest: 'sha1:abc' })).assets, null);
   assert.equal(without((asset) => ({ ...asset, browser_download_url: 'https://evil.example/JobeesLair.exfat' })).assets, null, 'another host');
-  assert.equal(without((asset) => ({ ...asset, browser_download_url: 'https://github.com/someone/fork/releases/download/v0.4.2/JobeesLair.exfat' })).assets, null, 'another repository');
-  assert.equal(without((asset) => ({ ...asset, browser_download_url: asset.browser_download_url.replace('v0.4.2', 'v0.2.1') })).assets, null, "another release's file");
+  assert.equal(without((asset) => ({ ...asset, browser_download_url: 'https://github.com/someone/fork/releases/download/v0.5.1/JobeesLair.exfat' })).assets, null, 'another repository');
+  assert.equal(without((asset) => ({ ...asset, browser_download_url: asset.browser_download_url.replace('v0.5.1', 'v0.2.1') })).assets, null, "another release's file");
   assert.equal(without((asset) => ({ ...asset, size: '5000' })).assets, null);
   assert.equal(without((asset) => ({ ...asset, size: 0 })).assets, null);
   assert.equal(describeRelease(releaseJson({ assets: releaseJson().assets.slice(0, 1) }), 'JVK3R/JobeesLair').assets, null, 'both files, or neither');
-  assert.equal(describeRelease(releaseJson({ assets: undefined }), 'JVK3R/JobeesLair').version, '0.4.2', 'still offered to read and install by hand');
+  assert.equal(describeRelease(releaseJson({ assets: undefined }), 'JVK3R/JobeesLair').version, '0.5.1', 'still offered to read and install by hand');
 });
 
 test('the queue lends the network only while idle, and takes it back the moment a game download is queued', async () => {
@@ -1541,7 +1545,7 @@ function installWorld({ param: paramFields = {}, eboot = 2000, lendable = () => 
       world.extracts.push(options);
       return task(() => {
         const top = `${options.destination}/${TITLE_ID}`;
-        fs.file(`${top}/sce_sys/param.json`, 0, JSON.stringify({ titleId: TITLE_ID, contentVersion: '01.004.002', ...paramFields }));
+        fs.file(`${top}/sce_sys/param.json`, 0, JSON.stringify({ titleId: TITLE_ID, contentVersion: '01.005.001', ...paramFields }));
         if (eboot) fs.file(`${top}/eboot.bin`, eboot);
         return { artifacts: [] };
       });
@@ -1567,7 +1571,7 @@ function installWorld({ param: paramFields = {}, eboot = 2000, lendable = () => 
   });
   world.saved = saved;
   world.release = { ...describeRelease(releaseJson(), 'JVK3R/JobeesLair') };
-  // A release one version past this build (0.4.2, package version 01.004.002), with its assets.
+  // A release one version past this build (0.5.1, package version 01.005.001), with its assets.
   world.until = async (test, limit = 500) => {
     for (let i = 0; i < limit; i++) {
       if (test(world.updater.state())) return world.updater.state();
@@ -1577,7 +1581,7 @@ function installWorld({ param: paramFields = {}, eboot = 2000, lendable = () => 
   };
   return world;
 }
-const STAGED = `/mnt/usb0/${STAGING}/0.4.2`;
+const STAGED = `/mnt/usb0/${STAGING}/0.5.1`;
 
 test('install: both files download into staging on the installed image\'s drive, checked against their SHA-256; update.zip is unpacked, checked and removed', async () => {
   const world = installWorld();
@@ -1596,7 +1600,7 @@ test('install: both files download into staging on the installed image\'s drive,
   assert.equal(world.saved.value.target, '/mnt/usb0/homebrew/JobeesLair.exfat');
   assert.equal(world.saved.value.checked, true);
   assert.equal(state.written, 5300, 'progress counts both files');
-  assert.deepEqual(world.notified, ['0.4.2']);
+  assert.deepEqual(world.notified, ['0.5.1']);
   assert.equal(world.borrower, null, 'the network is given back');
   assert.deepEqual(world.arms, [], 'nothing is armed without automatic installs');
 });
@@ -1620,7 +1624,7 @@ test('install: one failed try is retried and the install goes on', async () => {
 
 for (const [name, fields, eboot, reason] of [
   ['another title', { titleId: 'PPSA12345' }, 2000, /is for PPSA12345, not PPSA99471/],
-  ['another version', { contentVersion: '01.002.000' }, 2000, /is version 01\.002\.000, not 01.004.002/],
+  ['another version', { contentVersion: '01.002.000' }, 2000, /is version 01\.002\.000, not 01.005.001/],
   ['no eboot.bin', {}, 0, /has no eboot\.bin/],
 ]) {
   test(`install: an update.zip for ${name} fails the check, and the image is never downloaded`, async () => {
@@ -1675,7 +1679,7 @@ test('install: Restart to apply writes apply.txt for the updater and arms it; a 
   assert.deepEqual(world.updater.applyNow(), { ok: true });
   assert.deepEqual(world.arms, ['/data/JobeesLair/update']);
   assert.equal(world.fs.readFile('/data/JobeesLair/update/apply.txt'),
-    `UPD1\nversion=0.4.2\ntarget=/mnt/usb0/homebrew/JobeesLair.exfat\nstaged=${STAGED}/${IMAGE_NAME}\nsize=5000\nrelaunch=1\n`);
+    `UPD1\nversion=0.5.1\ntarget=/mnt/usb0/homebrew/JobeesLair.exfat\nstaged=${STAGED}/${IMAGE_NAME}\nsize=5000\nrelaunch=1\n`);
   assert.equal(world.updater.state().phase, 'armed');
   const failing = installWorld({ armed: () => 'payload loader: connection refused' });
   failing.updater.download(failing.release);
@@ -1712,13 +1716,13 @@ test('install: without automatic installs a found release only shows; cancel rem
 });
 
 test('install: the new build at launch says it started, cleans up its staging and reports the update', async () => {
-  const world = installWorld({ version: '0.4.2' });
-  world.saved.value = { phase: 'armed', version: '0.4.2', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: { size: 5000 } };
+  const world = installWorld({ version: '0.5.1' });
+  world.saved.value = { phase: 'armed', version: '0.5.1', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: { size: 5000 } };
   world.fs.file(`${STAGED}/leftover`, 1);
-  world.fs.file('/data/JobeesLair/update/result.txt', 0, 'outcome=swapped\nversion=0.4.2\nreason=\n');
+  world.fs.file('/data/JobeesLair/update/result.txt', 0, 'outcome=swapped\nversion=0.5.1\nreason=\n');
   world.updater.start();
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(world.fs.readFile('/data/JobeesLair/update/booted.txt'), '0.4.2\n', 'the updater waits for this');
+  assert.equal(world.fs.readFile('/data/JobeesLair/update/booted.txt'), '0.5.1\n', 'the updater waits for this');
   assert.ok(world.fs.exists('/data/JobeesLair/update/result.txt'), 'the updater still watches: its result stays');
   assert.ok(!world.fs.exists(STAGED));
   assert.deepEqual(world.saved.value, {});
@@ -1727,8 +1731,8 @@ test('install: the new build at launch says it started, cleans up its staging an
 
 test('install: after a rollback the old build reports why; after a refusal the update stays ready (and is armed again when automatic)', async () => {
   const rolled = installWorld();
-  rolled.saved.value = { phase: 'armed', version: '0.4.2', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: { size: 5000 } };
-  rolled.fs.file('/data/JobeesLair/update/result.txt', 0, 'outcome=rolledback\nversion=0.4.2\nreason=the new version closed before it finished starting\n');
+  rolled.saved.value = { phase: 'armed', version: '0.5.1', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: { size: 5000 } };
+  rolled.fs.file('/data/JobeesLair/update/result.txt', 0, 'outcome=rolledback\nversion=0.5.1\nreason=the new version closed before it finished starting\n');
   rolled.updater.start();
   assert.equal(rolled.updater.state().phase, 'failed');
   assert.equal(rolled.updater.state().outcome.reason, 'the new version closed before it finished starting');
@@ -1736,29 +1740,29 @@ test('install: after a rollback the old build reports why; after a refusal the u
   assert.equal(rolled.fs.readFile('/data/JobeesLair/update/booted.txt'), `${VERSION}\n`);
 
   const refused = installWorld({ automatic: true });
-  refused.saved.value = { phase: 'armed', version: '0.4.2', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: { size: 5000 } };
+  refused.saved.value = { phase: 'armed', version: '0.5.1', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: { size: 5000 } };
   refused.fs.file(`${STAGED}/${IMAGE_NAME}`, 5000);
-  refused.fs.file('/data/JobeesLair/update/result.txt', 0, 'outcome=refused\nversion=0.4.2\nreason=ShadowMount+ keeps the image mounted (persistent image mounts?)\n');
+  refused.fs.file('/data/JobeesLair/update/result.txt', 0, 'outcome=refused\nversion=0.5.1\nreason=ShadowMount+ keeps the image mounted (persistent image mounts?)\n');
   refused.updater.start();
   assert.equal(refused.updater.state().phase, 'armed', 'automatic: armed again for the next close');
   assert.deepEqual(refused.arms, ['/data/JobeesLair/update']);
 
   const rebooted = installWorld();
-  rebooted.saved.value = { phase: 'armed', version: '0.4.2', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: { size: 5000 } };
+  rebooted.saved.value = { phase: 'armed', version: '0.5.1', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: { size: 5000 } };
   rebooted.fs.file(`${STAGED}/${IMAGE_NAME}`, 5000);
   rebooted.updater.start();
   assert.equal(rebooted.updater.state().phase, 'ready', 'armed, but the updater never ran (the console restarted): ready again');
   assert.equal(rebooted.updater.state().error, '');
 
   const gone = installWorld();
-  gone.saved.value = { phase: 'ready', version: '0.4.2', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: { size: 5000 } };
+  gone.saved.value = { phase: 'ready', version: '0.5.1', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: { size: 5000 } };
   gone.updater.start();
   assert.equal(gone.updater.state().phase, 'failed', 'the staged image was deleted: download it again');
 });
 
 test('install: a download cut off by closing the app resumes when the release is offered again', async () => {
   const world = installWorld();
-  world.saved.value = { phase: 'downloading', version: '0.4.2', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: world.release.assets.image, zip: world.release.assets.zip, checked: true };
+  world.saved.value = { phase: 'downloading', version: '0.5.1', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: world.release.assets.image, zip: world.release.assets.zip, checked: true };
   world.updater.start();
   assert.equal(world.updater.state().phase, 'paused');
   world.updater.offer(world.release);
@@ -1844,7 +1848,10 @@ test('settings: nothing in a render asks the console for its device info or user
 
 test('settings: the support panel is opt-in, says nothing is locked, and its QR code reads as the page', () => {
   const settings = readFileSync(path.join(repo, 'app/ui/Settings.jsx'), 'utf8');
-  assert.match(settings, /support \? \/\* @__PURE__ \*\/ \(0, jsx\)\(SupportPanel, \{\}\) : null/, 'shown only once its row is opened');
+  assert.match(settings, /support \? \/\* @__PURE__ \*\/ \(0, jsx\)\(SupportPanel, \{ onClose:/, 'shown only once its row is opened');
+  // Opening it gives it focus, so the whole code scrolls into view and stays there to be scanned.
+  assert.match(settings, /if \(!support\) focusLater\("settings:support:qr"\)/);
+  assert.match(settings, /focusKey: "settings:support:qr"/);
   assert.match(settings, /https:\/\/buymeacoffee\.com\/jvk3r/);
   assert.match(en['settings.support.free'], /Nothing in Jobee'sLair is locked/);
   assert.match(en['settings.support.detail'], /Optional/);
@@ -1949,17 +1956,17 @@ test('unknown size: when the reported size fits, the download carries on', async
 
 // ---- the updater loop: a release whose build is not the version its tag says ----
 test('install: a swapped-in release that starts as another version fails once with why, and is never fetched by itself again', async () => {
-  // The swap happened (result says 0.4.2 swapped/applied), but the build that started reports this VERSION.
+  // The swap happened (result says 0.5.1 swapped/applied), but the build that started reports this VERSION.
   for (const outcome of ['swapped', 'applied']) {
     const world = installWorld({ automatic: true });
-    world.saved.value = { phase: 'armed', version: '0.4.2', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: { size: 5000 } };
-    world.fs.file('/data/JobeesLair/update/result.txt', 0, `outcome=${outcome}\nversion=0.4.2\nreason=\n`);
+    world.saved.value = { phase: 'armed', version: '0.5.1', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: { size: 5000 } };
+    world.fs.file('/data/JobeesLair/update/result.txt', 0, `outcome=${outcome}\nversion=0.5.1\nreason=\n`);
     world.fs.file('/data/JobeesLair/update/apply.txt', 0, 'UPD1\n');
     world.updater.start();
     const state = world.updater.state();
     assert.equal(state.phase, 'failed', outcome);
-    assert.match(state.error, new RegExp(`^The 0.4.2 update started as version ${VERSION.replace(/\./g, '\.')}: the release's files are not the version it says`));
-    assert.equal(world.saved.value.mismatched, '0.4.2');
+    assert.match(state.error, new RegExp(`^The 0.5.1 update started as version ${VERSION.replace(/\./g, '\.')}: the release's files are not the version it says`));
+    assert.equal(world.saved.value.mismatched, '0.5.1');
     assert.ok(!world.fs.exists('/data/JobeesLair/update/apply.txt'), 'nothing left armed');
     assert.deepEqual(world.arms, [], 'not armed again');
     // The daily check finds the same release: with automatic installs on, it is shown, not downloaded.
@@ -1974,13 +1981,13 @@ test('install: a swapped-in release that starts as another version fails once wi
 });
 
 test('install: the set-aside version does not hold back the next release', async () => {
-  const world = installWorld({ automatic: true, param: { contentVersion: '01.004.003' } });
-  world.saved.value = { phase: 'failed', version: '0.4.2', mismatched: '0.4.2', error: 'x' };
-  const next = { ...world.release, version: '0.4.3', assets: {
-    image: { ...world.release.assets.image, url: world.release.assets.image.url.replace('v0.4.2', 'v0.4.3') },
-    zip: { ...world.release.assets.zip, url: world.release.assets.zip.url.replace('v0.4.2', 'v0.4.3') } } };
+  const world = installWorld({ automatic: true, param: { contentVersion: '01.005.002' } });
+  world.saved.value = { phase: 'failed', version: '0.5.1', mismatched: '0.5.1', error: 'x' };
+  const next = { ...world.release, version: '0.5.2', assets: {
+    image: { ...world.release.assets.image, url: world.release.assets.image.url.replace('v0.5.1', 'v0.5.2') },
+    zip: { ...world.release.assets.zip, url: world.release.assets.zip.url.replace('v0.5.1', 'v0.5.2') } } };
   world.updater.offer(next);
-  const done = await world.until((s) => ['ready', 'armed', 'failed'].includes(s.phase) && s.version === '0.4.3');
+  const done = await world.until((s) => ['ready', 'armed', 'failed'].includes(s.phase) && s.version === '0.5.2');
   assert.equal(done.phase, 'armed', done.error);
   assert.equal(world.requests.length, 2, 'the newer release downloaded by itself');
 });
@@ -2159,6 +2166,86 @@ async function until(queue, id, check) {
   throw new Error(`never: ${JSON.stringify(queue.snapshot().find((item) => item.id === id))}`);
 }
 
+// 0.5.0 Pre Release 3: a download in parts opens the browser for its next part by itself, after a countdown.
+function partsQueue({ fs, browserCapture, notices, autoContinue = () => true }) {
+  return createDownloadQueue({
+    fs, downloads: engine(fs), http: probe({}), formats: DownloadFormats, dataDir: '/data/app', platform: 'desktop',
+    notifications: { show: (title) => notices.push(title) }, power: { keepAwake() {} }, linking: { openURL: () => true }, browserCapture,
+    sources: { resolve: async (release) => {
+      if (release.requiresBrowser) throw new BrowserRequired(release.browserUrl);
+      return { url: release.url };
+    } }, archives: null, packages: null, wait: async () => {}, autoContinue, autoOpenMs: 20,
+  });
+}
+const browserParts = { id: 'set', provider: 'host', filename: 'Game', parts: [
+  { number: 1, sources: [{ url: 'https://example.com/Game.part1.rar', sizeBytes: 100 }] },
+  { number: 2, sources: [{ url: PAGE, browserUrl: PAGE, requiresBrowser: true, sizeBytes: 100 }] },
+] };
+
+test('parts: after a part finishes, the next part that needs the browser opens it by itself after a countdown', async () => {
+  const fs = memoryFs();
+  const notices = [];
+  const browserCapture = capturer([]);
+  const queue = partsQueue({ fs, browserCapture, notices });
+  const id = queue.enqueue(game, browserParts, '/data');
+  const waiting = await until(queue, id, (job) => job.state === 'awaiting-browser');
+  assert.ok(waiting.autoOpenAt > 0, 'it counts down');
+  assert.equal(waiting.partIndex, 1);
+  assert.equal(notices.length, 1, 'and says so');
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  await until(queue, id, (job) => !job.autoOpenAt);
+  assert.equal(browserCapture.asked.length, 1, 'the capture for part 2 started without a press');
+});
+
+test('parts: a captured file named for another part is refused, and the capture scans on to this part', async () => {
+  const fs = memoryFs();
+  const notices = [];
+  const WRONG = 'https://cdn.example.com/f/PPSA01234.Game.part1.rar', RIGHT = 'https://cdn.example.com/f/PPSA01234.Game.part2.rar';
+  const browserCapture = capturer([WRONG, RIGHT]);
+  const downloads = engine(fs);
+  const queue = createDownloadQueue({
+    fs, downloads, http: probe({ [WRONG]: 100, [RIGHT]: 100 }), formats: DownloadFormats, dataDir: '/data/app', platform: 'desktop',
+    notifications: { show: (title) => notices.push(title) }, power: { keepAwake() {} }, linking: { openURL: () => true }, browserCapture,
+    sources: { resolve: async (release, { directURL } = {}) => {
+      if (directURL) return { url: directURL };
+      if (release.requiresBrowser) throw new BrowserRequired(release.browserUrl);
+      return { url: release.url };
+    } }, archives: null, packages: null, wait: async () => {}, autoContinue: () => true, autoOpenMs: 5,
+  });
+  const id = queue.enqueue(game, browserParts, '/data');
+  await until(queue, id, (job) => job.state === 'awaiting-browser');
+  for (let i = 0; i < 40 && !downloads.requests.some((request) => request.url === RIGHT); i++) await new Promise((resolve) => setTimeout(resolve, 10));
+  const urls = downloads.requests.map((request) => request.url);
+  assert.ok(urls.includes(RIGHT), urls.join(' '));
+  assert.ok(!urls.includes(WRONG), 'part 1 was not downloaded again as part 2');
+});
+
+test('errors: a set volume that is a copy of another part is named, to download that part again', async () => {
+  const { explainError } = await load('app/downloads/errors.js');
+  const copied = explainError('Incomplete RAR archive or missing volume. Volume 4 of 10 is a copy of part 3.', true);
+  assert.equal(copied.title, 'Part 4 is a copy of part 3');
+  assert.equal(copied.action, en['errors.action.retryPart']);
+  const { INCOMPLETE_PART } = await load('app/downloads/errors.js');
+  assert.equal(INCOMPLETE_PART.exec('Incomplete RAR archive or missing volume. Volume 4 of 10 is a copy of part 3.')[1], '4', 'the queue deletes volume 4');
+});
+
+test('parts: "Wait" stops the countdown, and with the setting off nothing opens by itself', async () => {
+  for (const [autoContinue, wait] of [[() => true, true], [() => false, false]]) {
+    const fs = memoryFs();
+    const notices = [];
+    const browserCapture = capturer([]);
+    const queue = partsQueue({ fs, browserCapture, notices, autoContinue });
+    const id = queue.enqueue(game, browserParts, '/data');
+    await until(queue, id, (job) => job.state === 'awaiting-browser');
+    if (wait) queue.waitForPart(id);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    const job = queue.snapshot().find((item) => item.id === id);
+    assert.equal(job.autoOpenAt, undefined);
+    assert.equal(browserCapture.asked.length, 0);
+    assert.equal(job.state, 'awaiting-browser', 'it waits for the player');
+  }
+});
+
 test('capture: a host only the browser passes; the file link naming the title id is caught, checked and downloaded', async () => {
   const fs = memoryFs();
   const downloads = engine(fs);
@@ -2243,4 +2330,171 @@ test("capture: without the runtime's capture (the desktop preview), the browser 
   const job = queue.snapshot().find((item) => item.id === id);
   assert.deepEqual(opened, [PAGE]);
   assert.equal(job.captureState, undefined);
+});
+
+test('a download card names the file format, and says nothing of an unknown one once finished', async () => {
+  const { formatOf } = await load('app/downloads/labels.js');
+  assert.equal(formatOf({ state: 'downloading', fileName: 'Game.part03.rar' }), 'RAR');
+  assert.equal(formatOf({ state: 'downloading', inspected: 'exfat' }), 'EXFAT');
+  assert.notEqual(formatOf({ state: 'downloading', artifact: { format: 'binary' } }), '', 'still to be checked');
+  assert.equal(formatOf({ state: 'installed', artifact: { format: 'binary' } }), '');
+  assert.equal(formatOf({ state: 'failed' }), '');
+});
+
+// ---- the Format filter (0.5.0 Pre Release 3): state/formats.js, data/formats.js ----
+test('formats: data/formats.js is current with the bundled releases (run tools/catalog/formats.mjs)', async () => {
+  const { buildFormats, formatsModule } = await load('tools/catalog/formats.mjs');
+  const shipped = readFileSync(path.join(repo, 'app/data/formats.js'), 'utf8');
+  assert.equal(shipped, formatsModule(buildFormats()));
+});
+
+test('formats: a game is 13.60 ready with a folder dump or any disk image, not with an FPKG or backport alone', async () => {
+  const { gameFormats, ready1360 } = await load('app/state/formats.js');
+  const kinds = gameFormats([
+    { id: 'a', format: 'pkg', label: 'EUR Base', url: 'https://example.com/a.pkg' },
+    { id: 'b', format: 'binary', label: 'USA BackPort 4.03 - Vikingfile', url: 'https://example.com/b' },
+    { id: 'c', format: 'ffpfsc', label: 'Release', url: 'https://example.com/c.ffpfsc' },
+  ], 'ps5');
+  assert.deepEqual(kinds, ['ffpfs', 'backport', 'fpkg']);
+  assert.equal(ready1360(kinds), true);
+  assert.equal(ready1360(['backport', 'fpkg']), false);
+  assert.deepEqual(gameFormats([{ id: 'd', format: 'binary', label: 'Folder Dump - Gofile', url: 'https://example.com/d.rar' }], 'ps5'), ['folder']);
+});
+
+// A slower until, for flows that wait on timers (the capture-ahead countdown).
+async function untilTimed(queue, id, check, ms = 3000) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    const job = queue.snapshot().find((item) => item.id === id);
+    if (job && check(job)) return job;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error('never: ' + JSON.stringify(queue.snapshot().find((item) => item.id === id)));
+}
+
+// 0.5.0 Pre Release 4: while one part downloads, the next part's link is captured ahead, so the set never stops.
+test('parts: the next part\'s link is captured while the part before downloads, and the set goes straight on', async () => {
+  const fs = memoryFs();
+  const notices = [];
+  const RIGHT = 'https://cdn.example.com/f/PPSA01234.Game.part2.rar';
+  const browserCapture = capturer([RIGHT]);
+  let release1;
+  const gate = new Promise((resolve) => { release1 = resolve; });
+  const requests = [];
+  const downloads = { requests, enqueue(options) {
+    requests.push(options);
+    const finish = () => {
+      fs.remove(`${options.destination}.part`);
+      fs.file(options.destination, options.expectedBytes ?? 100);
+      fs.file(`${options.destination}.complete`, 0, 'receipt');
+      return { written: options.expectedBytes ?? 100, total: options.expectedBytes ?? 100 };
+    };
+    // Part 1 holds until the test lets it end; any other part ends at once.
+    const done = /part-1\.bin$/.test(options.destination) ? gate.then(finish) : new Promise((resolve) => setImmediate(() => resolve(finish())));
+    return { subscribe: () => () => {}, done, cancel() {} };
+  } };
+  const states = new Set();
+  const queue = createDownloadQueue({
+    fs, downloads, http: probe({ [RIGHT]: 100 }), formats: DownloadFormats, dataDir: '/data/app', platform: 'desktop',
+    notifications: { show: (title) => notices.push(title) }, power: { keepAwake() {} }, linking: { openURL: () => true }, browserCapture,
+    sources: { resolve: async (release) => {
+      if (release.requiresBrowser) throw new BrowserRequired(release.browserUrl);
+      return { url: release.url };
+    } }, archives: null, packages: null, wait: async () => {}, autoContinue: () => true, autoOpenMs: 5,
+  });
+  queue.subscribe((jobs) => jobs.forEach((job) => states.add(job.state)));
+  const id = queue.enqueue(game, browserParts, '/data');
+  const counting = await untilTimed(queue, id, (job) => Boolean(job.aheadAt));
+  assert.equal(counting.aheadPart, 1, 'part 2 counts down while part 1 downloads');
+  for (let i = 0; i < 100 && queue.snapshot().find((job) => job.id === id).aheadState !== 'ready'; i++) await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(queue.snapshot().find((job) => job.id === id).aheadState, 'ready', 'its link was captured ahead');
+  assert.equal(browserCapture.asked.length, 1);
+  release1();
+  await untilTimed(queue, id, (job) => !['queued', 'resolving', 'connecting', 'downloading'].includes(job.state));
+  assert.ok(requests.some((request) => request.url === RIGHT), 'part 2 downloaded from the captured link');
+  assert.ok(!states.has('awaiting-browser'), 'the set never stopped for the browser');
+});
+
+test('parts: "Wait" stops a capture ahead before its browser opens', async () => {
+  const fs = memoryFs();
+  const browserCapture = capturer([]);
+  let release1;
+  const gate = new Promise((resolve) => { release1 = resolve; });
+  const downloads = { requests: [], enqueue(options) {
+    const finish = () => { fs.file(options.destination, 100); fs.file(`${options.destination}.complete`, 0, 'receipt'); return { written: 100, total: 100 }; };
+    return { subscribe: () => () => {}, done: /part-1\.bin$/.test(options.destination) ? gate.then(finish) : Promise.resolve(finish()), cancel() {} };
+  } };
+  const queue = createDownloadQueue({
+    fs, downloads, http: probe({}), formats: DownloadFormats, dataDir: '/data/app', platform: 'desktop',
+    notifications: { show() {} }, power: { keepAwake() {} }, linking: { openURL: () => true }, browserCapture,
+    sources: { resolve: async (release) => { if (release.requiresBrowser) throw new BrowserRequired(release.browserUrl); return { url: release.url }; } },
+    archives: null, packages: null, wait: async () => {}, autoContinue: () => true, autoOpenMs: 40,
+  });
+  const id = queue.enqueue(game, browserParts, '/data');
+  await untilTimed(queue, id, (job) => Boolean(job.aheadAt));
+  queue.waitForPart(id);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(browserCapture.asked.length, 0, 'no browser opened');
+  assert.equal(queue.snapshot().find((job) => job.id === id).aheadState, undefined);
+  release1();
+  await untilTimed(queue, id, (job) => job.state === 'awaiting-browser');
+});
+
+// ---- 0.5.0 Pre Release 4: the companion's QR code, the screen saver, What's new ----
+test('qr: the companion address encodes as the code zbar read back (version 2, finders in place)', async () => {
+  const { qrMatrix } = await load('app/ui/qr.js');
+  const { createHash } = await import('node:crypto');
+  const m = qrMatrix('http://192.168.1.13:34177');
+  assert.deepEqual([m.size, m.version], [25, 2]);
+  for (const [x, y] of [[0, 0], [24, 0], [0, 24]]) {
+    const cx = x ? x - 3 : 3, cy = y ? y - 3 : 3;
+    assert.ok(m.dark(x, y) && m.dark(cx, cy) && !m.dark(cx - 2, cy - 2), `finder at ${x},${y}`);
+  }
+  const rows = Array.from({ length: m.size }, (_, y) => Array.from({ length: m.size }, (_, x) => m.dark(x, y) ? '1' : '0').join(''));
+  // The matrix scanned with zbarimg when this encoder was written (13 texts, versions 1 to 10, all read back).
+  assert.equal(createHash('sha256').update(rows.join('\n')).digest('hex'), '83888caee8255ac7272432e21a3c585e70a23d88259aaa8f64141622f41b3762');
+  assert.equal(qrMatrix('x'.repeat(210)).version, 10);
+  assert.throws(() => qrMatrix('x'.repeat(300)));
+});
+
+test('screen saver: its slides are full-screen links to popular games\' own store art, and the clock needs no Date', async () => {
+  const { slides } = await load('app/data/screensaver.js');
+  assert.ok(slides.length >= 40, `${slides.length} slides`);
+  for (const slide of slides) {
+    assert.match(slide.url, /^https:\/\/(shared\.akamai\.steamstatic\.com|image\.api\.playstation\.com)\//, slide.url);
+    assert.ok(slide.title && slide.id);
+  }
+  const source = readFileSync(path.join(repo, 'app/ui/ScreenSaver.jsx'), 'utf8');
+  assert.match(readFileSync(path.join(repo, 'app/state/screen-saver.js'), 'utf8'), /var IDLE_MS = 10 \* 60 \* 1e3;/, 'ten minutes');
+  assert.doesNotMatch(source, /new Date\b/);
+});
+
+test('what\'s new: shown until seen once for 0.5.0', async () => {
+  const { WHATS_NEW } = await load('app/state/whats-new.js');
+  assert.equal(WHATS_NEW, '0.5.0');
+  for (const key of ['whatsNew.title', 'whatsNew.homebrew', 'whatsNew.done', 'saver.wake', 'settings.screenSaver', 'downloads.aheadReady']) assert.ok(en[key], key);
+});
+
+// ---- the ✕ on a finished download card (0.5.0 Pre Release 4): it clears the card, it never deletes the game ----
+test('a finished card\'s ✕ only clears it from Downloads; the game stays in the library; an unfinished one cancels', async () => {
+  const { clearAction } = await load('app/downloads/labels.js');
+  for (const state of ['installed', 'downloaded', 'attention', 'extracted', 'file-downloaded']) assert.equal(clearAction(state), 'clear', state);
+  for (const state of ['downloading', 'paused', 'failed', 'queued']) assert.equal(clearAction(state), 'cancel', state);
+  const job = { id: 'g/1', gameId: 'g', title: 'G', state: 'installed', cleared: true, root: '/data', artifact: { nextAction: 'shadowmount', destination: '/data/homebrew/G.ffpfsc' } };
+  const entries = shelfEntries({ jobs: [job], files: [], gameOf: () => undefined });
+  assert.equal(entries.length, 1, 'a cleared job is still a game in the library');
+});
+
+// ---- Homebrew apps in the library (0.5.0 Pre Release 4): their name and picture, not a file name ----
+test('library: a homebrew app shows as itself (name, art), and Jobee\'sLair\'s own image is not listed', () => {
+  const hb = { id: 'swordpdf/ps5sx2', name: 'PS5SX2', category: 'emulators', icon: 'https://example.com/i.png', files: [] };
+  const files = [
+    { kind: 'images', path: '/data/homebrew/PPSA99203', name: 'PPSA99203', titleId: 'PPSA99203', isDirectory: true, size: 40e6, root: '/data', installed: true },
+    { kind: 'images', path: '/data/homebrew/JobeesLair.exfat', name: 'JobeesLair.exfat', titleId: null, size: 470e6, root: '/data' },
+    { kind: 'images', path: '/data/homebrew/Other.exfat', name: 'Other.exfat', titleId: null, size: 1e6, root: '/data' },
+  ];
+  const homebrewOf = (file) => file.name === 'JobeesLair.exfat' ? { id: 'jobeeslair', name: 'Jobee\'sLair', self: true } : file.name === 'PPSA99203' ? hb : null;
+  const entries = shelfEntries({ jobs: [], files, gameOf: () => undefined, homebrewOf });
+  assert.deepEqual(entries.map((e) => e.game.title).sort(), ['Other.exfat', 'PS5SX2']);
+  assert.equal(entries.find((e) => e.game.title === 'PS5SX2').game.homebrewApp, hb);
 });
