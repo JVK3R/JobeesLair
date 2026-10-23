@@ -13,6 +13,19 @@ already on your console. With it: a live catalog with real ratings and no duplic
 game page, AllDebrid and torrents, Report a bug, and updates that offer themselves. Pre Release 1 and 2 went to
 the Discord the same day.
 
+Re-released on 2026-10-23 with three fixes from the first console to take it:
+
+- **The update installs.** "The update did not install: updater.elf did not answer" on the first console to
+  take 0.5.1. The updater had answered; a system library had written a line of its own to the same socket
+  first ("[SceLncUtil] … getAppStatus"), the app read that as the answer, withdrew the update, and the updater
+  quit. Answers are now read line by line past such lines, for the updater and the relauncher alike.
+- **A new release is offered within the hour.** The launch check reused the previous hour's "nothing new", so a
+  release published since went unoffered and the dock showed nothing. An answer that found nothing is asked
+  again at every launch.
+- **The update dialog's progress bar stays in the dialog.** It drew its fill across the dialog and past it: the
+  engine ignores transforms on elements wider than 512 px and clips nothing it moves. The fill is now a view as
+  wide as the progress, for every progress bar in the app.
+
 - **A live game catalog.** Games are now pulled from the public Pegasus catalogs (pegasus-dl.dev) and
   refreshed every three hours. A newly added game shows up the next time you open the app, with no app update
   needed. This adds about 150 games and thousands of new download links.

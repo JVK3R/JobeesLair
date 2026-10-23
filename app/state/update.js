@@ -100,7 +100,9 @@ import { Archives, BackHandler, Downloads, FileSystem, Http, Notifications, Plat
   // reuses the last answer instead of asking again. The installer has read what the updater did by then.
   function startUpdateChecks() {
     startInstaller();
-    const first = setTimeout(() => void checkForUpdate({ minAge: HOUR_MS }), CHECK_DELAY_MS);
+    // 0.5.1: an answer that found nothing is asked again at every launch (one small request): a release
+    // published within the hour of the last look went unoffered otherwise, and the dock showed nothing.
+    const first = setTimeout(() => void checkForUpdate({ minAge: checker.known() ? HOUR_MS : 0 }), CHECK_DELAY_MS);
     const daily = setInterval(() => void checkForUpdate(), DAY_MS);
     return () => {
       clearTimeout(first);

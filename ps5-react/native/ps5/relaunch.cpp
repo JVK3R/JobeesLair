@@ -8,16 +8,35 @@
 #include <cstring>
 #include <string>
 
+// A payload's answer: its first line that is its own. MODIFIED (Jobee'sLair 0.5.1): the loader gives the
+// payload this socket as its stdout and stderr, and a system library can write a line of its own there
+// before the payload answers ("[SceLncUtil] ... getAppStatus: LNC_ISOK::0x80940004" came first on a
+// console, now and then); read as the first 15 bytes, that line was "did not answer", the app withdrew
+// the update, and updater.elf, which had answered "ready" right after, found it withdrawn and quit. As
+// send_payload below: lines are read one at a time, and up to 8 that open with "[" are passed over.
+static std::string payload_answer(int socket) {
+  std::string line;
+  for (int lines = 0; lines < 8; ++lines) {
+    line.clear();
+    char byte = 0;
+    while (line.size() < 255 && payload_loader::receive(socket, &byte, 1) == 1) {
+      line += byte;
+      if (byte == '\n') break;
+    }
+    if (line.empty() || line[0] != '[') break;
+  }
+  return line;
+}
+
 // relauncher.elf (native/ps5/payloads/relauncher.c) waits for this title to close and opens it again.
 // It answers "ready" once it has the request, which is the proof the app needs before it closes.
 bool host::arrange_relaunch(char* error, std::size_t size) {
   std::string reason;
   const int socket = payload_loader::send("relauncher.elf", std::string("RLA1\n") + PS5_REACT_TITLE + "\n", 3'000'000, "relaunch", reason);
   if (socket >= 0) {
-    char answer[16] = {};
-    const int count = payload_loader::receive(socket, answer, sizeof answer - 1);
+    const std::string answer = payload_answer(socket);
     payload_loader::close(socket);
-    if (count > 0 && !std::strncmp(answer, "ready\n", 6)) return true;
+    if (answer == "ready\n") return true;
     reason = "relaunch: relauncher.elf did not answer";
   }
   std::snprintf(error, size, "%s", reason.c_str());
@@ -32,10 +51,9 @@ bool host::arm_update(const char* control_dir, char* error, std::size_t size) {
   const int socket = payload_loader::send("updater.elf", std::string("UPD1\n") + PS5_REACT_TITLE + "\n" + control_dir + "\n",
                                           3'000'000, "update", reason);
   if (socket >= 0) {
-    char answer[16] = {};
-    const int count = payload_loader::receive(socket, answer, sizeof answer - 1);
+    const std::string answer = payload_answer(socket);
     payload_loader::close(socket);
-    if (count > 0 && (!std::strncmp(answer, "ready\n", 6) || !std::strncmp(answer, "armed\n", 6))) return true;
+    if (answer == "ready\n" || answer == "armed\n") return true;
     reason = "update: updater.elf did not answer";
   }
   std::snprintf(error, size, "%s", reason.c_str());
