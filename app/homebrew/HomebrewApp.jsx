@@ -31,7 +31,7 @@ import { colors, radius } from '../ui/colors.js';
 import { EASE_OUT } from '../ui/ease.js';
 import { HomebrewArt, gradientOf } from './HomebrewArt.jsx';
 import { hb, hbTint } from './palette.js';
-import { FocusScope, Image, Linking, Platform, ScrollView, Text, View, motion } from '@ps5-react/core';
+import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text, View, motion } from '@ps5-react/core';
 
   var HERO_HEIGHT = 470;
   var rise = { initial: { opacity: 0, y: 16 }, animate: { opacity: 1, y: 0 }, transition: { type: "tween", duration: 0.5, ease: EASE_OUT } };
@@ -284,7 +284,8 @@ import { FocusScope, Image, Linking, Platform, ScrollView, Text, View, motion } 
         setViewing(null);
         focusLater(`game:shot:${index}`);
       } }),
-      sheet ? jsx(FilesSheet, { app, status, onClose: () => {
+      // 0.5.1: inside an AnimatePresence, so the sheet's exit (SideSheet) plays as it closes.
+      jsx(AnimatePresence, { children: sheet ? jsx(FilesSheet, { app, status, onClose: () => {
         setSheet(false);
         focusLater("hb:files");
       }, onPick: (name) => {
@@ -295,7 +296,7 @@ import { FocusScope, Image, Linking, Platform, ScrollView, Text, View, motion } 
           setMessage({ bad: true, text: error.message });
         }
         focusLater("hb:install");
-      } }) : null
+      } }, "files") : null })
     ] }) });
   }
 

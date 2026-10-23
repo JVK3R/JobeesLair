@@ -110,9 +110,10 @@ assert.ok(has(button.out, /^This PS5 fake package won't launch on this console$/
 const imageGame = { ...fpkgGame, releases: [catalog[2]] };
 const fine = texts({ type: DownloadButton, props: { game: imageGame, onDownloaded() {}, onRequestDialog() {} } });
 assert.ok(!has(fine.out, /won't launch|isn't answering/), 'nothing to warn about for a working image');
+assert.ok(has(fine.out, /^13\.60 Ready · Disk image · USA v1 · /), 'the chosen image leads with its 13.60 Ready tag');
 const offlineGame = { ...fpkgGame, releases: [catalog[1]] };
 const offline = texts({ type: DownloadButton, props: { game: offlineGame, onDownloaded() {}, onRequestDialog() {} } });
-assert.ok(has(offline.out, /^slow\.example\.org isn't answering right now$/) && has(offline.out, /^Disk image · USA v1 · Offline · slow\.example\.org/));
+assert.ok(has(offline.out, /^slow\.example\.org isn't answering right now$/) && has(offline.out, /^13\.60 Ready · Disk image · USA v1 · Offline · slow\.example\.org/));
 // Every link of a game refused (Archive.org's 403 "Item not available"): the sheet still lists both, tagged,
 // and the button says what the check found while the download can still be tried.
 const GONE1 = 'https://archive.org/download/item-a/Game.ffpfsc', GONE2 = 'https://archive.org/download/item-b/Game.ffpfsc';
@@ -155,6 +156,30 @@ assert.equal(torSheet.filter((text) => text === 'TorBox').length, 2, 'one per br
 assert.ok(!has(torSheet, /^Show \d+ web browser source/), 'shown at once');
 assert.deepEqual(rowBadges(torSheet, '1fichier.com'), ['Rarely works here', 'TorBox Instant'], 'its captures fail on the console; TorBox holds it');
 assert.deepEqual(rowBadges(torSheet, 'rapidgator.net'), ['Rarely works here'], 'not held: no Instant badge');
+// 0.5.1: a magnet link has a Torrents section of its own. With a TorBox key the row is the debrid download itself
+// (no button beside it) and "TorBox Instant" marks a torrent TorBox holds; without a key it is greyed, the note
+// says what to add, and the download button says why.
+const MAGNET = 'magnet:?xt=urn:btih:c12fe1c06bba254a9dc9f519b335aa7c1367a88a&dn=Game.exfat';
+const torrentSources = withReleaseTypes([
+  source('w2', 'archive.org', 'https://archive.org/download/item/Other.exfat', 'exfat', 'USA Base (v01.00) - Direct'),
+  { ...source('m', 'Torrent', MAGNET, 'exfat', 'USA'), filename: 'Game.exfat', sizeBytes: 50e9 },
+], 'ps5');
+const torrentSheet = (onDebrid) => texts({ type: SourcePicker, props: { title: 'Seeded Game', releases: torrentSources, selected: 0, submit() {}, onDebrid, current: 'PPSA06666', onClose() {}, checkLinks: async () => {} } }).out;
+debrid.setTorBoxClient({ hosters: async () => [], checkCachedLinks: async () => new Set([MAGNET]) });
+await debrid.askTorBoxInstant([MAGNET], () => () => {});
+const keyedTorrent = torrentSheet(() => {});
+console.log(`--- source list with a torrent (TorBox key set)\n${keyedTorrent.join('\n')}`);
+assert.ok(has(keyedTorrent, /^Torrents · 1$/), 'its own section');
+assert.ok(has(keyedTorrent, /^Through your debrid service/), 'what happens');
+assert.deepEqual(rowBadges(keyedTorrent, 'Torrent'), ['.exfat Image', '13.60 Ready', 'TorBox Instant']);
+assert.equal(keyedTorrent.filter((text) => text === 'TorBox').length, 0, 'no button beside a torrent: the row is the debrid download');
+debrid.setTorBoxKey('');
+const plainTorrent = torrentSheet(() => {});
+assert.ok(has(plainTorrent, /^Torrents · 1$/) && has(plainTorrent, /^Needs TorBox or AllDebrid/), 'listed, with what to add');
+assert.ok(!plainTorrent.includes('TorBox Instant'));
+const torrentButton = texts({ type: DownloadButton, props: { game: { id: 'PPSA06666', titleId: 'PPSA06666', title: 'Seeded Game', platform: 'ps5', releases: [torrentSources[1]] }, onDownloaded() {}, onRequestDialog() {} } }).out;
+assert.ok(has(torrentButton, /^This source is a torrent$/) && has(torrentButton, /^Add a TorBox or AllDebrid API key/), torrentButton.join(' | '));
+debrid.setTorBoxKey('0123abcd-4567-89ef-0123-456789abcdef');
 // The download button on a TorBox download: its line says so, and it is the game's own job on reopening.
 const variant = debrid.debridSource(browserSources[1]);
 __fake.jobs = [];

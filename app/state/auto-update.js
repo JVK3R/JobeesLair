@@ -22,9 +22,10 @@
 // ready update. Phases: idle, waiting (for the network), downloading, checking, ready, armed, failed.
 
 import { contentVersionOf, newer } from './updater.js';
+import { IMAGE_NAME as IMAGE } from '../version.js';
 
   var STAGING = "JobeesLair/update_staging";
-  var IMAGE_NAME = "JobeesLair.exfat.staged";
+  var IMAGE_NAME = `${IMAGE}.staged`;
   var ROOT_OF = /^(\/data|\/mnt\/(?:usb|ext)\d+)\//;
   // A path the updater takes as one line of apply.txt, and as JSON to ShadowMount+.
   var PLAIN_PATH = /^\/[^\0\r\n"\\]+$/;

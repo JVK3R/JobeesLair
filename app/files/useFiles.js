@@ -88,9 +88,15 @@ import { FileSystem, Http, Packages, Platform } from '@ps5-react/core';
       if (DELETABLE.includes(job2.state)) note = (await queue.deleteFromDisk(job2.id))?.note ?? note;
     }
     if (!deletionTargets(file).some((path) => FileSystem.exists(path))) return { note };
+    // MODIFIED (0.5.1): only ShadowMount's questions pause the downloads; the deleting itself (a game's
+    // thousands of files, minutes of it) goes on while they run.
+    const quiet = (reason, work) => queue?.quietNetwork ? queue.quietNetwork(reason, work) : work();
     const sweep = async () => {
-      const titles = await shadowMountTitles(file, root2);
-      await checkUnmounted(file, root2);
+      const titles = await quiet(`delete ${file.path}`, async () => {
+        const found = await shadowMountTitles(file, root2);
+        await checkUnmounted(file, root2);
+        return found;
+      });
       for (const path of deletionTargets(file)) {
         if (!FileSystem.exists(path)) continue;
         try {
@@ -101,9 +107,9 @@ import { FileSystem, Http, Packages, Platform } from '@ps5-react/core';
         }
         console.log(`[files] deleted ${path}`);
       }
-      return uninstallTitles(file, titles);
+      return titles?.length ? quiet(`uninstall ${file.path}`, () => uninstallTitles(file, titles)) : uninstallTitles(file, titles);
     };
-    note = (queue?.quietNetwork ? await queue.quietNetwork(`delete ${file.path}`, sweep) : await sweep()) ?? note;
+    note = await sweep() ?? note;
     return { note };
   }
   /**

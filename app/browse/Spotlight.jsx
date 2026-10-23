@@ -5,14 +5,14 @@
 // (HeroThumbs) instead of a list beside it, and Down leads to the Featured lane.
 
 import '../assets/Exo2.ttf';
-import { jsx, jsxs } from 'react/jsx-runtime';
+import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { memo, useEffect, useRef, useState } from 'react';
 import { FIRST_FEATURED } from './Lanes.jsx';
 import { HeroThumbs } from './HeroThumbs.jsx';
 import { useSlides } from './useSlides.js';
 import { games } from '../data/catalog.js';
 import { LATIN_IN_RTL, focusEnd, useLocale, useT } from '../i18n/index.js';
-import { fromArchive, genreLabel, sortGames, summaryOf } from '../state/catalog.js';
+import { fromArchive, genreLabel, oneEach, sortGames, summaryOf } from '../state/catalog.js';
 import { useNavActions, useNavState } from '../state/nav.jsx';
 import { useStoreActions, useWishlist } from '../state/store.jsx';
 import { Button2 } from '../ui/Button.jsx';
@@ -33,7 +33,7 @@ import { colors, radius } from '../ui/colors.js';
   function selectFeatured() {
     const eligible = games.filter((game) => game.art.logo && fromArchive(game));
     const pool = eligible.length >= 5 ? eligible : games.filter((game) => game.art.logo);
-    const byFame = [...pool].sort((a, b) => b.recommendations - a.recommendations);
+    const byFame = oneEach([...pool].sort((a, b) => b.recommendations - a.recommendations));
     const latest2 = new Set(sortGames(games, "newest").slice(0, NEWEST));
     const recent2 = shuffle(byFame.filter((game) => latest2.has(game)).slice(0, 10)).slice(0, 2);
     const famous = shuffle(byFame.filter((game) => !recent2.includes(game)).slice(0, 20)).slice(0, 5 - recent2.length);
@@ -50,22 +50,35 @@ import { colors, radius } from '../ui/colors.js';
       });
     }
   }
+  // 0.5.1: the banner crossfades. The one showing stays under the next until the next has loaded and faded in
+  // (two decoded banners for a third of a second, then one), instead of a cut to a blank while it decoded.
+  var CROSS = { type: "tween", duration: 0.35, ease: "easeOut" };
+  var ART_BOX = (game) => [{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, borderRadius: radius.sm }, game.art.tint ? { ...ART, backgroundColor: game.art.tint } : ART];
   function Art({ game }) {
     const [shown, setShown] = (0, useState)(game);
+    const [under, setUnder] = (0, useState)(null);
+    const [loaded, setLoaded] = (0, useState)(true);
     (0, useEffect)(() => {
       if (shown === game) return void 0;
-      const id = setTimeout(() => setShown(game), 20);
+      const id = setTimeout(() => {
+        // The banner showing goes under the next only if it loaded itself; else the one under it stays.
+        setUnder((current) => loaded && shown.art.hero ? shown : current);
+        setShown(game);
+        setLoaded(false);
+      }, 20);
       return () => clearTimeout(id);
-    }, [game, shown]);
-    if (!shown.art.hero) return null;
-    return /* @__PURE__ */ (0, jsx)(
-      Image,
-      {
-        source: { uri: shown.art.hero },
-        resizeMode: "cover",
-        style: [{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, borderRadius: radius.sm }, shown.art.tint ? { ...ART, backgroundColor: shown.art.tint } : ART]
-      }
-    );
+    }, [game, shown, loaded]);
+    // The banner under goes once the next has faded in over it.
+    (0, useEffect)(() => {
+      if (!loaded || !under) return void 0;
+      const id = setTimeout(() => setUnder(null), 450);
+      return () => clearTimeout(id);
+    }, [loaded, under]);
+    const drop = () => setUnder(null);
+    return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
+      under ? /* @__PURE__ */ (0, jsx)(Image, { source: { uri: under.art.hero }, resizeMode: "cover", style: ART_BOX(under) }, `under:${under.id}`) : null,
+      shown.art.hero ? /* @__PURE__ */ (0, jsx)(motion.View, { style: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }, initial: false, animate: { opacity: under && !loaded ? 0 : 1 }, transition: CROSS, children: /* @__PURE__ */ (0, jsx)(Image, { source: { uri: shown.art.hero }, resizeMode: "cover", style: ART_BOX(shown), onLoad: () => setLoaded(true), onError: drop }) }, `art:${shown.id}`) : null
+    ] });
   }
   function Blurb({ game }) {
     useT();

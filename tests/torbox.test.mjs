@@ -160,7 +160,7 @@ test('download-sources: a source marked debrid is resolved by the debrid provide
   const resolver = createSourceResolver({ http: { request: async () => { throw new Error('no plain request'); } }, debrid: { resolve: async (release) => (asked.push(release.id), { url: 'https://cdn.example/f' }) } });
   assert.deepEqual(await resolver.resolve(source), { url: 'https://cdn.example/f', rejectHtml: true });
   assert.deepEqual(asked, ['r1']);
-  await assert.rejects(createSourceResolver({ http: {} }).resolve(source), /Add a TorBox API key in Settings/);
+  await assert.rejects(createSourceResolver({ http: {} }).resolve(source), /Add a TorBox or AllDebrid API key in Settings/);
 });
 
 test('debrid state: the key, which sources TorBox takes, their TorBox form, and the queue\'s resolver', async () => {

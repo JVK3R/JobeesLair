@@ -3,8 +3,10 @@
 // MODIFIED: Vikingfile is a browser source again (its file link captured from the console's browser), and a
 // browser source ranks by how captures on its host fare on this console (state/capture-hosts.js).
 
+import { activeService, serviceName } from '../state/debrid.js';
 import { t } from '../i18n/core.js';
 import { hostStanding } from '../state/capture-hosts.js';
+import { ps5FakePackagesLaunch } from '../state/firmware.js';
 import { sourceKind } from '../state/download-sources.js';
 import { formatBytes } from '../state/size.js';
 
@@ -54,6 +56,8 @@ import { formatBytes } from '../state/size.js';
     }
     // A source sent through TorBox (state/debrid.js) downloads in the app like a file link.
     if (kind === "direct" || kind === "manifest" || kind === "debrid") return "direct";
+    // 0.5.1: a magnet link: its own section, downloadable through a debrid service only.
+    if (kind === "torrent") return "torrent";
     return kind === "browser" || kind === "datanodes" || kind === "unavailable" || GATED.has(kind) ? "browser" : "page";
   }
   var SPEED = { "archive.org": "sources.speed.archive", mediafire: "sources.speed.mediafire", "overdrive cdn": "sources.cdnFastest" };
@@ -66,11 +70,12 @@ import { formatBytes } from '../state/size.js';
     const shownVersion = versionOf(release);
     const said = [region, shownVersion].filter(Boolean).join(" ");
     const name = [kindOf(release), said || edition(release)].filter(Boolean).join(" \xB7 ");
-    const host = release.provider.replace(/^www\./, "");
+    const group = release.unavailableReason ? "unavailable" : access(release);
+    const host = group === "torrent" ? t("sources.torrent") : release.provider.replace(/^www\./, "");
     const speed = SPEED[release.provider.toLowerCase()];
     const detail2 = [
       host,
-      release.debrid ? t("debrid.via") : null,
+      release.debrid ? t("debrid.via").replace("TorBox", serviceName(release.debrid.service)) : null,
       isBackport(release) ? t("sources.role.backport") : isDlc(release) ? t("sources.role.dlc") : null,
       parts ? t("sources.parts", { count: parts }) : null,
       speed ? t(speed) : null
@@ -80,7 +85,7 @@ import { formatBytes } from '../state/size.js';
       detail: detail2,
       host,
       size: release.sizeBytes ? formatBytes(release.sizeBytes) : null,
-      group: release.unavailableReason ? "unavailable" : access(release),
+      group,
       reason: release.unavailableReason ?? null
     };
   }
@@ -109,7 +114,12 @@ import { formatBytes } from '../state/size.js';
     return sameSize(a.sizeBytes, b.sizeBytes) || Boolean(ea) && ea === eb && recordOf(a) !== void 0 && recordOf(a) === recordOf(b);
   }
   var isDlc = ({ label }) => /\bDLCs?\b/i.test(label || "") && !/\b(?:game|full)\b|\+\s*(?:all\s+)?DLCs?\b|\bwith\s+(?:all\s+)?DLCs?\b|\bincl/i.test(label);
-  var GROUP_RANK = { direct: 0, page: 1, browser: 2, unavailable: 3 };
+  var GROUP_RANK = { direct: 0, page: 1, torrent: 2, browser: 3, unavailable: 4 };
+  // 0.5.1: a torrent ranks after host pages with a debrid key set, after the browser without one.
+  function groupRank(release) {
+    const group = release.unavailableReason ? "unavailable" : access(release);
+    return group === "torrent" && !activeService() ? GROUP_RANK.browser + 0.5 : GROUP_RANK[group];
+  }
   var HEALTH_RANK = { ok: 0, flaky: 2 };
   var isBackport = ({ label }) => /\bback\s*port\b/i.test(label || "");
   // (From Overdrive 1.0.6.) The firmware major a source's label asks for ("USA 10.xx Base", "10.xx BackPort
@@ -129,12 +139,14 @@ import { formatBytes } from '../state/size.js';
   // tried yet.
   var ranked = (release, index) => {
     // Only the group and the capture standing are needed here, not the whole described source.
-    const group = GROUP_RANK[release.unavailableReason ? "unavailable" : access(release)];
+    const group = groupRank(release);
     const standing = captureStanding(release);
     return { release, index, group, rank: [
       isDlc(release) || isBackport(release) ? 1 : 0,
       release.unavailableReason ? 1 : 0,
       release.linkHealth?.status === "dead" ? 1 : 0,
+      // 0.5.1: a torrent without a debrid key is no link anyone here can use yet: after everything else.
+      group > GROUP_RANK.browser && group < GROUP_RANK.unavailable ? 1 : 0,
       standing === "hard" ? 1 : 0,
       release.linkHealth?.status === "unreachable" ? 1 : 0,
       release.compatible1360 === false ? 1 : 0,
@@ -151,19 +163,33 @@ import { formatBytes } from '../state/size.js';
   function preferredRelease(releases) {
     return releases.map(ranked).sort(compare)[0]?.index ?? 0;
   }
+  // 0.5.1: whether a source runs on this console as it is (release-sets.js compatible1360: a dump or image, and a
+  // PS5 fake package at 11.60 or lower), leaving out add-ons, backports, links found gone and sources listed as
+  // unavailable. `readyLinks`: how many of a game's sources do.
+  function runsHere(release, firmware) {
+    if (!release || release.unavailableReason || release.linkHealth?.status === "dead" || isDlc(release) || isBackport(release)) return false;
+    // A torrent needs a debrid key before it is a link anyone here can use.
+    if (access(release) === "torrent" && !activeService()) return false;
+    return release.compatible1360 === true || release.compatible1360 === false && ps5FakePackagesLaunch(firmware) === true;
+  }
+  var readyLinks = (releases, firmware) => (releases || []).filter((release) => runsHere(release, firmware)).length;
+  // 0.5.1: every source's index in the order they are offered (ranked above), best first.
+  function sourceOrder(releases) {
+    return releases.map(ranked).sort(compare).map(({ index }) => index);
+  }
   function fallbacks(releases, selected) {
     return releases.map(ranked).filter(({ release, index, group }) => index !== selected && group <= GROUP_RANK.page && equivalent(releases[selected], release)).sort(compare).map(({ release }) => release);
   }
   function sourceSections(releases) {
-    const sections = ["direct", "page", "browser", "dlc", "backport", "unavailable"].map((group) => ({ group, items: [] }));
+    const sections = ["direct", "page", "torrent", "browser", "dlc", "backport", "unavailable"].map((group) => ({ group, items: [] }));
     releases.forEach((release, index) => {
       const { group } = describeSource(release);
       const into = group === "unavailable" ? group : isBackport(release) ? "backport" : isDlc(release) ? "dlc" : group;
       sections.find((section) => section.group === into).items.push({ release, index });
     });
     const links = ({ release }) => release.parts?.length ?? 1;
-    sections[2].items.sort((a, b) => links(a) - links(b));
+    sections.find((section) => section.group === "browser").items.sort((a, b) => links(a) - links(b));
     return sections.filter((section) => section.items.length);
   }
 
-export { captureStanding, describeSource, fallbacks, isBackport, isCdnProvider, isDlc, isImage, labelFirmware, preferredRelease, sourceSections };
+export { captureStanding, describeSource, fallbacks, isBackport, isCdnProvider, isDlc, isImage, labelFirmware, preferredRelease, readyLinks, runsHere, sourceOrder, sourceSections };

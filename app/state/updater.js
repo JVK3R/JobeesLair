@@ -10,6 +10,8 @@
 // header's indicator is there at launch even before the network answers, and a relaunch does not ask again
 // within the hour. The schedule (at launch, then every 24 hours) lives in state/update.js.
 
+// 0.5.1: the image's name is the edition's (version.js IMAGE_NAME).
+import { IMAGE_NAME } from '../version.js';
   var DAY_MS = 24 * 60 * 60 * 1e3;
   var HOUR_MS = 60 * 60 * 1e3;
   var NOTES_MAX = 1200;
@@ -55,7 +57,7 @@
     return `${String(major + 1).padStart(2, "0")}.${String(minor).padStart(3, "0")}.${String(patch).padStart(3, "0")}`;
   }
   // The files auto-update installs from, by their release names.
-  var ASSETS = { image: "JobeesLair.exfat", zip: "update.zip" };
+  var ASSETS = { image: IMAGE_NAME, zip: "update.zip" };
   var MAX_ASSET = 8 * 1024 ** 3;
   // A release asset as auto-update may download it: at the release's own download path, of a plausible
   // size, with GitHub's SHA-256. Null otherwise.

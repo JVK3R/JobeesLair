@@ -27,7 +27,8 @@
 
 import { normalizeIndex, roleOf } from './homebrew-index.js';
 
-  var INDEX_URL = "https://raw.githubusercontent.com/JVK3R/JobeesLair/main/homebrew/index.json";
+  // 0.5.1: the index is built and kept in its own repository, apart from the store's.
+  var INDEX_URL = "https://raw.githubusercontent.com/JVK3R/JobeesLair-Homebrew/main/index.json";
   // Http.request takes at most 4 MiB; the index is about half a megabyte.
   var MAX_INDEX_BYTES = 4 * 1024 * 1024;
   var slugOf = (id) => id.replace("/", "__").replace(/[^A-Za-z0-9_.-]/g, "_");

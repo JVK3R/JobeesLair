@@ -39,6 +39,7 @@ import { startInstaller, startUpdateChecks } from './state/update.js';
 import { applySpeedLimit } from './state/speed-limit.js';
 import { installLogger } from './services/logger.js';
 import { VERSION } from './version.js';
+import { HOMEBREW_ONLY } from './edition.js';
 import { deviceFacts } from './state/device.js';
 import { NavProvider, useIsImmersive, useNavActions, useNavState } from './state/nav.jsx';
 import { StoreFreeze, StoreProvider } from './state/store.jsx';
@@ -89,15 +90,18 @@ import { useInterfaceSounds } from './ui/sounds.js';
   function App() {
     useInterfaceSounds();
     useInterfaceHaptics();
+    // 0.5.1: the homebrew-only edition has no catalog to warm, no feeds and no phone companion.
     (0, useEffect)(() => {
+      if (HOMEBREW_ONLY) return void 0;
       const id = setTimeout(warmCovers, WARM_DELAY_MS);
       return () => clearTimeout(id);
     }, []);
     (0, useEffect)(() => {
+      if (HOMEBREW_ONLY) return void 0;
       const id = setTimeout(() => void refreshFeeds(), FEEDS_DELAY_MS);
       return () => clearTimeout(id);
     }, []);
-    (0, useEffect)(() => startCompanionIfEnabled(), []);
+    (0, useEffect)(() => HOMEBREW_ONLY ? void 0 : startCompanionIfEnabled(), []);
     // MODIFIED (0.5.0 Pre Release 4): the helper that clears this app's sandbox once it closes, so
     // ShadowMount+ can let go of the title (state/sandbox-sweeper.js).
     (0, useEffect)(() => startSandboxSweeper(), []);
@@ -121,7 +125,7 @@ import { useInterfaceSounds } from './ui/sounds.js';
       // Arabic and Urdu mirror every row and right-align every paragraph from here.
       /* @__PURE__ */ (0, jsxs)(View, { style: [{ width: 1920, height: 1080, backgroundColor: colors.canvas }, { direction: rtl ? "rtl" : "ltr" }], children: [
         /* @__PURE__ */ (0, jsxs)(Header, { children: [
-          /* @__PURE__ */ (0, jsx)(BrowseLayer, { shown: onBrowse }),
+          HOMEBREW_ONLY ? null : /* @__PURE__ */ (0, jsx)(BrowseLayer, { shown: onBrowse }),
           onBrowse ? null : (
             // No background of its own: the root's canvas shows through, so a screen change does not
             // fill the whole screen twice. `screen` lets the header's Down return to where it was left.
@@ -131,8 +135,8 @@ import { useInterfaceSounds } from './ui/sounds.js';
           /* @__PURE__ */ (0, jsx)(UpdateDialog, {})
         ] }),
         // 0.5.0 Pre Release 4: the one-time What's new, and the screen saver over everything.
-        /* @__PURE__ */ (0, jsx)(WhatsNew, {}),
-        /* @__PURE__ */ (0, jsx)(ScreenSaver, {})
+        HOMEBREW_ONLY ? null : /* @__PURE__ */ (0, jsx)(WhatsNew, {}),
+        HOMEBREW_ONLY ? null : /* @__PURE__ */ (0, jsx)(ScreenSaver, {})
       ] })
     );
   }

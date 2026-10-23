@@ -31,6 +31,17 @@ import { Text, View } from '@ps5-react/core';
       /* @__PURE__ */ (0, jsx)(Icon, { name: "chevronRight", size: 14, color: colors.muted })
     ] });
   }
+  var GREEN = "#4ade80";
+  // 0.5.1: another source that runs on this console, offered on the page itself: its green tag ("13.60 Ready")
+  // before what it is and where from. A press picks it as the download's source.
+  function ReadyPick({ focusKey, nextFocusDown, onPress, tag, text }) {
+    return /* @__PURE__ */ (0, jsxs)(View, { focusKey, nextFocusDown, onPress, style: (_state4) => [{ position: "relative", width: 408, flexDirection: "row", alignItems: "center", gap: 12, borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 18, paddingVertical: 10 }, _state4.focused ? { backgroundColor: colors.surface2 } : null], children: [
+      /* @__PURE__ */ (0, jsx)(FocusRing, {}),
+      /* @__PURE__ */ (0, jsx)(View, { style: { borderRadius: radius.xs, borderWidth: 1, borderColor: GREEN, paddingHorizontal: 8, paddingVertical: 1 }, children: /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 17, fontWeight: 600, color: GREEN, lineHeight: 22 }, children: tag }) }),
+      /* @__PURE__ */ (0, jsx)(Text, { style: { flex: 1, fontFamily: "Exo2", fontSize: 20, color: colors.muted, numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 28 }, children: text }),
+      /* @__PURE__ */ (0, jsx)(Icon, { name: "chevronRight", size: 14, color: colors.muted })
+    ] });
+  }
   function TextAction({ focusKey, nextFocusDown, onPress, text }) {
     return /* @__PURE__ */ (0, jsxs)(View, { focusKey, nextFocusDown, onPress, style: (_state3) => [{ position: "relative", borderRadius: radius.sm, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 18, paddingVertical: 12 }, _state3.focused ? { backgroundColor: colors.surface2 } : null], children: [
       /* @__PURE__ */ (0, jsx)(FocusRing, {}),
@@ -38,4 +49,4 @@ import { Text, View } from '@ps5-react/core';
     ] });
   }
 
-export { Choice, TextAction };
+export { Choice, ReadyPick, TextAction };

@@ -22,6 +22,7 @@ import { useT } from '../i18n/index.js';
 import { driveName, downloadQueue } from '../state/downloads.js';
 import { refreshDrives } from '../state/drives.js';
 import { setKeptInternal, useKeptInternal } from '../state/keep-internal.js';
+import { readFakelib, setFakelib } from '../state/fakelib.js';
 import { useMounts } from '../state/mount-monitor.js';
 import { useNavActions } from '../state/nav.jsx';
 import { playParts, usePlaytimes } from '../state/playtime.js';
@@ -38,7 +39,7 @@ import { Icon } from '../ui/Icon.jsx';
 import { HINT } from '../ui/Legend.jsx';
 import { colors, radius } from '../ui/colors.js';
 import { EASE_OUT } from '../ui/ease.js';
-import { DeviceInfo, FocusScope, Image, ScrollView, Text, View, motion, useIsFocused } from '@ps5-react/core';
+import { AnimatePresence, DeviceInfo, FocusScope, Image, ScrollView, Text, View, motion, useIsFocused } from '@ps5-react/core';
 
   var PER_ROW = 3, GAP = 36;
   var TILE = Math.floor((1920 - 2 * 48 - (PER_ROW - 1) * GAP) / PER_ROW);
@@ -187,6 +188,10 @@ import { DeviceInfo, FocusScope, Image, ScrollView, Text, View, motion, useIsFoc
     const [armed, setArmed] = (0, useState)(null);
     const [notice, setNotice] = (0, useState)({ text: "", bad: false });
     const [sheet, setSheet] = (0, useState)(null);
+    // 0.5.1: the fakelib of the game whose Options are open (state/fakelib.js), read from ShadowMount when they open.
+    const [fakelib, setFakelibShown] = (0, useState)(null);
+    // The title whose Options sheet is open: a slow reply for an earlier sheet is dropped (0.5.1).
+    const fakelibFor = (0, useRef)(null);
     // The focused tile's key (null: a header button or nothing), for the button hints and the actions.
     const [focusedKey, setFocusedKey] = (0, useState)(null);
     const latest2 = (0, useRef)(entries);
@@ -263,6 +268,17 @@ import { DeviceInfo, FocusScope, Image, ScrollView, Text, View, motion, useIsFoc
       }
       if (entry.root === "/data") items.push(entry.kept ? { icon: "star", label: t2("shelf.unkeep"), detail: t2("shelf.unkeepDetail"), onSelect: () => setKeptInternal(entry.key, false) } : { icon: "star", label: t2("shelf.keep"), detail: t2("shelf.keepDetail"), onSelect: () => setKeptInternal(entry.key, true) });
       items.push({ icon: "hardDrive", label: t2("shelf.makeRoom"), detail: t2("shelf.makeRoomDetail"), onSelect: () => setSheet({ kind: "room", from: tileKey(entry.key) }), next: true });
+      // 0.5.1: a PS5 game's own fakelib, off or back on, from its next launch.
+      if (fakelib?.canToggle) {
+        const off = fakelib.mode === "disabled";
+        const change = (mode) => setFakelib(fakelib.titleId, mode, downloadQueue()).then((state) => {
+          setFakelibShown(state);
+          setNotice({ text: t2(mode === "disabled" ? "fakelib.savedOff" : "fakelib.savedOn", { title: entry.game.title }), bad: false });
+        }, fail);
+        items.push(off
+          ? { icon: "restart", label: t2("fakelib.on"), detail: t2("fakelib.onDetail"), onSelect: () => change("default") }
+          : { icon: "package", label: t2("fakelib.off"), detail: t2("fakelib.offDetail"), onSelect: () => change("disabled") });
+      }
       return items;
     };
     // Delete: every job of the game ("Delete from disk": ShadowMount uninstalls it, then its image or
@@ -293,6 +309,10 @@ import { DeviceInfo, FocusScope, Image, ScrollView, Text, View, motion, useIsFoc
       if (!entry || entry.removing) return false;
       if (action === "options") {
         setSheet({ kind: "options", entry });
+        setFakelibShown(null);
+        const titleId = entry.job?.installedTitleId ?? entry.job?.consoleTitleId ?? entry.files[0]?.titleId ?? entry.game.id;
+        fakelibFor.current = titleId;
+        if (!entry.game.homebrewApp) void readFakelib(titleId, downloadQueue()).then((state) => state && fakelibFor.current === titleId && setFakelibShown(state));
         return true;
       }
       if (entry.motion?.kind === "moving") return false;
@@ -377,7 +397,7 @@ import { DeviceInfo, FocusScope, Image, ScrollView, Text, View, motion, useIsFoc
         )
       ) }) }) : /* @__PURE__ */ (0, jsx)(Empty, { onBack, onManage: manage }),
       /* @__PURE__ */ (0, jsx)(ButtonHints, { hints }),
-      Sheet
+      /* @__PURE__ */ (0, jsx)(AnimatePresence, { children: Sheet ? /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }, children: Sheet }, sheet.kind) : null })
     ] }) });
   }
 

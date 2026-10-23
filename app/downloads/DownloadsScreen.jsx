@@ -25,7 +25,7 @@ import { Icon } from '../ui/Icon.jsx';
 import { CountBand } from '../ui/LibraryCount.jsx';
 import { HINT } from '../ui/Legend.jsx';
 import { colors, radius } from '../ui/colors.js';
-import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
+import { AnimatePresence, FocusScope, ScrollView, Text, View } from '@ps5-react/core';
 
   var LIST_HINTS = [
     HINT.select,
@@ -36,6 +36,26 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
   var EMPTY_HINTS = [HINT.select, HINT.back];
   var EMPTY_KEY = "downloads:empty";
   var PER_ROW = 2, GAP = 24;
+  var ARM_MS = 3e3;
+  // 0.5.1: the whole list at once, above it. "Clear finished" tidies every finished card away; "Cancel all"
+  // stops and removes every download that is not finished, on a second press within three seconds (the first
+  // arms it, like a card's X).
+  function QueueActions({ finished, unfinished, run }) {
+    const t2 = useT();
+    const [armed, setArmed] = (0, useState)(false);
+    (0, useEffect)(() => {
+      if (!armed) return void 0;
+      const timer = setTimeout(() => setArmed(false), ARM_MS);
+      return () => clearTimeout(timer);
+    }, [armed]);
+    return /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", justifyContent: "flex-end", gap: 12 }, children: [
+      finished ? /* @__PURE__ */ (0, jsx)(Button2, { variant: "secondary", size: "md", icon: "check", label: t2("downloads.clearFinished"), focusKey: "downloads:clear-finished", onPress: () => run("clearFinished") }) : null,
+      unfinished ? /* @__PURE__ */ (0, jsx)(Button2, { variant: armed ? "primary" : "secondary", size: "md", icon: armed ? "delete" : "x", label: t2(armed ? "downloads.cancelAllArmed" : "downloads.cancelAll"), focusKey: "downloads:cancel-all", onBlur: () => setArmed(false), onPress: () => {
+        if (armed) run("cancelAll");
+        setArmed(!armed);
+      } }) : null
+    ] });
+  }
   function summary(jobs) {
     const count = (states) => jobs.filter((job2) => states.includes(job2.state)).length;
     return [
@@ -52,26 +72,34 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
     if (!jobs.length) return null;
     const rows = [];
     for (let at = 0; at < jobs.length; at += PER_ROW) rows.push(jobs.slice(at, at + PER_ROW));
-    return /* @__PURE__ */ (0, jsxs)(View, { ...anchor ? { scrollAnchor: true } : {}, style: { gap: GAP }, children: [
-      /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 16 }, children: [
-        /* @__PURE__ */ (0, jsx)(View, { style: { width: 14, height: 14, backgroundColor: tone } }),
-        /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 20, fontWeight: 600, color: colors.muted, letterSpacing: 2, lineHeight: 28 }, children: `${t2(title)}  ${formatNumber2(jobs.length)}` }),
-        /* @__PURE__ */ (0, jsx)(View, { style: { flex: 1, height: 2, backgroundColor: colors.line } })
+    const rowView = (row) => /* @__PURE__ */ (0, jsx)(View, { style: { flexDirection: "row", gap: GAP }, children: row.map(
+      (job2) => /* @__PURE__ */ (0, jsx)(
+        DownloadCard,
+        {
+          job: job2,
+          game: getGame(job2.gameId) ?? { title: job2.title, art: {} },
+          autoFocus: job2 === first,
+          run: handlers.run,
+          onOpenGame: handlers.openGame,
+          onFocusRow: handlers.focusRow
+        },
+        job2.id
+      )
+    ) }, row[0].id);
+    // 0.5.1: the title and the first row share the section's anchor; every later row anchors on its own. The
+    // whole section as one anchor was taller than the page once it held two rows of these cards, and the
+    // engine gives an anchor taller than the viewport up for minimal movement, so the first section (with the
+    // band and the telemetry) never scrolled back to the top.
+    return /* @__PURE__ */ (0, jsxs)(View, { style: { gap: GAP }, children: [
+      /* @__PURE__ */ (0, jsxs)(View, { ...anchor ? { scrollAnchor: true } : {}, style: { gap: GAP }, children: [
+        /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 16 }, children: [
+          /* @__PURE__ */ (0, jsx)(View, { style: { width: 14, height: 14, backgroundColor: tone } }),
+          /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 20, fontWeight: 600, color: colors.muted, letterSpacing: 2, lineHeight: 28 }, children: `${t2(title)}  ${formatNumber2(jobs.length)}` }),
+          /* @__PURE__ */ (0, jsx)(View, { style: { flex: 1, height: 2, backgroundColor: colors.line } })
+        ] }),
+        rowView(rows[0])
       ] }),
-      ...rows.map((row) => /* @__PURE__ */ (0, jsx)(View, { style: { flexDirection: "row", gap: GAP }, children: row.map(
-        (job2) => /* @__PURE__ */ (0, jsx)(
-          DownloadCard,
-          {
-            job: job2,
-            game: getGame(job2.gameId) ?? { title: job2.title, art: {} },
-            autoFocus: job2 === first,
-            run: handlers.run,
-            onOpenGame: handlers.openGame,
-            onFocusRow: handlers.focusRow
-          },
-          job2.id
-        )
-      ) }, row[0].id))
+      ...rows.slice(1).map((row) => /* @__PURE__ */ (0, jsx)(View, { scrollAnchor: true, children: rowView(row) }, `anchor:${row[0].id}`))
     ] });
   }
   function Empty({ error: error2, onBack }) {
@@ -129,6 +157,15 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
           setFailure(caught.message);
         }
       },
+      // 0.5.1: Clear finished and Cancel all (QueueActions). Focus moves to the button left, else to the
+      // empty page's own.
+      runAll(name) {
+        setFailure("");
+        setNote("");
+        const left = latest2.current.filter((job2) => name === "cancelAll" ? COMPLETE.includes(job2.state) : !COMPLETE.includes(job2.state)).length;
+        const target = left ? name === "cancelAll" ? "downloads:clear-finished" : "downloads:cancel-all" : EMPTY_KEY;
+        Promise.resolve().then(() => downloadQueue()[name]()).then(() => focusLater(target), (caught) => setFailure(caught.message));
+      },
       openGame: (job2) => {
         if (getGame(job2.gameId)) onOpenGame(job2.gameId, primaryKey(job2.id));
       },
@@ -162,12 +199,14 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
     ].filter((section) => section.jobs.length);
     return /* @__PURE__ */ (0, jsx)(FocusScope, { autoFocus: true, onBack: back2, onAction, children: /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, paddingHorizontal: 48 }, children: [
       /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingTop: 12, paddingBottom: 20 }, children: [
-        /* @__PURE__ */ (0, jsxs)(Text, { style: { width: 1300, fontFamily: "Exo2", fontSize: 36, fontWeight: 600, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 48, letterSpacing: 1 }, children: [
+        /* @__PURE__ */ (0, jsxs)(Text, { style: { width: 1200, fontFamily: "Exo2", fontSize: 36, fontWeight: 600, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 48, letterSpacing: 1 }, children: [
           fitBytes(t2("downloads.title"), SPAN_MAX),
           /* @__PURE__ */ (0, jsx)(Text, { style: { fontSize: 22, fontWeight: 400, color: colors.subtle }, children: jobs.length ? fitBytes(`   ${summary(jobs)}`, SPAN_MAX) : "" })
         ] }),
-        /* @__PURE__ */ (0, jsx)(Text, { style: { width: 500, textAlign: "end", fontFamily: "Exo2", fontSize: 21, color: failure ? "#f87171" : colors.muted, numberOfLines: 3, ellipsizeMode: "tail", lineHeight: 30 }, children: failure || note })
+        // 0.5.1: Clear finished and Cancel all, at the top right where they are seen (QueueActions).
+        /* @__PURE__ */ (0, jsx)(QueueActions, { finished: done.length, unfinished: active2.length + stopped.length, run: handlers.runAll })
       ] }),
+      failure || note ? /* @__PURE__ */ (0, jsx)(Text, { style: { width: 1800, marginBottom: 16, fontFamily: "Exo2", fontSize: 21, color: failure ? "#f87171" : colors.muted, numberOfLines: 2, ellipsizeMode: "tail", lineHeight: 30 }, children: failure || note }) : null,
       // One scroll for the whole page below the title: the library band and the telemetry scroll away
       // with the cards (a fixed band left the cards a strip a card and a half tall, and moving up never
       // brought the top back). The band, the telemetry and the first section are one scroll anchor, so
@@ -184,10 +223,10 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
         /* @__PURE__ */ (0, jsx)(Empty, { error: error2, onBack }, "empty")
       ],
       /* @__PURE__ */ (0, jsx)(ButtonHints, { hints: jobs.length > 0 ? LIST_HINTS : EMPTY_HINTS }),
-      diagnosing ? /* @__PURE__ */ (0, jsx)(DiagnosisSheet, { title: diagnosing.title, jobId: diagnosing.id, onClose: () => {
+      /* @__PURE__ */ (0, jsx)(AnimatePresence, { children: diagnosing ? /* @__PURE__ */ (0, jsx)(DiagnosisSheet, { title: diagnosing.title, jobId: diagnosing.id, onClose: () => {
         setDiagnosing(null);
         focusLater(primaryKey(diagnosing.id));
-      } }) : null
+      } }, "diagnosis") : null })
     ] }) });
   }
 

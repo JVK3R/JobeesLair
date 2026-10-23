@@ -7,7 +7,7 @@ import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useRef } from 'react';
 import { genreLabel } from '../state/catalog.js';
 import { Cover } from './Cover.jsx';
-import { FocusRing } from './FocusRing.jsx';
+import { ShineBorder } from './FocusRing.jsx';
 import { blurCard, focusCard } from './GameCard.jsx';
 import { colors, radius } from './colors.js';
 import { EASE_OUT } from './ease.js';
@@ -27,8 +27,6 @@ import { Image, Text, View, motion, useIsFocused } from '@ps5-react/core';
     const focused = useIsFocused();
     const box = { width: px(WIDE.width), height: px(WIDE.height), borderRadius: radius.lg };
     return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
-
-      /* @__PURE__ */ (0, jsx)(FocusRing, { round: "lg" }),
       /* @__PURE__ */ (0, jsxs)(
         motion.View,
         {
@@ -42,7 +40,10 @@ import { Image, Text, View, motion, useIsFocused } from '@ps5-react/core';
             /* @__PURE__ */ (0, jsxs)(View, { style: { position: "absolute", left: 21, right: 21, bottom: 18, gap: 3 }, children: [
               /* @__PURE__ */ (0, jsx)(Text, { focused, style: { fontFamily: "Exo2", fontSize: 24, fontWeight: 600, lineHeight: 32, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail" }, children: game.title }),
               /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 19, lineHeight: 26, color: focused ? colors.glow : colors.muted, numberOfLines: 1 }, children: subtitle })
-            ] })
+            ] }),
+            // 0.5.1: the frame inside the tile, so it lifts and grows with it (it stood still outside before, and
+            // the card moved out from under it), drawn at once like a portrait card's (CardFocus).
+            focused ? /* @__PURE__ */ (0, jsx)(ShineBorder, { radius: radius.lg }) : null
           ]
         }
       )

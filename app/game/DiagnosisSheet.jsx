@@ -46,6 +46,8 @@ import { Text, View } from '@ps5-react/core';
         /* @__PURE__ */ (0, jsx)(Text, { style: [BODY, { color: colors.fg }], children: result.verdict.text }),
         /* @__PURE__ */ (0, jsx)(Text, { style: [BODY, { fontSize: 19, color: colors.subtle }], children: t2("diagnosis.attempts", { count: result.launches, version: result.version || "?" }) })
       ] }, "verdict"),
+      // 0.5.1: it loaded its own fakelib; turning that off is the first thing to try when it crashes.
+      result.fakelib ? /* @__PURE__ */ (0, jsx)(Block, { children: /* @__PURE__ */ (0, jsx)(Text, { style: [BODY, { color: colors.fg }], children: t2("diagnosis.fakelibTip") }) }, "fakelib") : null,
       result.lines.length ? /* @__PURE__ */ (0, jsx)(Lines, { heading: t2("diagnosis.logLines"), lines: result.lines }, "log") : null,
       result.kernel.length ? /* @__PURE__ */ (0, jsx)(Lines, { heading: t2("diagnosis.kernelLines"), lines: result.kernel }, "kernel") : /* @__PURE__ */ (0, jsx)(Block, { children: /* @__PURE__ */ (0, jsx)(Text, { style: [BODY, { color: colors.muted }], children: t2(result.kernelRead ? "diagnosis.noKernel" : "diagnosis.kernelUnread") }) }, "kernel")
     ].filter(Boolean);

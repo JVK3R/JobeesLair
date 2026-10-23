@@ -5,6 +5,10 @@
 // FileKeeper's file is had without the browser, by waiting its countdown and posting its form.
 // MODIFIED: a source marked `debrid` (state/debrid.js) is of kind "debrid": the resolver hands it to the
 // debrid provider given to it, which answers with that service's direct link.
+// MODIFIED (0.5.1): a magnet link is of kind "torrent": it downloads only through a debrid service (which
+// fetches the torrent, then hands out a direct link), so unmarked it says to add one. A debrid answer may
+// name the bytes' own size (expectedBytes; null when unknown) and say they are a repack of the listing
+// (a torrent's files as one zip), so the listed size and checksum are not held against them.
 
 
   function webURL(value) {
@@ -13,13 +17,18 @@
     if (!match || !match[2] || match[2].startsWith(".")) throw new Error("Invalid HTTP URL.");
     return { url: value, host: match[2].toLowerCase(), origin: `${match[1].toLowerCase()}://${match[2]}${match[3] || ""}`, path: match[4] || "/" };
   }
+  // A magnet link with a BitTorrent info hash (40 hex or 32 base32 characters), as a feed may list one.
+  var isMagnetLink = (value) => typeof value === "string" && value.length <= 8192 && !/[\s\x00-\x1f]/.test(value) && /^magnet:\?(?:[^&]*&)*xt=urn:btih:(?:[0-9a-f]{40}|[a-z2-7]{32})(?:&|$)/i.test(value);
   var hosts2 = {
     mediafire: ["mediafire.com"],
     buzzheavier: ["buzzheavier.com"],
     vikingfile: ["vikingfile.com", "vik1ngfile.site"],
     datanodes: ["datanodes.to"],
-    filekeeper: ["filekeeper.net"]
+    filekeeper: ["filekeeper.net"],
+    rootz: ["rootz.so"]
   };
+  // The hosts this resolver reaches the file of without the browser, whatever the catalog says.
+  var RESOLVED_KINDS = /* @__PURE__ */ new Set(["filekeeper", "rootz"]);
   var isHost = (host2, domain) => host2 === domain || host2.endsWith(`.${domain}`);
   // Archive.org answers 401 for a restricted item and 403 for one taken down. Neither is a
   // check a browser can pass: a login there gives the app no access, it only stays in the
@@ -37,6 +46,7 @@
     if (release.manifestUrl) return "manifest";
     const value = release.browserUrl || release.url;
     if (!value) return "unavailable";
+    if (isMagnetLink(value)) return "torrent";
     const { host: host2, path } = webURL(value);
     const provider = Object.keys(hosts2).find((name) => hosts2[name].some((domain) => isHost(host2, domain)));
     if (provider === "mediafire" && host2.startsWith("download")) return "direct";
@@ -125,20 +135,39 @@
       const bytes = Number(head.headers?.["content-length"]);
       return { url: webURL(head.url || file).url, rejectHtml: true, ...Number.isSafeInteger(bytes) && bytes > 0 ? { expectedBytes: bytes } : {} };
     }
+    // 0.5.1: Rootz's page (/d/<id>) is a script that sends the browser to /api/files/proxy-download/<id>,
+    // which redirects to the file on its CDN (cdn-files.alcyone.so) with no check of any kind. The console
+    // browser seldom got that far, so the address is asked for here. A missing file answers 404; a
+    // DDoS-Guard challenge (403) falls back to the browser.
+    async function rootz(url, signal) {
+      const id = /^\/d\/([A-Za-z0-9_-]{4,32})(?:[/?#]|$)/.exec(webURL(url).path)?.[1];
+      if (!id) throw new BrowserRequired(url);
+      const next = await request(`https://www.rootz.so/api/files/proxy-download/${id}`, { signal, followRedirects: false, headers: { Referer: url } });
+      const location2 = next.headers?.location;
+      console.log("[sources] rootz", id, "answered HTTP", next.status, location2 ? `with ${webURL(absolute(location2, url)).host}` : "without a file");
+      if (!location2) throw new BrowserRequired(url);
+      const file = absolute(location2, url);
+      const head = await request(file, { method: "HEAD", signal });
+      if (htmlResponse(head) || head.status >= 300) throw new BrowserRequired(url);
+      const bytes = Number(head.headers?.["content-length"]);
+      return { url: webURL(head.url || file).url, rejectHtml: true, ...Number.isSafeInteger(bytes) && bytes > 0 ? { expectedBytes: bytes } : {} };
+    }
     async function resolve2(release, { signal, directURL } = {}) {
       if (directURL) return direct(directURL, signal);
       const url = release.browserUrl || release.url;
       const kind = sourceKind(release);
       if (kind === "unavailable") throw new Error("Source unavailable: no download URL.");
+      if (kind === "torrent") throw new Error("This source is a torrent. Add a TorBox or AllDebrid API key in Settings to download it, or choose another source.");
       if (kind === "direct") return { url: webURL(url).url, rejectHtml: true };
       if (kind === "manifest") throw new Error("Split manifests must be resolved by the queue.");
       if (kind === "debrid") {
-        if (!debrid) throw new Error("No debrid service is set up. Add a TorBox API key in Settings, or choose another source.");
-        const { url: link } = await debrid.resolve(release, { signal });
-        return { url: webURL(link).url, rejectHtml: true };
+        if (!debrid) throw new Error("No debrid service is set up. Add a TorBox or AllDebrid API key in Settings, or choose another source.");
+        const { url: link, expectedBytes, repacked } = await debrid.resolve(release, { signal });
+        return { url: webURL(link).url, rejectHtml: true, ...expectedBytes === null || Number.isSafeInteger(expectedBytes) && expectedBytes > 0 ? { expectedBytes } : {}, ...repacked ? { repacked: true } : {} };
       }
       if (kind === "browser" || kind === "datanodes") throw new BrowserRequired(url);
       if (kind === "filekeeper") return fileKeeper(url, signal);
+      if (kind === "rootz") return rootz(url, signal);
       const response = await request(url, { signal });
       const base = response.url || url;
       if (response.headers?.["content-disposition"]?.includes("attachment")) return direct(base, signal);
@@ -173,4 +202,4 @@
     } };
   }
 
-export { archiveRefusal, BrowserRequired, cancellation, createSourceResolver, sourceKind, webURL };
+export { archiveRefusal, BrowserRequired, RESOLVED_KINDS, cancellation, createSourceResolver, isMagnetLink, sourceKind, webURL };

@@ -5,6 +5,9 @@
 // the app closes. With "Install updates automatically" on (settings.json autoInstallUpdates), a newer
 // build downloads as soon as the check finds it and goes in the next time the app is closed. A check that
 // cannot reach GitHub changes nothing and the next one tries again.
+// 0.5.1: a newer build found at launch is offered at once, the way Prospero Store does: the dialog opens by
+// itself (once per release), with Download and install, then Restart to apply; it comes back once the
+// download is ready.
 
 import { useEffect, useState } from 'react';
 import { t } from '../i18n/core.js';
@@ -13,10 +16,13 @@ import { downloadQueue } from './downloads.js';
 import { DAY_MS, HOUR_MS, createUpdateChecker } from './updater.js';
 import { loadList, saveList, savedList } from './saved.js';
 import { shadowRequest } from './shadowmount.js';
+import { shouldShowWhatsNew } from './whats-new.js';
 import { REPO, TITLE_ID, VERSION } from '../version.js';
 import { Archives, BackHandler, Downloads, FileSystem, Http, Notifications, Platform, SelfUpdate } from '@ps5-react/core';
 
   var store = savedList("update-check.json", "update check");
+  // The release the dialog last opened by itself for (offerDialog).
+  var prompts = savedList("update-prompt.json", "update prompt");
   var checker = createUpdateChecker({ http: Http, store, version: VERSION, repo: REPO });
   var CHECK_DELAY_MS = 4e3;
   // Installing needs the console: an image that ShadowMount+ mounts, and the payload loader.
@@ -68,6 +74,7 @@ import { Archives, BackHandler, Downloads, FileSystem, Http, Notifications, Plat
       const { update, checkedAt } = await checker.check({ minAge });
       publish({ update, checkedAt, checking: false, failed: false });
       if (update) installer?.offer(update);
+      if (update) offerDialog(update.version);
     } catch (error2) {
       console.log(`update: check failed: ${error2.message}`);
       publish({ checking: false, failed: true });
@@ -107,6 +114,35 @@ import { Archives, BackHandler, Downloads, FileSystem, Http, Notifications, Plat
   }
   var openUpdateDialog = () => setDialog(true);
   var closeUpdateDialog = () => setDialog(false);
+  // 0.5.1: a newer release is offered the moment a check finds it, the way Prospero Store does: the dialog opens
+  // by itself, with Download and install, then Restart to apply. Once per release (update-prompt.json), so a
+  // Close is respected and only the dock's badge stays; not with automatic installs on (the update downloads
+  // by itself then, and a notice says when it is ready); and never over the one-time What's new panel: it
+  // waits for that to be closed (up to PROMPT_WAIT_MS, for a launch where the panel never opens).
+  var PROMPT_POLL_MS = 2e3, PROMPT_WAIT_MS = 10 * 6e4;
+  function offerDialog(version) {
+    if (automatic || dialog || prompts.get().version === version) return;
+    let waited = 0;
+    const open = () => {
+      if (state.update?.version !== version || dialog || prompts.get().version === version) return;
+      if (shouldShowWhatsNew() && (waited += PROMPT_POLL_MS) < PROMPT_WAIT_MS) {
+        setTimeout(open, PROMPT_POLL_MS);
+        return;
+      }
+      // Recorded as it is shown, not before: an app closed while this waited would otherwise never offer it.
+      prompts.set({ ...prompts.get(), version });
+      setDialog(true);
+    };
+    open();
+  }
+  // The gamer's download finished and checked out: the dialog comes back with Restart to apply (once per
+  // release, across launches: a ready update is kept over a restart), wherever they are in the app, so the
+  // restart is one press away.
+  installer?.subscribe((next) => {
+    if (next.phase !== "ready" || next.error || automatic || prompts.get().ready === next.version) return;
+    prompts.set({ ...prompts.get(), ready: next.version });
+    if (!dialog) setDialog(true);
+  });
   function useUpdate() {
     const [value, setValue] = (0, useState)(state);
     (0, useEffect)(() => {

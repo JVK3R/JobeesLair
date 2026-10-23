@@ -14,7 +14,7 @@ import { t } from '../i18n/core.js';
 import { archivePassword } from './archive-password.js';
 import { diagnoseLaunch, launchOutcomes } from './launch-diagnosis.js';
 import { reportLink } from './link-health.js';
-import { BrowserRequired, archiveRefusal, cancellation, createSourceResolver, sourceKind, webURL } from './download-sources.js';
+import { BrowserRequired, RESOLVED_KINDS, archiveRefusal, cancellation, createSourceResolver, sourceKind, webURL } from './download-sources.js';
 import { captureAnchor } from './browser-links.js';
 import { createCaptureFlow } from './capture-flow.js';
 import { createMoves } from './queue-moves.js';
@@ -199,7 +199,8 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     const aheads = /* @__PURE__ */ new Map();
     const needsBrowser = (source2) => {
       try {
-        return Boolean(source2) && (source2.requiresBrowser === true || sourceKind(source2) === "vikingfile" || Boolean(vikingLinkPage(source2)));
+        if (!source2 || RESOLVED_KINDS.has(sourceKind(source2))) return false;
+        return source2.requiresBrowser === true || sourceKind(source2) === "vikingfile" || Boolean(vikingLinkPage(source2));
       } catch {
         return false;
       }
@@ -354,6 +355,55 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         jobs = restore(saved);
         stored = path;
         break;
+      }
+    }
+    // 0.5.1: a game folder's files are opened to every user (rwxrwxrwx) once it is in place. ShellCore starts a
+    // game by executing its eboot.bin, and the console's extractor wrote files rw-rw-rw- until this release, so
+    // an extracted game had everything and still died before any process existed (the home screen's "Can't
+    // start the game or app", with nothing in ShadowMount's log past "sandbox ready"), and one that started
+    // died loading its own fakelib the same way ([rtld] self_load_shared_object: mount flag / attribute error).
+    // The whole tree is opened, as homebrew.js does for apps: a game's thousands of files cost a moment once.
+    // Games already installed by an earlier build are opened once when the queue loads (`opened` remembers).
+    function openGameFiles(folder) {
+      if (typeof fs.chmod !== "function") return;
+      let entries = [];
+      try {
+        entries = fs.readDir(folder);
+      } catch {
+      }
+      for (const entry of entries) {
+        const path = `${folder}/${entry.name}`;
+        if (entry.isDirectory) openGameFiles(path);
+        else {
+          try {
+            fs.chmod(path, 511);
+          } catch {
+          }
+        }
+      }
+      try {
+        fs.chmod(folder, 511);
+      } catch {
+      }
+    }
+    // Only folder games: an image's destination is a file (PPSA02530.ffpfsc), and asking for a path under one
+    // throws "Not a directory", which must never stop the queue from loading.
+    const installedFolder = (path) => {
+      try {
+        const info = fs.stat(path);
+        return Boolean(info) && (info.isDirectory ?? !info.isFile) && Boolean(fs.stat(`${path}/eboot.bin`));
+      } catch {
+        return false;
+      }
+    };
+    for (const job2 of jobs) {
+      try {
+        const folder = job2.artifact?.destination;
+        if (job2.opened || job2.artifact?.nextAction !== "shadowmount" || !folder || !installedFolder(folder)) continue;
+        openGameFiles(folder);
+        job2.opened = true;
+      } catch (error2) {
+        console.log(`[download-queue] ${job2.id}: not opened: ${error2.message}`);
       }
     }
     // What ShadowMount's log said about each title's last launch ({ TITLE: { outcome, verdict, at } }),
@@ -545,12 +595,15 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
             job2.options = formats.manifest(await response.json());
           } else {
             if (!job2.release.url && !job2.release.browserUrl) throw new Error("This release has no download URL.");
-            const resolved = job2.directURL || sourceKind(job2.release) !== "direct" ? await sources.resolve(job2.release, { signal, directURL: job2.directURL }) : { url: webURL(job2.release.url).url };
+            const { expectedBytes: known, repacked, ...resolved } = job2.directURL || sourceKind(job2.release) !== "direct" ? await sources.resolve(job2.release, { signal, directURL: job2.directURL }) : { url: webURL(job2.release.url).url };
+            // 0.5.1: the bytes' own size when the resolver learned it (a host's HEAD, a debrid service's file);
+            // none at all when it said the listing's is not theirs (null: a torrent's zip); the listing's otherwise.
+            // A repack (a torrent's files as one zip) answers to no listed checksum.
             job2.options = {
               ...resolved,
               rejectHtml: true,
-              expectedBytes: job2.release.sizeBytes || void 0,
-              sha256: job2.release.sha256 || void 0
+              expectedBytes: known === null ? void 0 : known ?? (job2.release.sizeBytes || void 0),
+              sha256: repacked ? void 0 : job2.release.sha256 || void 0
             };
             delete job2.directURL;
           }
@@ -775,19 +828,25 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       delete job2.routing;
       change();
     }
-    function gameFolder(output) {
-      for (let depth = 0; depth <= 16; depth++) {
-        if (fs.exists(`${output}/eboot.bin`) && fs.exists(`${output}/sce_sys/param.json`)) return output;
-        let children;
-        try {
-          children = fs.readDir(output).filter((entry2) => entry2.isDirectory && !entry2.name.startsWith(".ps5-react"));
-        } catch {
-          return null;
-        }
-        if (children.length !== 1) return null;
-        output = `${output}/${children[0].name}`;
+    // MODIFIED (0.5.1): an archive may hold the game beside other folders ("PPSA28183-app" and "backport (4.xx to
+    // 11.xx)", which has an eboot.bin of its own): the game is the one game folder among them that is not a
+    // backport. Two games, or none: not said, as before.
+    var BACKPORT_FOLDER = /back[\s_.-]*port/i;
+    function gameFolder(output, depth = 0, branched = false) {
+      if (depth > 16) return null;
+      if (fs.exists(`${output}/eboot.bin`) && fs.exists(`${output}/sce_sys/param.json`)) return output;
+      let children;
+      try {
+        children = fs.readDir(output).filter((entry2) => entry2.isDirectory && !entry2.name.startsWith(".ps5-react"));
+      } catch {
+        return null;
       }
-      return null;
+      if (children.length === 1) return gameFolder(`${output}/${children[0].name}`, depth + 1, branched);
+      // Folders side by side are looked into once (the game beside a backport and some notes), never through a
+      // whole tree: a folder that is not the game can hold thousands, and this runs on the JS thread.
+      if (branched) return null;
+      const games = children.filter((entry2) => !BACKPORT_FOLDER.test(entry2.name)).map((entry2) => gameFolder(`${output}/${entry2.name}`, depth + 1, true)).filter(Boolean);
+      return games.length === 1 ? games[0] : null;
     }
     function extraction(job2, files) {
       if (!archives) throw new Error("Archive extraction requires the updated PS5 React runtime.");
@@ -831,6 +890,9 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       const options = extraction(job2, files);
       const downloaded = { written: job2.written, total: job2.total };
       let estimate = files.reduce((sum, path) => sum + (fs.stat(path)?.size || 0), 0) || null;
+      // 0.5.1: an extraction's start and end are logged (a stuck one could only be read from the queue file).
+      const began = Date.now();
+      console.log(`[download-queue] ${job2.id}: extracting ${files.length} file${files.length === 1 ? "" : "s"} (${estimate ?? "?"} bytes) to ${job2.output}${streamed ? ", while it downloads" : ""}`);
       job2.state = "extracting";
       job2.written = 0;
       job2.total = estimate;
@@ -904,12 +966,14 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
           }
         }
       } catch (error2) {
+        console.log(`[download-queue] ${job2.id}: extraction stopped after ${Math.round((Date.now() - began) / 1e3)} s${job2.cancelling ? " (cancelled)" : job2.state === "pausing" ? " (paused)" : ""}: ${error2.message}`);
         if (await forgetPart(job2, error2)) downloaded.written = job2.parts.reduce((sum, part) => sum + part.written, 0);
         throw error2;
       } finally {
         Object.assign(job2, downloaded, { bytesPerSecond: 0 });
         delete job2.phase;
       }
+      console.log(`[download-queue] ${job2.id}: extracted in ${Math.round((Date.now() - began) / 1e3)} s, ${(result.artifacts || []).length} files`);
       const images = orderImages(job2.output, (result.artifacts || []).filter((path) => IMAGE.test(path)));
       // A backport is checked for nothing a game needs, and none of it goes where games are scanned: even
       // one carrying an eboot.bin and a param.json would otherwise register as a second copy of the game.
@@ -945,28 +1009,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
           job2.state = "installer-required";
           job2.message = t("downloads.packagesExtracted", { path: job2.output });
         } else if (folder) {
-          const checked = verifyGameFolder(job2, folder);
-          const destination = `${job2.root}/homebrew/${job2.release.filename.replace(/[^a-z0-9_.-]/gi, "_")}-app`;
-          fs.mkdir(`${job2.root}/homebrew`, { recursive: true });
-          if (fs.exists(destination)) throw new Error("Extracted destination already exists; preserve it and inspect before retrying.");
-          storageIdentity(job2);
-          fs.rename(folder, destination);
-          // What the archive held beside the game folder (notes that may say a backport is needed, say) is
-          // kept as <name>-extras in downloads/extracted, outside ShadowMount's scan, and deleted with the job.
-          const extras = folder !== job2.output ? await keepExtras(job2) : null;
-          job2.output = destination;
-          job2.publishTo = destination;
-          job2.artifact.nextAction = "shadowmount";
-          job2.artifact.destination = destination;
-          job2.payload = checked.files.map(({ path, size }) => ({ path: `${destination}/${path}`, size }));
-          job2.state = "downloaded";
-          // Warnings first: the game page shows only the start of a message.
-          job2.warnings = checked.warnings;
-          job2.message = [
-            checked.warnings.length ? t("downloads.folderWarnings", { warnings: checked.warnings.join("; ") }) : "",
-            t("downloads.extractedReady", { parts: job2.parts ? "all" : "one" }),
-            extras ? t("downloads.extrasKept", { path: extras }) : ""
-          ].filter(Boolean).join(" ");
+          await publishFolder(job2, folder);
         }
       }
       change();
@@ -977,6 +1020,33 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         console.log("[download-queue] archive not deleted:", error2.message);
         job2.message = `${job2.message} ${t("downloads.archiveNotDeleted", { error: error2.message })}`;
       }
+    }
+    // An extracted game folder goes where ShadowMount scans (homebrew/<name>-app), checked, with what the archive
+    // held beside it (notes, a backport) kept as <name>-extras in downloads/extracted, outside the scan, and
+    // deleted with the job.
+    async function publishFolder(job2, folder) {
+      const checked = verifyGameFolder(job2, folder);
+      const destination = `${job2.root}/homebrew/${job2.release.filename.replace(/[^a-z0-9_.-]/gi, "_")}-app`;
+      fs.mkdir(`${job2.root}/homebrew`, { recursive: true });
+      if (fs.exists(destination)) throw new Error("Extracted destination already exists; preserve it and inspect before retrying.");
+      storageIdentity(job2);
+      fs.rename(folder, destination);
+      openGameFiles(destination);
+      job2.opened = true;
+      const extras = folder !== job2.output ? await keepExtras(job2) : null;
+      job2.output = destination;
+      job2.publishTo = destination;
+      job2.artifact.nextAction = "shadowmount";
+      job2.artifact.destination = destination;
+      job2.payload = checked.files.map(({ path, size }) => ({ path: `${destination}/${path}`, size }));
+      job2.state = "downloaded";
+      // Warnings first: the game page shows only the start of a message.
+      job2.warnings = checked.warnings;
+      job2.message = [
+        checked.warnings.length ? t("downloads.folderWarnings", { warnings: checked.warnings.join("; ") }) : "",
+        t("downloads.extractedReady", { parts: job2.parts ? "all" : "one" }),
+        extras ? t("downloads.extrasKept", { path: extras }) : ""
+      ].filter(Boolean).join(" ");
     }
     function streamSet(job2) {
       const first = job2.parts[0].destination;
@@ -1029,7 +1099,9 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         extracted,
         extracted && `${extracted}-extras`,
         job2.release.parts && setDirectory(job2)
-      ].filter(Boolean).flatMap((path) => [path, ...[".complete", ".complete.tmp", ".part", ".resume", ".resume.tmp"].map((suffix) => path + suffix)]);
+        // 0.5.1: an extraction's staging (Archives.extract: <output>.extracting, -<n> after a silent worker, and
+        // .discard, an earlier run's set aside) goes with the job; it was left for the Files screen to delete.
+      ].filter(Boolean).flatMap((path) => [path, ...[".complete", ".complete.tmp", ".part", ".resume", ".resume.tmp", ".extracting", ".extracting.discard", ".extracting-1", ".extracting-1.discard", ".extracting-2", ".extracting-2.discard", ".extracting-3", ".extracting-3.discard"].map((suffix) => path + suffix)]);
       return [...new Set(paths)].filter((path) => managed(path) && !jobs.some((other) => other !== job2 && [other.artifact.destination, other.downloadDestination, other.output, other.publishTo].some((owned2) => owned2 && (owned2 === path || owned2.startsWith(`${path}/`)))));
     }
     async function executeSet(job2, signal) {
@@ -1339,13 +1411,15 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
      * The download in progress, if any, is paused for the whole time (quietNetwork): the runtime would
      * otherwise hold every request to ShadowMount until that file finished.
      */
-    async function deleteJob(job2) {
+    // MODIFIED (0.5.1): `quiet` (quietNetwork) wraps only what asks ShadowMount, not the deleting: a game's
+    // thousands of files took minutes to go, and every download in the queue waited on them.
+    async function deleteJob(job2, quiet = (work) => work()) {
       const log2 = (message) => console.log(`[download-queue] delete ${job2.id}: ${message}`);
       const paths = ownedPaths(job2);
       const managed = job2.artifact.nextAction === "shadowmount" && platform === "ps5";
       log2(`${paths.filter((path) => fs.exists(path)).length} of ${paths.length} paths on disk: ${paths.filter((path) => fs.exists(path)).join(", ") || "none"}`);
       let game, reachable = false;
-      if (managed) {
+      if (managed) await quiet(async () => {
         const check = () => mountedImages(shadowRequest2, paths, job2.root).catch((error2) => {
           throw new Error(`ShadowMount could not say whether the image is mounted, so its files were kept: ${error2.message}`);
         });
@@ -1379,7 +1453,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
             throw new Error(t("downloads.delete.mounted", { path: mounted[0].path }));
           }
         }
-      }
+      });
       const before = fs.diskUsage(job2.root).free;
       for (const path of paths) {
         if (!fs.exists(path)) continue;
@@ -1401,7 +1475,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       emit2();
       // Its files are gone and so is the task, whatever ShadowMount answers now.
       let note = null;
-      if (managed && reachable && game !== null) {
+      if (managed && reachable && game !== null) await quiet(async () => {
         const main = game?.title_id ?? job2.installedTitleId ?? titleOf(job2);
         for (const title of new Set([main, ...job2.installedTitles ?? []])) {
           try {
@@ -1419,7 +1493,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
             }
           }
         }
-      }
+      });
       if (platform === "ps5") void logStorage(log2);
       return note;
     }
@@ -1835,6 +1909,35 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         save();
         emit2();
       },
+      // 0.5.1: "Clear finished" on the Downloads page: every finished card tidied away at once (as clear).
+      // Returns how many.
+      clearFinished() {
+        const finished = jobs.filter((job2) => COMPLETE.includes(job2.state) && !job2.cleared);
+        if (!finished.length) return 0;
+        for (const job2 of finished) job2.cleared = true;
+        save();
+        emit2();
+        return finished.length;
+      },
+      // 0.5.1: "Cancel all": every download that is not finished is cancelled (as cancel: the running one is
+      // stopped and removed, a stopped one's files go, a queued one is forgotten), one after another. The first
+      // failure is thrown once the rest are done. Returns how many were cancelled.
+      async cancelAll() {
+        const unfinished = jobs.filter((job2) => !COMPLETE.includes(job2.state) && job2.state !== "removing");
+        // The queued ones first, the running one last: forgetting a queued job pumps the queue, which would
+        // start the next one while the running download was still being stopped, only to cancel it in turn.
+        const ids = [...unfinished.filter((job2) => active2?.job !== job2), ...unfinished.filter((job2) => active2?.job === job2)].map((job2) => job2.id);
+        let failure = null;
+        for (const id of ids) {
+          try {
+            await this.cancel(id);
+          } catch (error2) {
+            failure = failure ?? error2;
+          }
+        }
+        if (failure) throw failure;
+        return ids.length;
+      },
       /**
        * Uninstalls a finished game from ShadowMount and, once ShadowMount's image list shows none of the
        * task's paths mounted, deletes everything the task put on its drive and forgets it. A ShadowMount
@@ -1856,7 +1959,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
           // A move stopped part-way left a copy on the other drive: it goes first.
           if (job2.moving) await cancelMove(job2.id);
           const managed = job2.artifact.nextAction === "shadowmount" && platform === "ps5";
-          const note = await removing(job2, () => managed ? quietNetwork(`delete ${job2.id}`, () => deleteJob(job2)) : deleteJob(job2));
+          const note = await removing(job2, () => deleteJob(job2, managed ? (work) => quietNetwork(`delete ${job2.id}`, work) : void 0));
           console.log(`[download-queue] delete ${job2.id}: done${note ? ` (${note})` : ""}`);
           return { note };
         })().catch((error2) => {
@@ -2028,6 +2131,20 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         }
         console.log(`[download-queue] diagnosis ${job2.id}: ${result.verdict.key}, ${result.launches} launches in ShadowMount's log\n${result.lines.join("\n")}`);
         return result;
+      },
+      /**
+       * 0.5.1: a download left at "extracted" (its game folder was not found then: 0.5.1 Pre Release 1 and
+       * earlier gave up beside a backport folder) looks again, and goes to ShadowMount when it finds the game.
+       */
+      async installExtracted(id) {
+        const job2 = find(id);
+        if (job2.state !== "extracted" || !job2.output || !fs.exists(job2.output)) throw new Error(t("downloads.extractedGone"));
+        const folder = gameFolder(job2.output);
+        console.log(`[download-queue] ${job2.id}: install from ${job2.output}: ${folder ? `game folder ${folder}` : "no game folder"}`);
+        if (!folder) throw new Error(t("downloads.noGameFolder", { path: job2.output }));
+        await publishFolder(job2, folder);
+        change();
+        await this.register(id);
       },
       async register(id) {
         const job2 = find(id);

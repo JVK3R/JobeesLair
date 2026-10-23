@@ -7,6 +7,7 @@
   "scripts": {
     "test": "node --import ./tests/stub-loader.mjs --test tests/*.test.mjs",
     "test:render": "node --import ./tests/render/loader.mjs tests/render/links.mjs && node --import ./tests/render/loader.mjs tests/render/smoke.mjs && node --import ./tests/render/loader.mjs tests/render/update.mjs && node --import ./tests/render/loader.mjs tests/render/catalog.mjs",
-    "test:all": "npm test && npm run test:render"
+    "test:all": "npm test && npm run test:render",
+    "homebrew:pull": "curl -fsSL -o app/data/homebrew.json https://raw.githubusercontent.com/JVK3R/JobeesLair-Homebrew/main/index.json"
   }
 }

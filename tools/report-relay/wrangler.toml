@@ -1,0 +1,7 @@
+# Jobee'sLair's bug report relay. Deploy from this folder: `npx wrangler deploy`, then set the secret once:
+# `npx wrangler secret put DISCORD_WEBHOOK` (the Discord channel's webhook URL). The worker's address goes in
+# the build's app/data/private/report.json as "reportUrl".
+name = "jobeeslair-report"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+workers_dev = true

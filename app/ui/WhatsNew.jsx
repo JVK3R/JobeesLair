@@ -17,12 +17,13 @@ import { colors, radius } from './colors.js';
   // After the store's reveal (index.jsx CURTAIN_MS) has finished.
   var DELAY_MS = 4500;
   var ITEMS = [
-    { icon: "package", tone: "#4ade80", title: "whatsNew.homebrew", detail: "whatsNew.homebrewDetail" },
-    { icon: "check", tone: "#38bdf8", title: "whatsNew.ready", detail: "whatsNew.readyDetail" },
-    { icon: "globe", tone: "#FF5A61", title: "whatsNew.phone", detail: "whatsNew.phoneDetail" },
-    { icon: "search", tone: "#facc15", title: "whatsNew.search", detail: "whatsNew.searchDetail" },
-    { icon: "download", tone: "#a78bfa", title: "whatsNew.parts", detail: "whatsNew.partsDetail" },
-    { icon: "disc", tone: "#f472b6", title: "whatsNew.saver", detail: "whatsNew.saverDetail" }
+    // 0.5.1
+    { icon: "check", tone: "#4ade80", title: "whatsNew.start", detail: "whatsNew.startDetail" },
+    { icon: "zap", tone: "#38bdf8", title: "whatsNew.glance", detail: "whatsNew.glanceDetail" },
+    { icon: "globe", tone: "#FF5A61", title: "whatsNew.catalog", detail: "whatsNew.catalogDetail" },
+    { icon: "download", tone: "#facc15", title: "whatsNew.debrid", detail: "whatsNew.debridDetail" },
+    { icon: "alert", tone: "#a78bfa", title: "whatsNew.report", detail: "whatsNew.reportDetail" },
+    { icon: "restart", tone: "#f472b6", title: "whatsNew.updates", detail: "whatsNew.updatesDetail" }
   ];
   var text = (size, color, extra) => ({ fontFamily: "Exo2", fontSize: size, lineHeight: Math.round(size * 1.35), color, ...extra });
   function ButtonFace({ label, primary }) {

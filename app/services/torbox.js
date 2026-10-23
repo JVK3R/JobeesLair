@@ -11,6 +11,7 @@
 //   POST /torrents/createtorrent     magnet=… (multipart form) -> { torrent_id, hash }
 //   GET  /webdl/mylist?id=, /torrents/mylist?id=   an item's state: progress, download_finished, files
 //   GET  /webdl/requestdl, /torrents/requestdl     a direct link to one of its files, open for 3 hours
+//                                                  (zip_link=true: a torrent's files as one zip)
 // Every call answers { success, error, detail, data }. The key goes in an Authorization header, except
 // on requestdl, which only takes it as a `token` query parameter: those URLs are built here, used once and
 // never returned, logged or saved, and no error message carries the key.
@@ -128,6 +129,21 @@ import { parseStamp } from '../state/clock.js';
     if (!list.length) return null;
     const stem = (name) => String(name || "").toLowerCase().replace(/^.*\//, "");
     return list.find((file) => wanted && [file.name, file.short_name].map(stem).includes(stem(wanted))) ?? list.reduce((best, file) => (file.size || 0) > (best.size || 0) ? file : best);
+  }
+  // Which of a torrent's files to download (0.5.1): the one named like the release's file; a lone file; the
+  // largest when the rest is small change beside it (a game image with its text files); otherwise all of
+  // them as one zip (a folder dump of many files: the queue extracts it like any archive).
+  var ZIP_BELOW = 0.9;
+  function chooseFiles(files, wanted) {
+    const list = (files || []).filter((file) => file && file.id !== void 0);
+    if (!list.length) return null;
+    const stem = (name) => String(name || "").toLowerCase().replace(/^.*\//, "");
+    const named = wanted ? list.find((file) => [file.name, file.short_name].map(stem).includes(stem(wanted))) : null;
+    if (named) return { file: named };
+    if (list.length === 1) return { file: list[0] };
+    const total = list.reduce((sum, file) => sum + (file.size || 0), 0);
+    const largest = list.reduce((best, file) => (file.size || 0) > (best.size || 0) ? file : best);
+    return total > 0 && (largest.size || 0) >= total * ZIP_BELOW ? { file: largest } : { zip: true };
   }
   var finished = (item) => Boolean(item?.download_finished && item.download_present !== false);
   var failed = (item) => /error|fail|stalled|dead/i.test(item?.download_state || "") && !finished(item);
@@ -252,9 +268,12 @@ import { parseStamp } from '../state/clock.js';
           throw error;
         }
       },
-      /** A direct link to file `fileId` of item `id`, open for three hours; the key stays out of it. */
-      async getUnrestrictedLink(kind, id, fileId, { signal } = {}) {
-        const params = kind === "torrent" ? { torrent_id: id, file_id: fileId, zip_link: false } : { web_id: id, file_id: fileId, zip_link: false };
+      /**
+       * A direct link to file `fileId` of item `id` (or, `zip`, to all of a torrent's files as one zip), open
+       * for three hours; the key stays out of it.
+       */
+      async getUnrestrictedLink(kind, id, fileId, { signal, zip = false } = {}) {
+        const params = kind === "torrent" ? zip ? { torrent_id: id, zip_link: true } : { torrent_id: id, file_id: fileId, zip_link: false } : { web_id: id, file_id: fileId, zip_link: false };
         const data = await call(kind === "torrent" ? "/torrents/requestdl" : "/webdl/requestdl", { params, signal, token: true, auth: false });
         if (typeof data !== "string" || !/^https:\/\//i.test(data)) throw new TorBoxError("NO_LINK", "TorBox gave no download link. Try again in a moment.");
         return data;
@@ -262,7 +281,8 @@ import { parseStamp } from '../state/clock.js';
       /**
        * `link` as a direct link: added to the account if `known` (a { kind, id } from before) is not there,
        * waited for while TorBox fetches it (up to `maxWaitMs`, telling `onProgress(fraction)`), then its file
-       * (`filename`'s, else the largest) asked for. -> { url, kind, id, fileId, name, size }.
+       * (`filename`'s, else the largest) asked for. -> { url, kind, id, fileId, name, size }. A torrent of many
+       * files (chooseFiles) comes as one zip: { url, kind, id, fileId: null, name: null, size: null, repacked: true }.
        * Past the wait it throws PENDING with `progress`; asking again later picks up the same item.
        */
       async resolve(link, { known, filename, password, signal, onProgress, onItem, maxWaitMs = WAIT_MS, pollMs = POLL_MS } = {}) {
@@ -283,8 +303,13 @@ import { parseStamp } from '../state/clock.js';
           await wait(pollMs, signal);
           item = await api.item(entry.kind, entry.id, { signal });
         }
-        const file = pickFile(item.files, filename);
-        if (!file) throw new TorBoxError("NO_FILE", "TorBox fetched the link but found no file in it. Choose another source.");
+        const choice = entry.kind === "torrent" ? chooseFiles(item.files, filename) : { file: pickFile(item.files, filename) };
+        if (!choice || !choice.file && !choice.zip) throw new TorBoxError("NO_FILE", "TorBox fetched the link but found no file in it. Choose another source.");
+        if (choice.zip) {
+          const url2 = await api.getUnrestrictedLink(entry.kind, entry.id, null, { signal, zip: true });
+          return { url: url2, kind: entry.kind, id: entry.id, fileId: null, name: null, size: null, repacked: true };
+        }
+        const file = choice.file;
         const url = await api.getUnrestrictedLink(entry.kind, entry.id, file.id, { signal });
         return { url, kind: entry.kind, id: entry.id, fileId: file.id, name: file.name || null, size: file.size || null };
       }
@@ -316,4 +341,4 @@ import { parseStamp } from '../state/clock.js';
     });
   }
 
-export { MESSAGES, PLANS, TorBoxError, createTorBox, hostSupported, isMagnet, linkHashes, magnetHash, md5, pickFile, validKey };
+export { MESSAGES, PLANS, TorBoxError, chooseFiles, createTorBox, hostSupported, isMagnet, linkHashes, magnetHash, md5, pickFile, validKey };

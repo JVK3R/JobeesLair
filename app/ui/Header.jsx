@@ -28,6 +28,7 @@ import { useHomebrewUpdates } from '../state/homebrew-store.js';
 import { useRemoteShortcuts } from '../companion/remote.js';
 import { FocusScope, Text, View, motion } from '@ps5-react/core';
 import { VERSION } from '../version.js';
+import { HOMEBREW_ONLY } from '../edition.js';
 import { dockMark } from './dock-mark.js';
 import { EASE_OUT } from './ease.js';
 import { logical, px } from './scale.js';
@@ -109,7 +110,7 @@ import { hb } from '../homebrew/palette.js';
     useRemoteShortcuts((action) => {
       setBrowsing(false);
       if (action === "settings") on.settings();
-      else if (action === "home") on.discover();
+      else if (action === "home") on[HOMEBREW_ONLY ? "homebrew" : "discover"]();
       else if (action === "downloads") on.downloads();
       else if (action === "search") on.search();
       else if (action === "homebrew") on.homebrew();
@@ -134,17 +135,18 @@ import { hb } from '../homebrew/palette.js';
         dockMark.x = rtl ? x + width - MARK_INSET : x + MARK_INSET;
       }, style: { height: DOCK_HEIGHT, flexDirection: "row", alignItems: "center", gap: 6, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.glassEdge, backgroundColor: colors.surface, paddingHorizontal: 18 }, children: [
         /* @__PURE__ */ (0, jsx)(NavPill, { section, layouts }),
-        /* @__PURE__ */ (0, jsxs)(View, { focusKey: "nav:home", onPress: on.discover, nextFocusDown: down, style: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: radius.md, paddingHorizontal: 18, height: 60 }, children: [
+        /* @__PURE__ */ (0, jsxs)(View, { focusKey: "nav:home", onPress: HOMEBREW_ONLY ? on.homebrew : on.discover, nextFocusDown: down, style: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: radius.md, paddingHorizontal: 18, height: 60 }, children: [
           /* @__PURE__ */ (0, jsx)(FocusRing, { round: "full" }),
           /* @__PURE__ */ (0, jsx)(Logo, {}),
-          /* @__PURE__ */ (0, jsx)(DockCount, {}),
+          HOMEBREW_ONLY ? null : /* @__PURE__ */ (0, jsx)(DockCount, {}),
           /* @__PURE__ */ (0, jsx)(VersionTab, {})
         ] }),
         divider,
-        item("search", { icon: "search", label: t2("nav.search"), onPress: on.search }),
+        // 0.5.1: the homebrew-only edition's dock is the Homebrew section and Settings; the store's items are not in it.
+        HOMEBREW_ONLY ? null : item("search", { icon: "search", label: t2("nav.search"), onPress: on.search }),
         /* @__PURE__ */ (0, jsx)(ButtonGlyph, { button: "l1" }),
-        item("discover", { label: t2("nav.discover"), onPress: on.discover }),
-        /* @__PURE__ */ (0, jsxs)(View, { style: { position: "relative" }, children: [
+        HOMEBREW_ONLY ? null : item("discover", { label: t2("nav.discover"), onPress: on.discover }),
+        HOMEBREW_ONLY ? null : /* @__PURE__ */ (0, jsxs)(View, { style: { position: "relative" }, children: [
           item("catalog", { label: t2("nav.browse"), trailing: browsing ? "chevronUp" : "chevronDown", onPress: () => setBrowsing((open) => !open) }),
           /* @__PURE__ */ (0, jsxs)(Menu, { open: browsing, onClose: () => setBrowsing(false), rows: genres.length + 2, children: [
             /* @__PURE__ */ (0, jsx)(
@@ -170,14 +172,14 @@ import { hb } from '../homebrew/palette.js';
             )
           ] })
         ] }),
-        item("top", { label: t2("nav.top"), onPress: on.top }),
-        item("new", { label: t2("nav.new"), onPress: on.new }),
-        divider,
+        HOMEBREW_ONLY ? null : item("top", { label: t2("nav.top"), onPress: on.top }),
+        HOMEBREW_ONLY ? null : item("new", { label: t2("nav.new"), onPress: on.new }),
+        HOMEBREW_ONLY ? null : divider,
         /* @__PURE__ */ (0, jsx)(HomebrewNavItem, { item, onPress: on.homebrew }),
         divider,
-        item("favorites", { icon: "heart", label: favorites ? String(favorites) : null, caption: t2("filters.favorites"), onPress: on.favorites }),
-        item("downloads", { icon: "download", caption: t2("downloads.title"), onPress: on.downloads, children: BADGE }),
-        item("files", { icon: "grid", caption: t2("game.back.browse"), onPress: on.files }),
+        HOMEBREW_ONLY ? null : item("favorites", { icon: "heart", label: favorites ? String(favorites) : null, caption: t2("filters.favorites"), onPress: on.favorites }),
+        HOMEBREW_ONLY ? null : item("downloads", { icon: "download", caption: t2("downloads.title"), onPress: on.downloads, children: BADGE }),
+        HOMEBREW_ONLY ? null : item("files", { icon: "grid", caption: t2("game.back.browse"), onPress: on.files }),
         update ? /* @__PURE__ */ (0, jsx)(UpdateNavItem, { update, down }) : null,
         // MODIFIED (0.5.0 Pre Release 3): Settings is a section like the others (ui/Settings.jsx), not a
         // screen over the page.

@@ -246,6 +246,34 @@ test('an extracted game folder with an unreadable param.json fails its check', a
   assert.ok(!fs.exists('/data/homebrew/Game.zip-app'));
 });
 
+// 0.5.1: Assassin's Creed Black Flag Resynced: "PPSA28183-app" beside "backport (4.xx to 11.xx)", which has an
+// eboot.bin and a param.json of its own. The game is found; the backport is kept with the extras.
+test('an archive with the game beside a backport folder installs the game, not the backport', async () => {
+  const fs = memoryFs();
+  const archives = folderArchive(fs, { extras: { 'backport (4.xx to 11.xx)/eboot.bin': 5, 'backport (4.xx to 11.xx)/sce_sys/param.json': 1 } });
+  const queue = queueWith({ fs, downloads: engine(fs), archives });
+  const job = await settle(queue, queue.enqueue(game, image('Game.7z', 500), '/data'));
+  assert.equal(job.state, 'downloaded', job.error);
+  assert.equal(job.artifact.destination, '/data/homebrew/Game.7z-app');
+  assert.ok(fs.exists('/data/homebrew/Game.7z-app/eboot.bin'));
+  assert.ok(!fs.exists('/data/homebrew/Game.7z-app/backport (4.xx to 11.xx)'), 'the backport is not part of the game');
+});
+
+test('a download left at "extracted" installs once its game folder can be found (Install on its card)', async () => {
+  const fs = memoryFs();
+  // Two game folders: which one is the game cannot be said, so the job stops at "extracted" (as Pre Release 1
+  // left Black Flag, its game beside a backport folder). With the other one gone, Install finds the game.
+  const queue = queueWith({ fs, downloads: engine(fs), archives: folderArchive(fs, { extras: { 'Other/eboot.bin': 5, 'Other/sce_sys/param.json': 1 } }) });
+  const job = await settle(queue, queue.enqueue(game, image('Game.zip', 500), '/data'));
+  assert.equal(job.state, 'extracted', job.error);
+  fs.removeTree(`${job.output}/Other`);
+  await queue.installExtracted(job.id);
+  const after = queue.snapshot().find((item) => item.id === job.id);
+  assert.equal(after.artifact.nextAction, 'shadowmount');
+  assert.equal(after.artifact.destination, '/data/homebrew/Game.zip-app');
+  assert.ok(fs.exists('/data/homebrew/Game.zip-app/eboot.bin'));
+});
+
 test('a valid extracted game folder is checked and its payload recorded, with no warnings', async () => {
   const fs = memoryFs();
   const queue = queueWith({ fs, downloads: engine(fs), archives: folderArchive(fs) });
@@ -431,6 +459,42 @@ test('a queue saved with the earlier "unmounted" state is checked again', async 
   assert.equal(queue.snapshot()[0].error, '');
   assert.equal(await queue.syncInstalls(), true);
   assert.equal(queue.snapshot()[0].state, 'installed');
+});
+
+// 0.5.1 Pre Release 2: installed folder games are opened to everyone when the queue loads; an installed image's
+// destination is a file, and asking the console for a path under a file throws ("Not a directory"), which the
+// first build of this did and so lost the whole queue.
+test('loading the queue opens installed folder games once and survives installed images', () => {
+  const fs = memoryFs();
+  const strict = (fn) => (p) => {
+    let at = '';
+    for (const part of p.split('/').filter(Boolean).slice(0, -1)) {
+      at += `/${part}`;
+      const node = fs.nodes.get(at);
+      if (node && !node.dir) throw new Error(`fs.stat ${p}: Not a directory`);
+    }
+    return fn(p);
+  };
+  fs.stat = strict(fs.stat.bind(fs));
+  fs.exists = strict(fs.exists);
+  const opened = [];
+  fs.chmod = (p, mode) => opened.push(`${p} ${mode.toString(8)}`);
+  fs.file('/data/homebrew/Game.ffpfsc', 1000);
+  fs.file('/data/homebrew/Dump-app/eboot.bin', 10);
+  fs.file('/data/homebrew/Dump-app/sce_module/libc.prx', 10);
+  const job = (id, release, destination, extra = {}) => ({
+    id, gameId: 'PPSA01234', titleId: 'PPSA01234', title: 'Test Game', release, root: '/data', state: 'installed', error: '', message: '', written: 1000, total: 1000,
+    artifact: { ...DownloadFormats.artifact(release, '/data'), destination, nextAction: 'shadowmount' }, ...extra,
+  });
+  fs.file('/data/app/JobeesLair/downloads.json', 0, JSON.stringify({ version: 1, jobs: [
+    job('PPSA01234/Game.ffpfsc', image('Game.ffpfsc'), '/data/homebrew/Game.ffpfsc'),
+    job('PPSA01234/Dump', image('Dump.rar'), '/data/homebrew/Dump-app'),
+    job('PPSA01234/Done', image('Done.rar'), '/data/homebrew/Done-app', { opened: true }),
+  ] }));
+  const queue = queueWith({ fs, downloads: engine(fs) });
+  assert.equal(queue.snapshot().length, 3, 'the queue loaded');
+  assert.deepEqual(opened.sort(), ['/data/homebrew/Dump-app 777', '/data/homebrew/Dump-app/eboot.bin 777', '/data/homebrew/Dump-app/sce_module 777', '/data/homebrew/Dump-app/sce_module/libc.prx 777']);
+  assert.equal(queue.snapshot().find((item) => item.id === 'PPSA01234/Dump').opened, true, 'remembered, so it is not walked again');
 });
 
 test('a split set with a volume cut short fails and deletes that volume', async () => {
@@ -746,6 +810,27 @@ test('a download that is running is not deleted from disk: it is cancelled inste
   assert.equal(queue.snapshot().length, 1);
 });
 
+test("a running download's X (cancel) stops it and then removes it, its partial file included", async () => {
+  const fs = memoryFs();
+  let started = null;
+  const running = { enqueue: (options) => {
+    let fail;
+    const done = new Promise((_, reject) => { fail = reject; });
+    fs.writeFile(`${options.destination}.part`, 'x'.repeat(10));
+    started = options;
+    return { subscribe: (fn) => (fn({ state: 'downloading', written: 10, total: 1000 }), () => {}), done, cancel: () => fail(Object.assign(new Error('cancelled'), { name: 'AbortError' })) };
+  } };
+  const queue = queueWith({ fs, downloads: running });
+  const id = queue.enqueue(game, image('Game.exfat'), '/data');
+  for (let i = 0; i < 20 && !started; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(started, 'the download started');
+  assert.ok(BUSY.includes(queue.snapshot()[0].state), queue.snapshot()[0].state);
+  await queue.cancel(id);
+  for (let i = 0; i < 50 && queue.snapshot().length; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(queue.snapshot().map((job) => job.state), [], 'gone from the queue, not left paused');
+  assert.deepEqual(leftovers(fs), []);
+});
+
 test("deleting a game clears its launch history; the log's old launch is not learned again, a new one is", async () => {
   const state = { images: [], games: {}, debugLog: '' };
   const { fs, queue, id } = await downloadedImage(state);
@@ -901,10 +986,25 @@ test('Delete from disk while another download runs: it pauses, ShadowMount answe
   assert.ok(!fs.exists('/data/homebrew/Game.exfat') && !fs.exists('/data/homebrew/Game.exfat.complete'));
   assert.ok(http.calls.includes('games/uninstall'));
   assert.ok(!queue.snapshot().some((job) => job.id === first.id));
-  for (let i = 0; i < 50 && downloads.requests.length < 3; i++) await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(downloads.requests.length, 3, 'the paused download started again');
+  // 0.5.1: paused only while ShadowMount is asked (is it mounted, then the uninstall), not while the files go:
+  // started again after each.
+  for (let i = 0; i < 50 && downloads.requests.length < 4; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(downloads.requests.length, 4, 'the paused download started again after each question');
   assert.ok(net.busy);
   assert.ok(BUSY.includes(queue.snapshot().find((job) => job.id === big).state));
+});
+
+test('deleting a game does not hold the queue while its files go, only while ShadowMount is asked', async () => {
+  const { fs, net, queue, first } = await installedWhileAnotherDownloads();
+  let busyWhileDeleting = null;
+  const remove = fs.removeAsync;
+  fs.removeAsync = async (path) => {
+    for (let i = 0; i < 50 && !net.busy; i++) await new Promise((resolve) => setImmediate(resolve));
+    busyWhileDeleting = net.busy;
+    return remove(path);
+  };
+  await within(queue.deleteFromDisk(first.id), 2000, 'the delete');
+  assert.equal(busyWhileDeleting, true, 'the other download ran while the files were deleted');
 });
 
 test("ShadowMount refusing to uninstall while Jobee'sLair runs (EBUSY): the files still go first, the task goes, a note says why", async () => {
@@ -1398,12 +1498,12 @@ test('a set of images unpacked into one folder moves image by image, and the emp
   assert.deepEqual(state.manual, [`${usb}/Game.exfat`, `${usb}/Game-Update-1.05.exfat`]);
 });
 
-test('versions: 0.2.0 is newer than every 0.1.1 beta and 0.1.1, and the app now reports 0.5.0', async () => {
+test('versions: 0.2.0 is newer than every 0.1.1 beta and 0.1.1, and the app now reports 0.5.1', async () => {
   assert.equal(newer('v0.2.0', '0.1.1-beta.4'), true);
   assert.equal(newer('v0.2.0', '0.1.1'), true);
   assert.equal(newer('0.1.1-beta.4', '0.2.0'), false);
   const { VERSION, VERSION_LABEL } = await load('app/version.js');
-  assert.deepEqual([VERSION, VERSION_LABEL], ['0.5.0', '0.5.0']);
+  assert.deepEqual([VERSION, VERSION_LABEL], ['0.5.1', '0.5.1']);
 });
 
 
@@ -1422,8 +1522,12 @@ const releaseJson = (overrides = {}) => ({
   ...overrides,
 });
 
-test('versions: 0.5.0 is newer than 0.4.1 and every 0.5.0 pre-release, and older than 0.5.1; its package version is 01.005.000', () => {
-  assert.equal(VERSION, '0.5.0');
+test('versions: 0.5.0 is newer than 0.4.1 and every 0.5.0 pre-release, and older than 0.5.1; 0.5.1 Pre Release 1 sits between them', () => {
+  assert.equal(VERSION, '0.5.1');
+  assert.equal(newer(VERSION, '0.5.0'), true, 'it is newer than 0.5.0');
+  assert.equal(newer('v0.5.1', '0.5.1-pre.2'), true, 'and 0.5.1 is offered to its pre-release testers');
+  assert.equal(newer('v0.5.1', VERSION), false, 'and not to itself');
+  assert.equal(contentVersionOf(VERSION), '01.005.001');
   assert.equal(newer('v0.5.0', '0.5.0-pre.4'), true, 'testers on Pre Release 4 are offered 0.5.0');
   assert.equal(newer('0.5.0', '0.4.1'), true, 'and so is everyone on 0.4.1');
   assert.equal(newer('v0.5.1', '0.5.0'), true, '0.5.1 will be offered to 0.5.0');
@@ -1511,7 +1615,8 @@ test('a request to ShadowMount that cannot wait asks the borrower to stop first'
 
 // The install's world: a USB drive with the installed image, a fake download engine that publishes each file
 // at its expected size (or fails as told), an extractor that unpacks update.zip's title folder.
-function installWorld({ param: paramFields = {}, eboot = 2000, lendable = () => true, failures = {}, free = 1e12, located = '/mnt/usb0/homebrew/JobeesLair.exfat', armed = () => true, automatic = false, version = VERSION } = {}) {
+function installWorld({ param: paramFields = {}, eboot = 2000, lendable = () => true, failures = {}, free = 1e12, located = '/mnt/usb0/homebrew/JobeesLair.exfat', armed = () => true, automatic = false, version = '0.5.0' } = {}) {
+  // The running version: a released one older than the fake 0.5.1 release these tests install, whatever the app's own VERSION is.
   const fs = memoryFs();
   fs.mkdir('/mnt/usb0/homebrew');
   fs.file('/mnt/usb0/homebrew/JobeesLair.exfat', 4000);
@@ -1737,7 +1842,7 @@ test('install: after a rollback the old build reports why; after a refusal the u
   assert.equal(rolled.updater.state().phase, 'failed');
   assert.equal(rolled.updater.state().outcome.reason, 'the new version closed before it finished starting');
   assert.ok(!rolled.fs.exists('/data/JobeesLair/update/result.txt'), 'read once');
-  assert.equal(rolled.fs.readFile('/data/JobeesLair/update/booted.txt'), `${VERSION}\n`);
+  assert.equal(rolled.fs.readFile('/data/JobeesLair/update/booted.txt'), '0.5.0\n', 'the running build says it started');
 
   const refused = installWorld({ automatic: true });
   refused.saved.value = { phase: 'armed', version: '0.5.1', staging: STAGED, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: { size: 5000 } };
@@ -1965,7 +2070,7 @@ test('install: a swapped-in release that starts as another version fails once wi
     world.updater.start();
     const state = world.updater.state();
     assert.equal(state.phase, 'failed', outcome);
-    assert.match(state.error, new RegExp(`^The 0.5.1 update started as version ${VERSION.replace(/\./g, '\.')}: the release's files are not the version it says`));
+    assert.match(state.error, /^The 0\.5\.1 update started as version 0\.5\.0: the release's files are not the version it says/);
     assert.equal(world.saved.value.mismatched, '0.5.1');
     assert.ok(!world.fs.exists('/data/JobeesLair/update/apply.txt'), 'nothing left armed');
     assert.deepEqual(world.arms, [], 'not armed again');
@@ -2469,10 +2574,10 @@ test('screen saver: its slides are full-screen links to popular games\' own stor
   assert.doesNotMatch(source, /new Date\b/);
 });
 
-test('what\'s new: shown until seen once for 0.5.0', async () => {
+test('what\'s new: shown until seen once for 0.5.1', async () => {
   const { WHATS_NEW } = await load('app/state/whats-new.js');
-  assert.equal(WHATS_NEW, '0.5.0');
-  for (const key of ['whatsNew.title', 'whatsNew.homebrew', 'whatsNew.done', 'saver.wake', 'settings.screenSaver', 'downloads.aheadReady']) assert.ok(en[key], key);
+  assert.equal(WHATS_NEW, '0.5.1');
+  for (const key of ['whatsNew.title', 'whatsNew.start', 'whatsNew.glance', 'whatsNew.debrid', 'whatsNew.done', 'saver.wake', 'settings.screenSaver', 'downloads.aheadReady']) assert.ok(en[key], key);
 });
 
 // ---- the ✕ on a finished download card (0.5.0 Pre Release 4): it clears the card, it never deletes the game ----
@@ -2497,4 +2602,39 @@ test('library: a homebrew app shows as itself (name, art), and Jobee\'sLair\'s o
   const entries = shelfEntries({ jobs: [], files, gameOf: () => undefined, homebrewOf });
   assert.deepEqual(entries.map((e) => e.game.title).sort(), ['Other.exfat', 'PS5SX2']);
   assert.equal(entries.find((e) => e.game.title === 'PS5SX2').game.homebrewApp, hb);
+});
+
+test('Clear finished tidies every finished card away at once, and only those', async () => {
+  const fs = memoryFs();
+  const downloads = engine(fs);
+  const queue = queueWith({ fs, downloads });
+  const a = queue.enqueue(game, image('A.exfat'), '/data');
+  const b = queue.enqueue({ ...game, id: 'PPSA05678', titleId: 'PPSA05678' }, image('B.exfat'), '/data');
+  await settle(queue, a);
+  await settle(queue, b);
+  assert.equal(queue.clearFinished(), 2);
+  assert.deepEqual(queue.snapshot().map((job) => job.cleared), [true, true], 'both finished jobs are cleared');
+  assert.equal(queue.clearFinished(), 0, 'nothing left to clear');
+});
+
+test('Cancel all stops the running download and forgets the queued one; nothing is left on the drive', async () => {
+  const fs = memoryFs();
+  let started = 0;
+  const running = { enqueue: (options) => {
+    let fail;
+    const done = new Promise((_, reject) => { fail = reject; });
+    fs.writeFile(`${options.destination}.part`, 'x'.repeat(10));
+    started += 1;
+    return { subscribe: (fn) => (fn({ state: 'downloading', written: 10, total: 1000 }), () => {}), done, cancel: () => fail(Object.assign(new Error('cancelled'), { name: 'AbortError' })) };
+  } };
+  const queue = queueWith({ fs, downloads: running });
+  queue.enqueue(game, image('A.exfat'), '/data');
+  queue.enqueue({ ...game, id: 'PPSA05678', titleId: 'PPSA05678' }, image('B.exfat'), '/data');
+  for (let i = 0; i < 20 && !started; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(started, 1, 'one download runs, the other waits');
+  assert.deepEqual(queue.snapshot().map((job) => BUSY.includes(job.state) || job.state === 'queued'), [true, true]);
+  assert.equal(await queue.cancelAll(), 2);
+  for (let i = 0; i < 50 && queue.snapshot().length; i++) await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(queue.snapshot(), [], 'both gone from the queue');
+  assert.deepEqual(leftovers(fs), []);
 });

@@ -7,7 +7,7 @@
 // trusted: a feed only ever yields plain catalog records, the same shapes data/catalog.js and
 // data/releases/*.json hold.
 
-import { sourceKind, webURL } from './download-sources.js';
+import { isMagnetLink, sourceKind, webURL } from './download-sources.js';
 
   // MAX_TOTAL_RELEASES bounds a whole feed: 1500 games × 64 releases would be ~96 000 records, far
   // more than the 32 MiB JS heap holds beside the catalog; real feeds list a few per game.
@@ -59,6 +59,15 @@ import { sourceKind, webURL } from './download-sources.js';
     const host2 = webURL(url).host.replace(/^www\./, "");
     return host2 === "archive.org" || host2.endsWith(".archive.org") ? "archive.org" : host2.replace(/\.[a-z]+$/, "");
   }
+  // A magnet's display name (its dn parameter), for the file's name; "" when it has none.
+  function magnetName(magnet) {
+    const value = /[?&]dn=([^&]*)/i.exec(magnet)?.[1];
+    try {
+      return value ? decodeURIComponent(value.replace(/\+/g, " ")) : "";
+    } catch {
+      return "";
+    }
+  }
   function lastSegment(url) {
     const path = webURL(url).path.split(/[?#]/)[0];
     try {
@@ -70,13 +79,16 @@ import { sourceKind, webURL } from './download-sources.js';
   var usableFilename = (name) => Boolean(name) && name.length <= 160 && !/[\/\\\x00-\x1f\x7f]/.test(name) && name !== "." && !name.includes("..");
   function release(raw, gameId, index, feedKey) {
     if (!raw || typeof raw !== "object") return null;
-    const url = httpURL(raw.url);
+    // 0.5.1: a magnet link too (a torrent, downloaded through the gamer's debrid service).
+    const magnet = typeof raw.url === "string" && isMagnetLink(raw.url.trim()) ? raw.url.trim() : null;
+    const url = magnet ?? httpURL(raw.url);
     if (!url) return null;
-    const browserUrl = raw.browserUrl == null ? null : httpURL(raw.browserUrl);
+    const browserUrl = magnet || raw.browserUrl == null ? null : httpURL(raw.browserUrl);
     const named = text(raw.filename, 160);
-    const filename = usableFilename(named) ? named : usableFilename(lastSegment(url)) ? lastSegment(url) : `${gameId}-${index + 1}`;
+    const fromLink = magnet ? magnetName(magnet) : lastSegment(url);
+    const filename = usableFilename(named) ? named : usableFilename(fromLink) ? fromLink : `${gameId}-${index + 1}`;
     const extension = /\.([a-z0-9]+)$/i.exec(filename)?.[1].toLowerCase();
-    const provider = text(raw.provider, 40) || hostName(url);
+    const provider = text(raw.provider, 40) || (magnet ? "Torrent" : hostName(url));
     const label = text(raw.label) || provider;
     const record = {
       // From what the release is, not where it sits: the queue keeps it across launches and feed edits.
@@ -134,7 +146,7 @@ import { sourceKind, webURL } from './download-sources.js';
       id,
       title,
       platform: raw.platform === "ps4" || raw.platform === "ps5" ? raw.platform : id.startsWith("PPSA") ? "ps5" : "ps4",
-      providers: [...new Set(releases.map((item) => hostName(item.url)))],
+      providers: [...new Set(releases.map((item) => isMagnetLink(item.url) ? "torrent" : hostName(item.url)))],
       direct: releases.some(direct),
       developer: text(raw.developer, 120),
       publisher: text(raw.publisher, 120),
@@ -145,6 +157,8 @@ import { sourceKind, webURL } from './download-sources.js';
       art: art(raw.art)
     };
     if (releaseDate) record.year = Number(releaseDate.slice(0, 4));
+    // 0.5.1: the day the feed first listed the game (the live catalog's "New this week").
+    if (typeof raw.addedAt === "string" && DATE.test(raw.addedAt)) record.addedAt = raw.addedAt;
     const metacritic = count(raw.metacritic, 100);
     if (metacritic != null) record.metacritic = metacritic;
     const sizeGb = count(raw.sizeGb, 4096) ?? (bytes ? Math.round(bytes / 1e8) / 10 : null);
@@ -156,10 +170,73 @@ import { sourceKind, webURL } from './download-sources.js';
     };
     return { game: record, page, releases };
   }
+  // MODIFIED (0.5.1): the "Pegasus standard" catalogs (pegasus-dl.dev/catalogs/<name>.json) read as feeds too:
+  //   { "name": "…", "packages": [ { "titleId", "title", "version", "category", "posterUrl", "originalPosterUrl",
+  //     "description" (HTML), "downloadLinks": [ { "name": "Dump - VikingFile", "url", "details": { "buildKey", "hostLabel" } } ] } ] }
+  // Each link is its own one-file release: the hosts of one build are alternatives, never parts of one set.
+  var ENTITIES = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&nbsp;": " " };
+  var plainText = (html) => typeof html === "string" ? html.replace(/<br\s*\/?>|<\/p>/gi, "\n").replace(/<[^>]*>/g, "").replace(/&(?:amp|lt|gt|quot|#39|nbsp);/g, (entity) => ENTITIES[entity]) : "";
+  var slug = (value) => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  var PART = /\s*\bpart\s*(\d{1,3})\s*$/i;
+  function packageGame(item) {
+    if (!item || typeof item !== "object" || !Array.isArray(item.downloadLinks)) return null;
+    const version = text(item.version, 32);
+    const lines = plainText(item.description).split("\n").map((line) => text(line, 4e3)).filter(Boolean);
+    return {
+      id: item.titleId,
+      title: item.title,
+      art: { cover: item.originalPosterUrl || item.posterUrl },
+      summary: lines.slice(0, 2).join(" "),
+      about: lines,
+      releases: item.downloadLinks.map((link) => {
+        const build = text(link?.details?.buildKey, 16).toLowerCase();
+        const host2 = text(link?.details?.hostLabel, 40);
+        const label = text(link?.name, 100) || [build, host2].filter(Boolean).join(" - ");
+        const url = typeof link?.url === "string" ? link.url : "";
+        // "EUR 12.xx Base - Akirabox part 2": the volumes of one set share a record; any other link is its own set.
+        const part = PART.exec(label);
+        return {
+          url,
+          // Hosts name files "file" or nothing: name the download after the game and the link.
+          filename: `${slug(`${item.titleId}-${label}`).slice(0, 80)}-${stableKey(url).slice(0, 8)}`,
+          label,
+          ...part ? { volume: `part ${Number(part[1])}` } : {},
+          ...host2 ? { provider: host2.toLowerCase() } : {},
+          version,
+          category: build === "dlc" ? "dlc" : "game",
+          ...build === "fpkg" ? { format: "fpkg" } : {},
+          requiresBrowser: true,
+          record: part ? `pkg-${slug(`${item.titleId}-${build}`)}-${stableKey(label.replace(PART, ""))}` : `pkg-${slug(String(item.titleId))}-${stableKey(url)}`
+        };
+      })
+    };
+  }
+  // A game listed more than once (another region, another build) is one game with all of its links.
+  function fromPackages(document2) {
+    const byId = /* @__PURE__ */ new Map();
+    for (const item of document2.packages) {
+      const game2 = packageGame(item);
+      if (!game2) continue;
+      const key = String(game2.id).toUpperCase();
+      const known = byId.get(key);
+      if (!known) byId.set(key, game2);
+      else {
+        // By address, and by part (record and label): the same "part 1" re-uploaded under a new address
+        // would otherwise make a set with two part 1s.
+        const urls = new Set(known.releases.map((release2) => release2.url));
+        const parts = new Set(known.releases.map((release2) => `${release2.record}|${release2.label ?? ""}`));
+        known.releases.push(...game2.releases.filter((release2) => !urls.has(release2.url) && !parts.has(`${release2.record}|${release2.label ?? ""}`)));
+        if (!known.about.length) known.about = game2.about;
+      }
+    }
+    return { version: 1, name: document2.name, games: [...byId.values()] };
+  }
   // The feed at `url`, validated: its name, games, and how many entries were dropped. Throws when the
   // document is not a feed at all.
   // As steps, yielding after every `batch` games (parseFeedAsync paces them; parseFeed does not).
   function* feedSteps(document2, url, batch) {
+    if (document2 && typeof document2 === "object" && !Array.isArray(document2.games) && Array.isArray(document2.packages))
+      document2 = fromPackages(document2);
     if (!document2 || typeof document2 !== "object" || document2.version !== 1 || !Array.isArray(document2.games))
       throw new Error("Not a catalog feed: expected version 1 with a games list.");
     const key = stableKey(url);
@@ -181,18 +258,37 @@ import { sourceKind, webURL } from './download-sources.js';
     }
     // Addresses the publisher says the same feed is also served from, tried when this one is down.
     const mirrors = [...new Set(list(document2.mirrors, 16, httpURL))].filter((mirror) => mirror !== url).slice(0, MAX_MIRRORS);
-    return { name: text(document2.name, 80) || webURL(url).host, games: games2, skipped: offered.length - games2.length, mirrors };
+    return { name: text(document2.name, 80) || webURL(url).host, games: games2, skipped: offered.length - games2.length, mirrors, ratings: ratingsOf(document2.ratings) };
+  }
+  // 0.5.1: a feed's store ratings, { "PPSA21564": [4.77, 76635] }: any title's, listed in the feed or not (the
+  // live catalog rates every game the app has). Up to MAX_RATINGS, stars 1-5 and a whole count.
+  var MAX_RATINGS = 6e3;
+  var TITLE = /^[A-Z]{4}\d{5}$/;
+  function ratingsOf(value) {
+    const out = {};
+    if (!value || typeof value !== "object" || Array.isArray(value)) return out;
+    let kept = 0;
+    for (const [id, pair] of Object.entries(value)) {
+      if (kept >= MAX_RATINGS) break;
+      if (!TITLE.test(id) || !Array.isArray(pair)) continue;
+      const [stars, count] = pair;
+      if (typeof stars !== "number" || !(stars >= 1 && stars <= 5) || !Number.isSafeInteger(count) || count <= 0) continue;
+      out[id] = [stars, count];
+      kept++;
+    }
+    return out;
   }
   var PARSE_BATCH = 40;
   var parseFeed = (document2, url) => finish(feedSteps(document2, url, Infinity));
   // The same, with the screen's frames in between: a refresh while the store or Settings is open.
   var parseFeedAsync = (document2, url, pause) => finishPaced(feedSteps(document2, url, PARSE_BATCH), pause);
   // A parsed feed back in feed form, as the cache stores it: what parseFeed gives for it is the same feed.
-  function feedDocument({ name, games: games2, mirrors = [] }) {
+  function feedDocument({ name, games: games2, mirrors = [], ratings = {} }) {
     return {
       version: 1,
       name,
       mirrors,
+      ...Object.keys(ratings).length ? { ratings } : {},
       games: games2.map(({ game: record, page, releases }) => ({
         ...record,
         ...page,

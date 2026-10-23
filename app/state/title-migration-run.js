@@ -5,11 +5,12 @@
 
 import { FileSystem, Platform } from '@ps5-react/core';
 import { TITLE_ID } from '../version.js';
+import { HOMEBREW_ONLY } from '../edition.js';
 import { DATA_DIR } from './data-dir.js';
 import { OLD_TITLE_ID, migrateFromOldTitle } from './title-migration.js';
 
   var migrationLog = [];
-  if (Platform.OS === "ps5" && TITLE_ID !== OLD_TITLE_ID) {
+  if (Platform.OS === "ps5" && TITLE_ID !== OLD_TITLE_ID && !HOMEBREW_ONLY) {
     const log = (line) => {
       migrationLog.push(line);
       console.log(line);

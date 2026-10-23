@@ -110,10 +110,11 @@ import { colors, radius } from '../ui/colors.js';
         setViewing(null);
         focusLater(`game:shot:${index}`);
       } }),
-      dialog ? /* @__PURE__ */ (0, jsx)(Dialog, { ...dialog, onClose: () => {
+      // 0.5.1: inside an AnimatePresence, so a sheet's exit (SideSheet) plays as it closes.
+      /* @__PURE__ */ (0, jsx)(AnimatePresence, { children: dialog ? /* @__PURE__ */ (0, jsx)(Dialog, { ...dialog, onClose: () => {
         setDialog(null);
         focusLater(dialog.from ?? `download:${game.id}`);
-      } }) : null,
+      } }, dialog.kind ?? "url") : null }),
       captureJob ? /* @__PURE__ */ (0, jsx)(BrowserCaptureDialog, { job: captureJob }, captureJob.id) : null,
       /* @__PURE__ */ (0, jsx)(AnimatePresence, { children: toast ? /* @__PURE__ */ (0, jsx)(InstallToast, { game, started: toast === "started" }, toast) : null })
     ] }) });

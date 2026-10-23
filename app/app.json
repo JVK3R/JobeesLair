@@ -3,12 +3,12 @@
   "titleId": "PPSA99471",
   "contentId": "UP9000-PPSA99471_00-JOBEESLAIR000000",
   "name": "Jobee'sLair",
-  "version": "01.005.000",
+  "version": "01.005.001",
   "render": { "width": 1920, "height": 1080 },
   "surface": { "width": 1920, "height": 1080 },
   "refreshRate": 60,
   "textFonts": ["chinese", "japanese", "bengali", "devanagari", "arabic"],
-  "resources": ["data/releases", "data/pages", "data/homebrew.json", "i18n/locales"],
+  "resources": ["data/releases", "data/pages", "data/homebrew.json", "data/private", "i18n/locales"],
   "payloads": [
     {
       "source": "native/companion_daemon.c",
@@ -23,6 +23,6 @@
   ],
   "filesystemAccess": "console",
   "networking": true,
-  "userAgent": "JobeesLair/0.5.0 (PS5)",
+  "userAgent": "JobeesLair/0.5.1 (PS5)",
   "timeoutSeconds": 0
 }

@@ -7,6 +7,9 @@
 // so Up from lower cards always comes back to the top cards and their headers instead of leaving them cut
 // off above the viewport. The page has a solid canvas under its scrolling cards, so the engine can
 // copy-scroll them; the page slides in as one piece (a full-screen container is translated, not faded).
+// 0.5.1: far less text. A row shows its name and its state; what a setting does (its `hint`) shows under the
+// row only while it has focus, and the paragraphs (what debrid is, what feeds are, the credits, the legal
+// notice) are gone from view or folded behind a row.
 
 import '../assets/Exo2.ttf';
 import '../assets/JetBrainsMono-Regular.ttf';
@@ -18,7 +21,9 @@ import { URLDialog } from '../downloads/URLDialog.jsx';
 import { formatDate2 } from '../i18n/core.js';
 import { chooseLanguage, languageChoice, systemLocale, useT } from '../i18n/index.js';
 import { LOCALES } from '../i18n/locales.js';
-import { setTorBoxKey, testTorBox, useDebrid } from '../state/debrid.js';
+import { reportRelay, sendReport } from '../state/bug-report.js';
+import { setAllDebridKey, setTorBoxKey, testAllDebrid, testTorBox, useDebrid } from '../state/debrid.js';
+import { HOMEBREW_ONLY } from '../edition.js';
 import { LIMITS as SPEED_LIMITS, setSpeedLimit, useSpeedLimit } from '../state/speed-limit.js';
 import { setAutoContinueParts, useAutoContinueParts } from '../state/auto-continue.js';
 import { setScreenSaver, showScreenSaver, useScreenSaverOn } from '../state/screen-saver.js';
@@ -41,7 +46,7 @@ import { chooseTheme, colors, commitTheme, radius } from './colors.js';
 import { setNavigationHaptics, useNavigationHaptics } from './haptics.js';
 import { onStatusLight, setStatusLight, statusLightOn } from './lightBar.js';
 import { logical } from './scale.js';
-import { PRESETS, presetOf, useActiveTheme, userName } from './themes.js';
+import { PRESETS, presetOf, useActiveTheme } from './themes.js';
 import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocused } from '@ps5-react/core';
 
   var COLUMN = 852;
@@ -85,20 +90,32 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     ] });
   }
   // A focusable row inside a card: a title and detail, and at its end a switch or an icon.
-  function RowFace({ name, detail, end }) {
+  // `detail` is the row's state, always shown ("Set (…1234)", "Connected · Pro plan"); `hint` says what the
+  // setting does, and shows only while the row has focus.
+  function RowFace({ name, detail, hint, end }) {
     const focused = useIsFocused();
     return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
       /* @__PURE__ */ (0, jsx)(FocusRing, { round: "md" }),
       /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, gap: 3 }, children: [
         /* @__PURE__ */ (0, jsx)(Text, { style: text(23, colors.fg, { fontWeight: 600, numberOfLines: 1, ellipsizeMode: "tail" }), children: name }),
-        detail ? /* @__PURE__ */ (0, jsx)(Text, { style: text(20, focused ? colors.fg : colors.muted, { numberOfLines: 2, ellipsizeMode: "tail" }), children: detail }) : null
+        detail ? /* @__PURE__ */ (0, jsx)(Text, { style: text(20, focused ? colors.fg : colors.muted, { numberOfLines: 2, ellipsizeMode: "tail" }), children: detail }) : null,
+        hint && focused ? /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted, { numberOfLines: 3, ellipsizeMode: "tail" }), children: hint }) : null
       ] }),
       end
     ] });
   }
   var ROW = (_state) => [{ position: "relative", flexDirection: "row", alignItems: "center", gap: 24, borderRadius: radius.md, paddingHorizontal: 20, paddingVertical: 16, marginHorizontal: -20 }, _state.focused ? { backgroundColor: colors.surface3 } : null];
-  function Row({ focusKey, name, detail, end, onPress, autoFocus, onBlur }) {
-    return /* @__PURE__ */ (0, jsx)(View, { focusKey, autoFocus, onPress, onBlur, style: ROW, children: /* @__PURE__ */ (0, jsx)(RowFace, { name, detail, end }) });
+  function Row({ focusKey, name, detail, hint, end, onPress, autoFocus, onBlur }) {
+    return /* @__PURE__ */ (0, jsx)(View, { focusKey, autoFocus, onPress, onBlur, style: ROW, children: /* @__PURE__ */ (0, jsx)(RowFace, { name, detail, hint, end }) });
+  }
+  // A paragraph or two behind a row (the credits, the legal notice): shown only once the row is opened.
+  function Folded({ focusKey, name, paragraphs }) {
+    const t2 = useT();
+    const [open, setOpen] = (0, useState)(false);
+    return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey, name, end: /* @__PURE__ */ (0, jsx)(Icon, { name: open ? "chevronUp" : "chevronDown", color: colors.muted }), onPress: () => setOpen((value) => !value) }),
+      ...open ? paragraphs.map((paragraph, index) => /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: paragraph }, index)) : []
+    ] });
   }
   function Callout({ tone = "info", children }) {
     const color = tone === "error" ? "#f87171" : tone === "warn" ? "#fbbf24" : colors.glow;
@@ -137,11 +154,11 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     };
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "globe", title: t2("settings.card.companion"), right: /* @__PURE__ */ (0, jsx)(Chip, { status }) }),
-      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:companion", name: t2("settings.companion"), detail: t2("settings.companion.detail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: companion.enabled }), onPress: toggle }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:companion", name: t2("settings.companion"), hint: companion.hasPin ? t2("settings.companion.detail") : `${t2("settings.companion.detail")}. ${t2("settings.companion.noPin")}`, end: /* @__PURE__ */ (0, jsx)(Switch, { on: companion.enabled }), onPress: toggle }),
       body,
       // Experimental: the helper that answers the phone while the app is closed (companion/service.js).
-      companion.enabled ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:companionAway", name: t2("settings.companion.away"), detail: companion.away && companion.awayAnswer && !["ready", "updated", "sent", "sending", "stopped"].includes(companion.awayAnswer) ? t2("settings.companion.awayFailed", { error: companion.awayAnswer }) : t2("settings.companion.awayDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: companion.away }), onPress: () => setCompanionAway(!companion.away) }) : null,
-      companion.hasPin ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:pin", name: t2("settings.companion.changePin"), detail: t2("settings.companion.changePinDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "chevronRight", color: colors.muted }), onPress: () => onChoosePin("change") }) : /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.subtle), children: t2("settings.companion.noPin") })
+      companion.enabled ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:companionAway", name: t2("settings.companion.away"), detail: companion.away && companion.awayAnswer && !["ready", "updated", "sent", "sending", "stopped"].includes(companion.awayAnswer) ? t2("settings.companion.awayFailed", { error: companion.awayAnswer }) : null, hint: t2("settings.companion.awayDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: companion.away }), onPress: () => setCompanionAway(!companion.away) }) : null,
+      companion.hasPin ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:pin", name: t2("settings.companion.changePin"), hint: t2("settings.companion.changePinDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "chevronRight", color: colors.muted }), onPress: () => onChoosePin("change") }) : null
     ] });
   }
   function FeedbackCard() {
@@ -149,8 +166,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     const vibration = useNavigationHaptics();
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "star", title: t2("settings.card.feedback") }),
-      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:vibration", name: t2("settings.vibration"), detail: t2("settings.vibrationDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: vibration }), onPress: () => setNavigationHaptics(!vibration) }),
-      /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.subtle), children: t2("settings.sounds") })
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:vibration", name: t2("settings.vibration"), hint: t2("settings.vibrationDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: vibration }), onPress: () => setNavigationHaptics(!vibration) })
     ] });
   }
   // The screen saver (0.5.0 Pre Release 4; ui/ScreenSaver.jsx): on or off, and a look at it now.
@@ -159,8 +175,8 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     const on = useScreenSaverOn();
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "disc", title: t2("settings.card.screenSaver") }),
-      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:screenSaver", name: t2("settings.screenSaver"), detail: t2("settings.screenSaverDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on }), onPress: () => setScreenSaver(!on) }),
-      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:screenSaverNow", name: t2("settings.screenSaverNow"), detail: t2("settings.screenSaverNowDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "play", color: colors.muted }), onPress: showScreenSaver })
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:screenSaver", name: t2("settings.screenSaver"), hint: t2("settings.screenSaverDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on }), onPress: () => setScreenSaver(!on) }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:screenSaverNow", name: t2("settings.screenSaverNow"), hint: t2("settings.screenSaverNowDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "play", color: colors.muted }), onPress: showScreenSaver })
     ] });
   }
   // One swatch per preset: its accent filled, the accent frame when focused, a check on the chosen one.
@@ -182,14 +198,10 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     const light = useStatusLight();
     const [shown, setShown] = (0, useState)(null);
     const [changed, setChanged] = (0, useState)(false);
-    const user = userName();
     const label = presetOf(shown ?? active);
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "disc", title: t2("settings.card.theme") }),
-      /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 4 }, children: [
-        /* @__PURE__ */ (0, jsx)(Text, { style: text(23, colors.fg, { fontWeight: 600 }), children: `${t2("settings.theme")} · ${t2(label.name)}` }),
-        /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: user ? t2("settings.theme.detailUser", { user }) : t2("settings.theme.detail") })
-      ] }),
+      /* @__PURE__ */ (0, jsx)(Text, { style: text(23, colors.fg, { fontWeight: 600 }), children: `${t2("settings.theme")} · ${t2(label.name)}` }),
       /* @__PURE__ */ (0, jsx)(View, { style: { flexDirection: "row", gap: 16, paddingVertical: 6 }, children: PRESETS.map((preset) => /* @__PURE__ */ (0, jsx)(View, {
         focusKey: `settings:theme:${preset.id}`,
         focusable: true,
@@ -203,7 +215,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
         children: /* @__PURE__ */ (0, jsx)(SwatchFace, { preset, chosen: preset.id === active })
       }, preset.id)) }),
       changed ? /* @__PURE__ */ (0, jsx)(Callout, { children: t2("settings.theme.redraw") }) : null,
-      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:statusLight", name: t2("settings.statusLight"), detail: t2("settings.statusLightDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: light }), onPress: () => setStatusLight(!light) })
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:statusLight", name: t2("settings.statusLight"), hint: t2("settings.statusLightDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: light }), onPress: () => setStatusLight(!light) })
     ] });
   }
   function LanguageCard() {
@@ -215,7 +227,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "languages", title: t2("settings.card.language") }),
       /* @__PURE__ */ (0, jsxs)(View, { style: { position: "relative" }, children: [
-        /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:language", name: current, detail: t2("language.subtitle"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: open ? "chevronDown" : "chevronUp", color: colors.muted }), onPress: () => setOpen((value) => !value) }),
+        /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:language", name: current, hint: t2("language.subtitle"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: open ? "chevronDown" : "chevronUp", color: colors.muted }), onPress: () => setOpen((value) => !value) }),
         /* @__PURE__ */ (0, jsxs)(Menu, { open, placement: "above", onClose: () => setOpen(false), rows: LOCALES.length + 2, children: [
           /* @__PURE__ */ (0, jsx)(MenuItem, { label: t2("language.system"), checked: choice === null, onSelect: () => chooseLanguage(null) }),
           /* @__PURE__ */ (0, jsx)(MenuDivider, {}),
@@ -297,7 +309,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     const autoParts = useAutoContinueParts();
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "download", title: t2("settings.card.downloads") }),
-      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:autoParts", name: t2("settings.autoParts"), detail: t2("settings.autoPartsDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: autoParts }), onPress: () => setAutoContinueParts(!autoParts) }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:autoParts", name: t2("settings.autoParts"), hint: t2("settings.autoPartsDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: autoParts }), onPress: () => setAutoContinueParts(!autoParts) }),
       /* @__PURE__ */ (0, jsx)(View, { style: { height: 1, marginVertical: 8, backgroundColor: colors.line } }),
       /* @__PURE__ */ (0, jsx)(SpeedLimitRow, {}),
       /* @__PURE__ */ (0, jsx)(View, { style: { height: 1, marginVertical: 8, backgroundColor: colors.line } }),
@@ -309,10 +321,9 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     const feeds = useFeeds();
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "layers", title: t2("settings.card.feeds") }),
-      /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.feeds.detail") }),
       ...feeds.map((feed) => /* @__PURE__ */ (0, jsx)(FeedRow, { feed, onMirror }, feed.url)),
-      feeds.length < MAX_FEEDS ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:feeds:add", name: t2("settings.feeds.add"), detail: t2("settings.feeds.addHint", { count: MAX_FEEDS }), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "external", color: colors.muted }), onPress: onAdd }) : null,
-      feeds.length ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:feeds:refresh", name: t2("settings.feeds.refresh"), detail: feeds.some((feed) => feed.state === "refreshing") ? t2("settings.feeds.refreshing") : t2("settings.feeds.refreshHint"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "restart", color: colors.muted }), onPress: () => void refreshFeeds() }) : null,
+      feeds.length < MAX_FEEDS ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:feeds:add", name: t2("settings.feeds.add"), hint: `${t2("settings.feeds.detail")} ${t2("settings.feeds.addHint", { count: MAX_FEEDS })}.`, end: /* @__PURE__ */ (0, jsx)(Icon, { name: "external", color: colors.muted }), onPress: onAdd }) : null,
+      feeds.length ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:feeds:refresh", name: t2("settings.feeds.refresh"), detail: feeds.some((feed) => feed.state === "refreshing") ? t2("settings.feeds.refreshing") : null, hint: t2("settings.feeds.refreshHint"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "restart", color: colors.muted }), onPress: () => void refreshFeeds() }) : null,
       feeds.some((feed) => feed.restart) ? /* @__PURE__ */ (0, jsx)(Callout, { children: t2("settings.feeds.restart") }) : null
     ] });
   }
@@ -326,10 +337,28 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
   // Debrid providers: the TorBox API key (typed in, kept as its last four characters on screen), a
   // connection test that pauses a running download while it asks (the network is one task at a time),
   // and removing the key. With a key, the source list offers TorBox on the hosts it supports.
-  function DebridCard({ onKey }) {
+  // 0.5.1: AllDebrid's account, from its last connection test.
+  function allDebridText(t2, account) {
+    if (!account) return null;
+    if (!account.premium) return t2("settings.alldebrid.free");
+    return account.expiresAt ? t2("settings.alldebrid.okUntil", { date: formatDate2(account.expiresAt.slice(0, 10)) }) : t2("settings.alldebrid.ok");
+  }
+  var quietly = (reason, work) => downloadQueue().quietNetwork ? downloadQueue().quietNetwork(reason, work) : work();
+  function DebridCard({ onKey, onAllDebridKey }) {
     const t2 = useT();
     const debrid = useDebrid();
     const [test, setTest] = (0, useState)({ state: "idle", error: "" });
+    const [allTest, setAllTest] = (0, useState)({ state: "idle", error: "" });
+    const runAll = () => {
+      if (allTest.state === "testing") return;
+      setAllTest({ state: "testing", error: "" });
+      testAllDebrid({ quiet: quietly }).then(
+        () => setAllTest({ state: "ok", error: "" }),
+        (error2) => setAllTest({ state: "failed", error: error2.message })
+      );
+    };
+    const all = debrid.allDebrid;
+    const allStatus = allTest.state === "testing" ? t2("settings.alldebrid.testing") : allTest.state === "failed" ? null : allDebridText(t2, all.account);
     const run = () => {
       if (test.state === "testing") return;
       setTest({ state: "testing", error: "" });
@@ -341,15 +370,22 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     const status = test.state === "testing" ? t2("settings.debrid.testing") : test.state === "failed" ? null : accountText(t2, debrid.account);
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "zap", title: t2("settings.card.debrid") }),
-      /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.debrid.detail") }),
-      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:torbox:key", name: t2("settings.debrid.key"), detail: debrid.configured ? t2("settings.debrid.keySet", { key: debrid.masked }) : t2("settings.debrid.keyNone"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "chevronRight", color: colors.muted }), onPress: onKey }),
-      debrid.configured ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:torbox:test", name: t2("settings.debrid.test"), detail: status ?? t2("settings.debrid.testDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: test.state === "testing" ? "globe" : "restart", color: colors.muted }), onPress: run }) : null,
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:torbox:key", name: t2("settings.debrid.key"), detail: debrid.configured ? t2("settings.debrid.keySet", { key: debrid.masked }) : t2("settings.debrid.keyNone"), hint: `${t2("settings.debrid.detail")} ${t2("settings.debrid.stored")}`, end: /* @__PURE__ */ (0, jsx)(Icon, { name: "chevronRight", color: colors.muted }), onPress: onKey }),
+      debrid.configured ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:torbox:test", name: t2("settings.debrid.test"), detail: status, hint: t2("settings.debrid.testDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: test.state === "testing" ? "globe" : "restart", color: colors.muted }), onPress: run }) : null,
       test.state === "failed" ? /* @__PURE__ */ (0, jsx)(Callout, { tone: "error", children: test.error }) : null,
-      debrid.configured ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:torbox:remove", name: t2("settings.debrid.remove"), detail: t2("settings.debrid.removeDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "trash", color: colors.muted }), onPress: () => {
+      debrid.configured ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:torbox:remove", name: t2("settings.debrid.remove"), hint: t2("settings.debrid.removeDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "trash", color: colors.muted }), onPress: () => {
         setTorBoxKey("");
         setTest({ state: "idle", error: "" });
       } }) : null,
-      /* @__PURE__ */ (0, jsx)(Text, { style: text(19, colors.subtle), children: t2("settings.debrid.stored") })
+      // 0.5.1: AllDebrid, used when TorBox has no key.
+      jsx(Row, { focusKey: "settings:alldebrid:key", name: t2("settings.alldebrid.key"), detail: all.configured ? t2("settings.debrid.keySet", { key: all.masked }) : t2("settings.debrid.keyNone"), hint: t2("settings.alldebrid.stored"), end: jsx(Icon, { name: "chevronRight", color: colors.muted }), onPress: onAllDebridKey }),
+      all.configured ? jsx(Row, { focusKey: "settings:alldebrid:test", name: t2("settings.debrid.test"), detail: allStatus, hint: t2("settings.alldebrid.testDetail"), end: jsx(Icon, { name: allTest.state === "testing" ? "globe" : "restart", color: colors.muted }), onPress: runAll }) : null,
+      allTest.state === "failed" ? jsx(Callout, { tone: "error", children: allTest.error }) : null,
+      all.configured ? jsx(Row, { focusKey: "settings:alldebrid:remove", name: t2("settings.debrid.remove"), hint: t2("settings.alldebrid.removeDetail"), end: jsx(Icon, { name: "trash", color: colors.muted }), onPress: () => {
+        setAllDebridKey("");
+        setAllTest({ state: "idle", error: "" });
+      } }) : null,
+      all.configured && debrid.configured ? jsx(Callout, { children: t2("settings.alldebrid.both") }) : null
     ] });
   }
   // The Source Addition Guide: how a catalog feed gets into the store, step by step. One row until opened;
@@ -380,7 +416,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     ];
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "list", title: t2("settings.card.guide") }),
-      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:guide", name: open ? t2("settings.guide.hide") : t2("settings.guide.show"), detail: t2("settings.guide.detail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: open ? "chevronUp" : "chevronDown", color: colors.muted }), onPress: () => setOpen((value) => !value) }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:guide", name: open ? t2("settings.guide.hide") : t2("settings.guide.show"), hint: t2("settings.guide.detail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: open ? "chevronUp" : "chevronDown", color: colors.muted }), onPress: () => setOpen((value) => !value) }),
       ...open ? steps.map(([title, detail], index) => /* @__PURE__ */ (0, jsx)(View, { focusKey: `settings:guide:${index}`, focusable: true, style: STEP, children: /* @__PURE__ */ (0, jsx)(StepFace, { index, title, detail }) }, index)) : []
     ] });
   }
@@ -419,6 +455,33 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       ] })
     ] });
   }
+  // 0.5.1: "Report a bug": press once to arm, again to send the logs to the Jobee'sLair Discord (state/bug-report.js).
+  // Only in a build that has the relay's address.
+  function ReportRow() {
+    const t2 = useT();
+    const [available] = (0, useState)(() => Boolean(reportRelay()));
+    const [report, setReport] = (0, useState)({ state: "idle", error: "" });
+    (0, useEffect)(() => {
+      if (report.state !== "armed") return void 0;
+      const timer = setTimeout(() => setReport({ state: "idle", error: "" }), 4e3);
+      return () => clearTimeout(timer);
+    }, [report.state]);
+    if (!available) return null;
+    const press = () => {
+      if (report.state === "sending") return;
+      if (report.state !== "armed") return setReport({ state: "armed", error: "" });
+      setReport({ state: "sending", error: "" });
+      sendReport({ queue: downloadQueue() }).then(
+        () => setReport({ state: "sent", error: "" }),
+        (error2) => setReport({ state: "failed", error: error2.message })
+      );
+    };
+    const detail = report.state === "armed" ? t2("settings.report.armed") : report.state === "sending" ? t2("settings.report.sending") : report.state === "sent" ? t2("settings.report.sent") : null;
+    return jsxs(Fragment, { children: [
+      jsx(Row, { focusKey: "settings:bugReport", name: t2("settings.report.row"), detail, hint: t2("settings.report.detail"), end: jsx(Icon, { name: report.state === "sent" ? "circleCheck" : "alert", color: report.state === "armed" ? colors.glow : colors.muted }), onPress: press }),
+      report.state === "failed" ? jsx(Callout, { tone: "error", children: report.error }) : null
+    ] });
+  }
   function AboutCard() {
     const t2 = useT();
     const update = useUpdate();
@@ -437,14 +500,14 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
         ] })
       ] }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:update", name: t2("settings.update.row"), detail: updateDetail(t2, update, install), end: /* @__PURE__ */ (0, jsx)(Icon, { name: update.update ? "download" : "restart", color: update.update ? colors.glow : colors.muted }), onPress: () => update.update ? openUpdateDialog() : void checkForUpdate() }),
-      canInstall ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:autoUpdate", name: t2("settings.update.auto"), detail: t2("settings.update.autoDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: automatic }), onPress: () => setAutoInstall(!automatic) }) : null,
+      canInstall ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:autoUpdate", name: t2("settings.update.auto"), hint: t2("settings.update.autoDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: automatic }), onPress: () => setAutoInstall(!automatic) }) : null,
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:project", name: t2("settings.about.project"), detail: `github.com/${REPO}`, end: /* @__PURE__ */ (0, jsx)(Icon, { name: "external", color: colors.muted }), onPress: () => {
         try {
           Linking.openURL(`https://github.com/${REPO}`);
         } catch {
         }
       } }),
-      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:support", name: t2("settings.support.row"), detail: t2("settings.support.detail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: support ? "chevronUp" : "chevronDown", color: colors.muted }), onPress: () => {
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:support", name: t2("settings.support.row"), hint: t2("settings.support.detail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: support ? "chevronUp" : "chevronDown", color: colors.muted }), onPress: () => {
         setSupport(!support);
         if (!support) focusLater("settings:support:qr");
       } }),
@@ -452,8 +515,8 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
         setSupport(false);
         focusLater("settings:support");
       } }) : null,
-      /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.about.origin") }),
-      /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.subtle), children: t2("settings.about.credits") })
+      jsx(ReportRow, {}),
+      /* @__PURE__ */ (0, jsx)(Folded, { focusKey: "settings:credits", name: t2("settings.about.creditsRow"), paragraphs: [t2("settings.about.origin"), t2("settings.about.credits")] })
     ] });
   }
   // The content neutrality and takedown notice (the same text as README.md and LICENSE): what the app is, what it
@@ -463,9 +526,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "alert", title: t2("settings.card.legal") }),
       /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.legal.neutral") }),
-      /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.legal.nohost") }),
-      /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.legal.feeds") }),
-      /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.legal.report") }),
+      /* @__PURE__ */ (0, jsx)(Folded, { focusKey: "settings:legal:read", name: t2("settings.legal.read"), paragraphs: [t2("settings.legal.nohost"), t2("settings.legal.feeds"), t2("settings.legal.report")] }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:report", name: t2("settings.legal.reportRow"), detail: `github.com/${REPO}/issues`, end: /* @__PURE__ */ (0, jsx)(Icon, { name: "external", color: colors.muted }), onPress: () => {
         try {
           Linking.openURL(`https://github.com/${REPO}/issues/new?template=takedown.yml`);
@@ -487,7 +548,8 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     { id: "look", icon: "disc", label: "settings.card.look" },
     { id: "guide", icon: "list", label: "settings.card.guide" },
     { id: "about", icon: "star", label: "settings.card.about" }
-  ];
+    // 0.5.1: the homebrew-only edition has no store to feed, no debrid, no companion and no source guide.
+  ].filter((item) => !HOMEBREW_ONLY || ["downloads", "look", "about"].includes(item.id));
   var RAIL = 420;
   function CategoryFace({ icon, label, selected }) {
     const focused = useIsFocused();
@@ -499,7 +561,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       /* @__PURE__ */ (0, jsx)(Text, { style: text(23, lit ? colors.fg : colors.muted, { flex: 1, fontWeight: selected ? 600 : 400, numberOfLines: 1, ellipsizeMode: "tail" }), children: label })
     ] });
   }
-  function SettingsScreen({ onBack, start = "companion" }) {
+  function SettingsScreen({ onBack, start = HOMEBREW_ONLY ? "downloads" : "companion" }) {
     const t2 = useT();
     const { focusLater } = useNavActions();
     const [category, setCategory] = (0, useState)(start);
@@ -507,6 +569,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     const [mirrorOf, setMirrorOf] = (0, useState)(null);
     const [pinMode, setPinMode] = (0, useState)(null);
     const [keying, setKeying] = (0, useState)(false);
+    const [keyingAll, setKeyingAll] = (0, useState)(false);
     // Drawn again in a newly chosen accent while open; the rest of the store follows once it is left.
     useActiveTheme();
     (0, useEffect)(() => () => commitTheme(), []);
@@ -516,7 +579,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       companion: [/* @__PURE__ */ (0, jsx)(CompanionCard, { onChoosePin: setPinMode }, "companion")],
       downloads: [/* @__PURE__ */ (0, jsx)(DownloadsCard, {}, "downloads")],
       feeds: [/* @__PURE__ */ (0, jsx)(FeedsCard, { onAdd: () => setAdding(true), onMirror: setMirrorOf }, "feeds")],
-      debrid: [/* @__PURE__ */ (0, jsx)(DebridCard, { onKey: () => setKeying(true) }, "debrid")],
+      debrid: [/* @__PURE__ */ (0, jsx)(DebridCard, { onKey: () => setKeying(true), onAllDebridKey: () => setKeyingAll(true) }, "debrid")],
       look: [/* @__PURE__ */ (0, jsx)(ThemeCard, {}, "theme"), /* @__PURE__ */ (0, jsx)(LanguageCard, {}, "language"), /* @__PURE__ */ (0, jsx)(FeedbackCard, {}, "feedback"), /* @__PURE__ */ (0, jsx)(ScreenSaverCard, {}, "screenSaver")],
       guide: [/* @__PURE__ */ (0, jsx)(GuideCard, {}, "guide")],
       about: [/* @__PURE__ */ (0, jsx)(AboutCard, {}, "about"), /* @__PURE__ */ (0, jsx)(NoticeCard, {}, "notice")]
@@ -557,6 +620,10 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       keying ? /* @__PURE__ */ (0, jsx)(URLDialog, { title: t2("settings.debrid.keyTitle"), detail: t2("settings.debrid.keyDetail"), initial: "", submit: setTorBoxKey, onClose: () => {
         setKeying(false);
         closed("settings:torbox:key");
+      } }) : null,
+      keyingAll ? jsx(URLDialog, { title: t2("settings.alldebrid.key"), detail: t2("settings.alldebrid.keyDetail"), initial: "", submit: setAllDebridKey, onClose: () => {
+        setKeyingAll(false);
+        closed("settings:alldebrid:key");
       } }) : null,
       pinMode ? /* @__PURE__ */ (0, jsx)(PinDialog, { mode: pinMode, onDone: choosePin, onClose: () => {
         const mode = pinMode;

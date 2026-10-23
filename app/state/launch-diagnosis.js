@@ -31,13 +31,15 @@ import { t } from '../i18n/core.js';
     for (const line of lines) {
       if (line.includes(`launch mount ready: ${title}`)) {
         if (current) found.push(current);
-        current = { lines: [], started: false, sandbox: false, errors: [], mountFailures: [] };
+        current = { lines: [], started: false, sandbox: false, fakelib: false, errors: [], mountFailures: [] };
       }
       if (!current) continue;
       if (!ours(line, title)) continue;
       current.lines.push(line);
       if (line.includes(`[GAME] started: ${title}`)) current.started = true;
       if (line.includes(`sandbox ready handled: ${title}`)) current.sandbox = true;
+      // 0.5.1: the game's own fakelib went into its sandbox (a backported image's, for older firmware).
+      if (line.includes(`[FAKELIB] game mounted for ${title}`)) current.fakelib = true;
       if (/\[MDBG\]/.test(line) && GAME_ERROR.test(line) && !MONITOR_NOISE.test(line)) current.errors.push(line);
       if (MOUNT_FAILURE.test(line)) current.mountFailures.push(line);
       if (line.includes(`runtime layers released: ${title}`) || line.includes(`[GAME] finalizing stopped application: ${title}`)) {
@@ -79,6 +81,8 @@ import { t } from '../i18n/core.js';
       version,
       verdict: { ...verdict, text: t(`diagnosis.verdict.${verdict.key}`, verdict.params) },
       launches: attempts.length,
+      // Whether its last launch loaded the game's own fakelib: the Library's Options can turn it off.
+      fakelib: Boolean(attempts.at(-1)?.fakelib),
       lines: shown,
       kernel: kernelLines,
       debugRead: debug !== null && debug !== void 0,

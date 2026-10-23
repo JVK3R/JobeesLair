@@ -102,12 +102,21 @@ import { Text, View, motion, transitions, useIsFocused } from '@ps5-react/core';
     }
     return boxes.get(id);
   }
+  var STAR_GOLD = "#fbbf24";
   function Details({ game, focused, box }) {
     const { rtl } = useLocale();
     return /* @__PURE__ */ (0, jsxs)(View, { style: [{ height: 144, paddingTop: 15 }, box.text], children: [
       /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 20, color: colors.subtle, numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 24 }, children: game.genres[0] ? genreLabel(game.genres[0]) : game.platform.toUpperCase() }),
       /* @__PURE__ */ (0, jsx)(Text, { focused, style: [{ marginTop: 6, height: 60, paddingRight: 6, fontFamily: "Exo2", fontSize: 23, fontWeight: 600, color: colors.fg, numberOfLines: 2, ellipsizeMode: "tail", lineHeight: 30 }, focused ? { color: colors.fg } : null], children: latin(rtl, game.title) }),
       /* @__PURE__ */ (0, jsxs)(View, { style: { marginTop: 9, height: 30, flexDirection: "row", alignItems: "center", gap: 12 }, children: [
+        // 0.5.1: the PlayStation Store star rating (state/catalog.js), shown once enough people rated it. The
+        // star is JetBrainsMono's own glyph, not an icon: the engine draws at most 128 <Svg> nodes at once, and a
+        // star icon on every card of the Browse page took them all, so the button hints, the icon-only tabs
+        // and some of the stars drew nothing.
+        game.ratingCount >= 50 && jsxs(View, { style: { flexDirection: "row", alignItems: "center", gap: 5 }, children: [
+          jsx(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 19, color: STAR_GOLD, lineHeight: 24 }, children: "\u2605" }),
+          jsx(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 19, color: colors.fg, lineHeight: 24 }, children: game.stars.toFixed(1) })
+        ] }),
         game.metacritic != null && /* @__PURE__ */ (0, jsx)(View, { style: { borderRadius: radius.xs, backgroundColor: colors.accent, paddingHorizontal: 9 }, children: /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 19, color: colors.accentFg, lineHeight: 24 }, children: String(game.metacritic) }) }),
         game.sizeGb != null && /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 18, color: colors.muted }, children: formatSize(game.sizeGb) })
       ] })

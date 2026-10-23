@@ -15,7 +15,9 @@ import { savedList } from './saved.js';
   // AkiraBox by the title id), and hosts it paused because they did not (DataVaults' file is the captcha
   // form's own answer, with no link to capture; Buzzheavier's ads; the rest untested or failing).
   var KNOWN_WORKING = ["vikingfile", "datanodes", "akirabox"];
-  var KNOWN_HARD = ["datavaults", "buzzheavier", "1fichier", "gofile", "rapidgator", "filecrypt", "ranoz", "transfer", "mega", "urlvanish", "fileditchfiles", "tinyurl", "fuckingfast", "rootz", "1024terabox"];
+  var KNOWN_HARD = ["datavaults", "buzzheavier", "1fichier", "gofile", "rapidgator", "filecrypt", "ranoz", "transfer", "mega", "urlvanish", "fileditchfiles", "tinyurl", "fuckingfast", "1024terabox"];
+  // Hosts the app reaches without the browser (download-sources.js RESOLVED_KINDS): rootz since 0.5.1.
+  var KNOWN_DIRECT = ["filekeeper", "rootz"];
   var FAILS_TO_GIVE_UP = 3;
   var KEPT = 64;
   // A LinkVault vault's mirror, by its link's #fragment or its label's suffix ("Dump - Filek").
@@ -52,6 +54,8 @@ import { savedList } from './saved.js';
   function hostStanding(source) {
     const key = hostKey(source);
     if (!key) return "unknown";
+    // No capture, so no capture history: an earlier version's failed Rootz captures say nothing now.
+    if (KNOWN_DIRECT.includes(key)) return "works";
     const entry = saved().get()[key];
     // A failure resets `fail` only by a later success, so a host that worked and then failed three times
     // in a row reads as failing again.
@@ -62,4 +66,4 @@ import { savedList } from './saved.js';
     return "unknown";
   }
 
-export { KNOWN_HARD, KNOWN_WORKING, hostKey, hostStanding, recordCapture };
+export { KNOWN_DIRECT, KNOWN_HARD, KNOWN_WORKING, hostKey, hostStanding, recordCapture };

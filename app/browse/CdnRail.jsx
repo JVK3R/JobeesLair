@@ -8,7 +8,7 @@ import { memo } from 'react';
 import { GameRail } from './GameRail.jsx';
 import { games } from '../data/catalog.js';
 import { useT } from '../i18n/index.js';
-import { CDN_HOST, NO_FILTERS, onCdn, sortGames } from '../state/catalog.js';
+import { CDN_HOST, NO_FILTERS, onCdn, oneEach, sortGames } from '../state/catalog.js';
 import { useNavActions } from '../state/nav.jsx';
 import { useStoreActions } from '../state/store.jsx';
 import { FocusFrame } from '../ui/FocusRing.jsx';
@@ -22,7 +22,7 @@ import { Image, Text, View, motion, useIsFocused } from '@ps5-react/core';
   var WIDTH = 152;
   var TILE = { width: px(WIDTH * 2 + 24), height: px(Math.round(WIDTH * 4 / 3)), borderRadius: radius.sm };
   var CAPTION2 = { width: px(WIDTH * 2 + 24), height: px(DETAILED_CAPTION) };
-  var SERVED = sortGames(games.filter(onCdn), "relevance");
+  var SERVED = oneEach(sortGames(games.filter(onCdn), "relevance"));
   var lift2 = { type: "tween", duration: 0.3, ease: EASE_OUT };
   function CollectionCard() {
     const t2 = useT();

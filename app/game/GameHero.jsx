@@ -8,9 +8,12 @@ import { BackLink } from './BackLink.jsx';
 import { DownloadButton } from './DownloadButton.jsx';
 import { COVER, HERO, LOGO } from './art.js';
 import { canDownload } from './releases.js';
+import { readyLinks } from './sources.js';
+import { useHealthyReleases } from '../state/links.js';
+import { deviceFacts } from '../state/device.js';
 import { SPAN_MAX, fitBytes } from '../i18n/fit.js';
 import { latin, useLocale, useT } from '../i18n/index.js';
-import { genreLabel, listedId } from '../state/catalog.js';
+import { genreLabel, listedId, readyLabel } from '../state/catalog.js';
 import { useStoreActions, useWishlist } from '../state/store.jsx';
 import { Button2 } from '../ui/Button.jsx';
 import { Cover } from '../ui/Cover.jsx';
@@ -19,6 +22,30 @@ import { WishHeart } from '../ui/WishHeart.jsx';
 import { EASE_OUT } from '../ui/ease.js';
 import { Image, Text, View, motion } from '@ps5-react/core';
 import { colors, radius } from '../ui/colors.js';
+import { Icon } from '../ui/Icon.jsx';
+
+  var STAR_GOLD = "#fbbf24";
+  var GREEN = "#4ade80";
+  var PILL_TEXT = { fontFamily: "Exo2", fontSize: 19, fontWeight: 600, lineHeight: 26 };
+  // 0.5.1: whether the game has a download that runs on this console, said on the page at once, before any
+  // list is opened: "13.60 Ready · 3 links" in green (or "Ready for 9.60"), else "No 13.60 Ready links".
+  function ReadyPill({ game }) {
+    const t2 = useT();
+    // With what the link check found (state/links.js), as the button's own list: a link found gone is not counted.
+    const releases = useHealthyReleases(game.releases || []);
+    let count = 0, firmware = "";
+    try {
+      firmware = deviceFacts().firmware;
+    } catch {
+    }
+    count = readyLinks(releases, firmware);
+    if (!count && !canDownload(game)) return null;
+    const label = readyLabel(t2("release.compat.ready"));
+    const tone = count ? GREEN : colors.muted;
+    return jsx(View, { style: { borderRadius: radius.xs, borderWidth: 1, borderColor: tone, paddingHorizontal: 10, paddingVertical: 2 }, children: jsx(Text, { style: { ...PILL_TEXT, color: tone }, children: count ? t2("game.readyLinks", { label, count }) : t2("game.noReadyLinks", { label }) }) });
+  }
+  // 76635 as "76.6K", 1250000 as "1.3M": the count beside a store rating.
+  var compactCount = (count) => count >= 1e6 ? `${(count / 1e6).toFixed(1).replace(/\.0$/, "")}M` : count >= 1e4 ? `${(count / 1e3).toFixed(1).replace(/\.0$/, "")}K` : String(count);
 
   var column = { hidden: {}, show: { transition: { staggerChildren: 0.06, delayChildren: 0.22 } } };
   var rise = { hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: EASE_OUT } } };
@@ -46,6 +73,13 @@ import { colors, radius } from '../ui/colors.js';
         fitBytes(game.genres.map(genreLabel).join(", "), SPAN_MAX)
       ] }) }),
       /* @__PURE__ */ (0, jsxs)(motion.View, { variants: rise, style: { marginTop: 24, flexDirection: "row", alignItems: "center", gap: 36 }, children: [
+        jsx(ReadyPill, { game }),
+        // 0.5.1: the PlayStation Store star rating and how many gave it (state/catalog.js).
+        game.ratingCount ? jsxs(View, { style: { flexDirection: "row", alignItems: "center", gap: 10 }, children: [
+          jsx(Icon, { name: "star", size: 24, color: STAR_GOLD, fill: STAR_GOLD }),
+          jsx(Text, { style: { fontFamily: "Exo2", fontSize: 21, fontWeight: 700, color: colors.fg, lineHeight: 30 }, children: game.stars.toFixed(2) }),
+          jsx(Text, { style: { fontFamily: "Exo2", fontSize: 21, color: colors.muted, lineHeight: 30 }, children: t2("game.ratings", { count: compactCount(game.ratingCount) }) })
+        ] }) : null,
         game.metacritic ? /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 12 }, children: [
           /* @__PURE__ */ (0, jsx)(View, { style: { borderRadius: radius.xs, backgroundColor: colors.accent, paddingHorizontal: 9 }, children: /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 21, fontWeight: 700, color: "#ffffff", lineHeight: 30 }, children: String(game.metacritic) }) }),
           /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 21, color: colors.muted, lineHeight: 30 }, children: t2("game.metacritic") })

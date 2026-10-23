@@ -6,6 +6,7 @@ import { useRef, useState } from 'react';
 import { NO_FILTERS, activeCount } from '../state/catalog.js';
 import { useNavActions, useNavState } from '../state/nav.jsx';
 import { useQueryActive, useStoreActions, useStoreState } from '../state/store.jsx';
+import { HOMEBREW_ONLY } from '../edition.js';
 
   var KEYS2 = {
     search: "nav:search",
@@ -19,7 +20,8 @@ import { useQueryActive, useStoreActions, useStoreState } from '../state/store.j
     files: "nav:files",
     settings: "nav:settings"
   };
-  var TABS = ["search", "discover", "top", "new", "homebrew", "favorites", "downloads", "files", "settings"];
+  // 0.5.1: the homebrew-only edition steps between the Homebrew section and Settings.
+  var TABS = HOMEBREW_ONLY ? ["homebrew", "settings"] : ["search", "discover", "top", "new", "homebrew", "favorites", "downloads", "files", "settings"];
   function useShowLibrary() {
     const store = useStoreActions();
     const nav = useNavActions();

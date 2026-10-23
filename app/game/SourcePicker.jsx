@@ -7,8 +7,8 @@ import { useMemo, useState } from 'react';
 import { VersionFace } from './VersionSheet.jsx';
 import { captureStanding, describeSource, isCdnProvider, preferredRelease, sourceSections } from './sources.js';
 import { useT } from '../i18n/index.js';
-import { getGame } from '../state/catalog.js';
-import { debridSupports, heldByTorBox, useTorBoxInstant } from '../state/debrid.js';
+import { getGame, readyLabel } from '../state/catalog.js';
+import { activeService, debridSupports, heldByTorBox, serviceName, useTorBoxInstant } from '../state/debrid.js';
 import { downloadQueue } from '../state/downloads.js';
 import { deviceFacts } from '../state/device.js';
 import { backportAdvice, ps5FakePackagesLaunch } from '../state/firmware.js';
@@ -23,6 +23,8 @@ import { FileSystem, Text, View, useIsFocused } from '@ps5-react/core';
   var SECTION = {
     direct: { title: "sources.section.direct", icon: "download" },
     page: { title: "sources.section.page", icon: "download", note: "sources.section.pageNote" },
+    // 0.5.1: magnet links, through the debrid service (its note says to add a key when there is none).
+    torrent: { title: "sources.section.torrent", icon: "zap", note: "sources.section.torrentNote" },
     browser: { title: "sources.section.browser", icon: "external" },
     dlc: { title: "sources.section.dlc", icon: "download", note: "sources.section.dlcNote" },
     backport: { title: "sources.section.backport", icon: "layers", note: "sources.section.backportNote" },
@@ -69,7 +71,8 @@ import { FileSystem, Text, View, useIsFocused } from '@ps5-react/core';
     return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
       /* @__PURE__ */ (0, jsx)(FocusRing, {}),
       /* @__PURE__ */ (0, jsx)(Icon, { name: "zap", size: 20, color: focused ? GOLD : ink2 }),
-      /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 19, fontWeight: 600, color: ink2, lineHeight: 24 }, children: t2("debrid.button") })
+      // 0.5.1: the provider in use, TorBox or AllDebrid (state/debrid.js activeService).
+      /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 19, fontWeight: 600, color: ink2, lineHeight: 24 }, children: t2("debrid.button").replace("TorBox", serviceName(activeService())) })
     ] });
   }
   var torboxStyle = (_state) => [{ position: "relative", width: 112, alignItems: "center", justifyContent: "center", gap: 6, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, paddingVertical: 10 }, _state.focused ? { backgroundColor: colors.surface2, borderColor: GOLD } : null];
@@ -92,8 +95,9 @@ import { FileSystem, Text, View, useIsFocused } from '@ps5-react/core';
     // A PS4 backport keeps its pill but not the green badge: whether a console needs one is the backport
     // section's own advice, and "13.60 Ready" beside it read as a recommendation.
     if (release.dumpType === "backport" && release.platform === "ps4") return null;
-    if (release.compatible1360 === true) return { text: t2("release.compat.ready"), ink: GREEN, line: GREEN };
-    if (release.compatible1360 === false) return launches === true ? { text: t2("release.compat.fpkg"), ...PILL } : { text: t2("release.compat.fpkg"), ink: AMBER, line: AMBER };
+    if (release.compatible1360 === true) return { text: readyLabel(t2("release.compat.ready")), ink: GREEN, line: GREEN };
+    // 0.5.1: at 11.60 or lower a PS5 fake package starts, so it is as ready there as an image ("Ready for 9.60").
+    if (release.compatible1360 === false) return launches === true ? { text: readyLabel(t2("release.compat.ready")), ink: GREEN, line: GREEN } : { text: t2("release.compat.fpkg"), ink: AMBER, line: AMBER };
     return null;
   }
   // A row's second line: where from, or why to think twice (gone, not answering, won't launch here).
@@ -157,7 +161,8 @@ import { FileSystem, Text, View, useIsFocused } from '@ps5-react/core';
   function Section2({ group, items, selected, recommended, revealed, onPick, onDebrid, tag }) {
     const t2 = useT();
     const launches = ps5FakePackagesLaunch(deviceFacts().firmware);
-    const { title, icon, note } = SECTION[group];
+    const { title, icon } = SECTION[group];
+    const note = group === "torrent" && !(onDebrid && activeService()) ? "sources.section.torrentNeeds" : SECTION[group].note;
     return /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 6 }, children: [
       /* @__PURE__ */ (0, jsxs)(View, { style: { marginBottom: 6, gap: 3, paddingHorizontal: 18 }, children: [
         /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 20, fontWeight: 600, color: colors.subtle }, children: `${t2(title)} \xB7 ${items.length}` }),
@@ -169,10 +174,14 @@ import { FileSystem, Text, View, useIsFocused } from '@ps5-react/core';
         // A source that cannot be downloaded as listed (a set missing a part) stays in view, greyed, to say
         // why it is not offered; it cannot be picked. A link the check found gone is not one of these.
         const gone = group === "unavailable";
+        // 0.5.1: a torrent row is the debrid download itself (no button beside it); greyed without a key.
+        const torrent = group === "torrent";
+        const viaDebrid = torrent && Boolean(onDebrid) && debridSupports(release);
         // TorBox can fetch it (a TorBox key is set and it lists the host): a TorBox button beside the row.
-        const torbox = !gone && Boolean(onDebrid) && debridSupports(release);
-        const face = /* @__PURE__ */ (0, jsx)(View, { autoFocus: !gone && index === selected || revealed && row === 0, onPress: gone ? () => {
-        } : () => onPick(index), style: (_state) => [{ position: "relative", minHeight: 84, flexDirection: "row", alignItems: "center", gap: 18, borderRadius: radius.md, paddingHorizontal: 18, paddingVertical: 12 }, torbox ? { flex: 1 } : null, gone ? { opacity: 0.55 } : null, _state.focused ? { backgroundColor: colors.surface2 } : null], children: /* @__PURE__ */ (0, jsx)(
+        const torbox = !gone && !torrent && Boolean(onDebrid) && debridSupports(release);
+        const idle = gone || torrent && !viaDebrid;
+        const face = /* @__PURE__ */ (0, jsx)(View, { autoFocus: !gone && index === selected || revealed && row === 0, onPress: idle ? () => {
+        } : torrent ? () => onDebrid(index) : () => onPick(index), style: (_state) => [{ position: "relative", minHeight: 84, flexDirection: "row", alignItems: "center", gap: 18, borderRadius: radius.md, paddingHorizontal: 18, paddingVertical: 12 }, torbox ? { flex: 1 } : null, idle ? { opacity: 0.55 } : null, _state.focused ? { backgroundColor: colors.surface2 } : null], children: /* @__PURE__ */ (0, jsx)(
           RowFace,
           {
             icon,
@@ -183,7 +192,7 @@ import { FileSystem, Text, View, useIsFocused } from '@ps5-react/core';
             cdn: !gone && isCdnProvider(release.provider),
             recommended: !gone && index === recommended && group !== "browser" && release.linkHealth?.status !== "dead",
             current: !gone && index === selected,
-            badges: [typePill(t2, release), gone ? null : compatBadge(t2, release, launches), linkBadge(t2, release, group), gone ? null : captureBadge(t2, release), torbox ? instantBadge(t2, release) : null]
+            badges: [typePill(t2, release), gone ? null : compatBadge(t2, release, launches), linkBadge(t2, release, group), gone ? null : captureBadge(t2, release), torbox || viaDebrid ? instantBadge(t2, release) : null]
           }
         ) }, torbox ? "row" : release.id);
         if (!torbox) return face;
@@ -251,7 +260,7 @@ import { FileSystem, Text, View, useIsFocused } from '@ps5-react/core';
     const count = (group) => sections.find((section) => section.group === group)?.items.length ?? 0;
     useTorBoxInstant(onDebrid ? releases : [], lendNetwork);
     // With TorBox, a browser-only host it supports downloads in the app, so those sources are shown at once.
-    const [browser, setBrowser] = (0, useState)(() => !count("direct") && !count("page") || describeSource(releases[selected]).group === "browser" || Boolean(onDebrid) && sections.some(({ group, items }) => group === "browser" && items.some(({ release }) => debridSupports(release))));
+    const [browser, setBrowser] = (0, useState)(() => !count("direct") && !count("page") && !count("torrent") || describeSource(releases[selected]).group === "browser" || Boolean(onDebrid) && sections.some(({ group, items }) => group === "browser" && items.some(({ release }) => debridSupports(release))));
     const debrid = onDebrid ? (index) => {
       onDebrid(index);
       onClose();
@@ -259,7 +268,7 @@ import { FileSystem, Text, View, useIsFocused } from '@ps5-react/core';
     const [revealed, setRevealed] = (0, useState)(false);
     // Shown from the start when nothing can be downloaded in the app any more (every file link was taken
     // down, say): an empty sheet would look like a fault, the list of what is gone and why does not.
-    const [deadShown, setDeadShown] = (0, useState)(() => !count("direct") && !count("page"));
+    const [deadShown, setDeadShown] = (0, useState)(() => !count("direct") && !count("page") && !count("torrent"));
     const pick2 = (index) => {
       submit(index);
       onClose();
@@ -277,7 +286,7 @@ import { FileSystem, Text, View, useIsFocused } from '@ps5-react/core';
           }
         }
       ) : null,
-      sections.filter(({ group }) => group === "direct" || group === "page" || browser && group === "browser").map(
+      sections.filter(({ group }) => group === "direct" || group === "page" || group === "torrent" || browser && group === "browser").map(
         ({ group, items }) => /* @__PURE__ */ (0, jsx)(
           Section2,
           {

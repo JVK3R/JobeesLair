@@ -4,6 +4,96 @@ What changed in each version of Jobee'sLair. Each release on
 [GitHub](https://github.com/JVK3R/JobeesLair/releases) carries the full notes, the files and their
 SHA-256 checksums.
 
+## 0.5.1 (2026-10-22)
+
+The release where far more of the catalog actually plays. Every game that comes down as an archive, which is
+most of the catalog, was unpacked with files the console refuses to run: the game installed, showed up on the
+home screen, and died with "Can't start the game or app". That is fixed for new downloads and for the games
+already on your console. With it: a live catalog with real ratings and no duplicates, "13.60 Ready" on every
+game page, AllDebrid and torrents, Report a bug, and updates that offer themselves. Pre Release 1 and 2 went to
+the Discord the same day.
+
+- **A live game catalog.** Games are now pulled from the public Pegasus catalogs (pegasus-dl.dev) and
+  refreshed every three hours. A newly added game shows up the next time you open the app, with no app update
+  needed. This adds about 150 games and thousands of new download links.
+- Multi-part downloads from these catalogs stay grouped together, and they never save as a file called "file".
+- **No more duplicate games on Browse.** The PS4 and PS5 versions of a game, and regional copies of the same
+  store listing, now show as one card in every row and in the full grid. Download still asks which version you
+  want, and picking PS4 or PS5 in the filters still shows that platform's copies. Search still lists every copy.
+- **Top rated, for real.** Every game now has its PlayStation Store star rating (about 2,200 rated, up
+  from about 100 with a Metacritic score). Top Rated sits right under Featured and ranks by stars and by how
+  many people rated, so a 4.9 from 40 people doesn't beat a 4.8 from 70,000. Stars show on game cards and
+  on each game's page. Ratings update with the live catalog.
+- **Icons that vanished are back.** The star on every card used up the engine's 128 icon slots, so the
+  button hints at the bottom, the Favorites, Downloads, Library and Settings tabs and some of the stars drew
+  nothing until something scrolled away. Stars are now drawn as text and take no slot.
+- **13.60 Ready, said at once.** A game's page now shows "13.60 Ready · 3 links" in green beside its rating
+  (or "No 13.60 Ready links") the moment it opens, the chosen source's line leads with its tag, up to three
+  other sources that run on your console sit right under it, and a plain "More download links (12)" opens the
+  full list. No more opening the list to find out.
+- **Updates offer themselves.** When a newer Jobee'sLair is out, the update window opens by itself at launch
+  (once per release, like Prospero Store): Download and install, then Restart to apply. It comes back on its
+  own once the download is ready. Close it and only the badge in the top bar stays.
+- Search lists every copy of a game again (the PS4 edition had dropped out of search results in an earlier
+  0.5.1 build), and a game page's "Ready" count leaves out links the check found gone.
+- **Settings is calmer.** Each row shows its name and its state; what a setting does appears under it only
+  while it is selected. The paragraphs about debrid, feeds, the credits and the legal notice are folded
+  behind a row or gone.
+- **Clear finished and Cancel all** at the top of the Downloads page. Cancel all asks for a second press.
+- The Downloads page scrolls all the way back to the top again. With two rows of cards in a section it stopped
+  short, leaving the library band and the telemetry cut off.
+- A card's focus frame no longer blinks on every step along a row: it is solid from the first frame, and on
+  the wide Featured cards it now lifts and grows with the card instead of staying put under it.
+- Side sheets (sources, options, "Why won't it start?", Make room) slide out as they close instead of
+  vanishing, and the hero banner crossfades to the next game instead of cutting.
+- **The screen saver fills the screen again.** An earlier 0.5.1 build drew its pictures at 1280 x 720 in the
+  middle of the screen. While a game extracts it shows one picture at a time, which is what the memory then
+  allows.
+- **The screen saver skips a picture it can't show** (a host not answering, or no memory to decode it while a
+  game extracts) instead of leaving the screen black.
+- **AkiraBox fixed.** Many AkiraBox links were labelled "part 1, 2, 3" when they were really separate whole
+  files (Astro Bot USA: two complete RARs and an FFPKG), so the download waited for a "part 1" that didn't
+  exist. Links are now grouped by their real file names.
+- **Rootz downloads without the browser.** Rootz links (about 1,800 in the live catalog) now go straight to
+  the file instead of opening the browser.
+- **"Ready" fits your firmware.** On 11.60 or lower, PS5 fake packages start, so those games count as ready
+  too, and the row and filter say "Ready for 9.60" (or whatever your console runs). On 13.60 nothing changes.
+- **Cancel works while a game extracts.** Cancelling during extraction could hang on "Pausing…" forever, and
+  a retry afterwards could fail with "Staging belongs to another extraction". Both are fixed.
+- **Deleting a game no longer holds up your other downloads.** Downloads pause only for the moment ShadowMount
+  is asked about the game, not for the minutes a big game's files take to delete. Deleting a download also
+  removes its half-extracted files, which used to be left behind.
+- **The screen saver no longer runs out of memory** while a game extracts.
+- **Games packed beside a backport folder install.** A download holding the game folder next to a "backport"
+  folder (Assassin's Creed Black Flag Resynced) stopped at "Extracted" and never reached ShadowMount. The game is
+  now found and installed, and the backport is kept aside. A download already stuck there gets an Install button.
+- **AllDebrid support.** Add your AllDebrid API key in Settings → Debrid providers, next to TorBox. Sources it
+  supports get a download button that skips the browser. If both keys are set, TorBox is used.
+- **Extracted games start.** A game folder unpacked from an archive could not be started: the home screen said
+  "Can't start the game or app" with every file in place and nothing in ShadowMount's log past "sandbox ready".
+  The extractor wrote files without the execute bit, and the console refuses to run an eboot.bin without it.
+  Extracted files are now rwxrwxrwx like everything copied over FTP, a game folder is opened when it is put in
+  place, and games installed by earlier builds are opened each time the app starts. Fakelibs had nothing to do
+  with it. (Minecraft Dungeons, Assassin's Creed IV Black Flag.)
+- **Jobee'sLair Homebrew, a build of its own.** The Homebrew section can be built alone (`packaging/homebrew-edition.sh`,
+  `app/edition.js`): Jobee'sLair Homebrew, title PPSA99472, with its own dock (Homebrew and Settings), its own
+  repository for updates and its own image, installing beside the store. Its index now lives and refreshes in
+  [JVK3R/JobeesLair-Homebrew](https://github.com/JVK3R/JobeesLair-Homebrew), which every build reads.
+- **Torrents through debrid.** A feed can list a magnet link as a source. With a TorBox or AllDebrid key set
+  it downloads in Jobee'sLair: the service fetches the torrent, the console downloads from it at full speed,
+  and "TorBox Instant" marks torrents TorBox already holds. A one-file torrent downloads as that file; a folder
+  dump of many files comes as one zip through TorBox and extracts like any archive. Without a key, the Torrents
+  section says what to add. See FEEDS.md.
+- **New this week.** A row on Browse with the games the live catalog added in the last seven days, best rated
+  first.
+- **Report a bug.** Settings → About → Report a bug sends your logs to the Jobee'sLair Discord in two presses.
+  They go through a small relay (tools/report-relay) that holds the channel's webhook, so no build carries it.
+  Keys and passwords are blanked out.
+- **Turn off fakelibs per game.** Many backported downloads bring their own fakelibs (system libraries for
+  older firmware), and on a console new enough for the game they can make it crash (CE-107098-5). Open the
+  game in the Library, press Options, and turn them off; it applies the next time you start it. "Why won't it
+  start?" points to this when a game loaded its own fakelibs.
+
 ## 0.5.0 (2026-10-20)
 
 The biggest Jobee'sLair update yet.

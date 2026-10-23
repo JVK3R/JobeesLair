@@ -9,7 +9,7 @@ import { EmptyState } from './EmptyState.jsx';
 import { SortSelect } from './SortSelect.jsx';
 import { SPAN_MAX, fitBytes } from '../i18n/fit.js';
 import { useLocale, useT } from '../i18n/index.js';
-import { activeCount, filterGames, sortGames } from '../state/catalog.js';
+import { activeCount, filterGames, oneEach, sortGames } from '../state/catalog.js';
 import { useNavActions } from '../state/nav.jsx';
 import { useStore } from '../state/store.jsx';
 import { ButtonGlyph } from '../ui/ButtonHints.jsx';
@@ -106,7 +106,9 @@ import { colors, radius } from '../ui/colors.js';
     const store = useStore();
     const { filters, query } = store;
     const results = (0, useMemo)(
-      () => sortGames(filterGames(store), store.sort),
+      // 0.5.1: a game once, unless a platform is picked (then that platform's edition is the one wanted) or a
+      // search is typed (search lists every copy).
+      () => filters.platform?.length || query.trim() ? sortGames(filterGames(store), store.sort) : oneEach(sortGames(filterGames(store), store.sort)),
       [filters, query, store.wishlist, store.sort]
     );
     const settled = (0, useRef)(false);

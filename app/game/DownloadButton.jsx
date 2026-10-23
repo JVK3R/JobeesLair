@@ -6,17 +6,17 @@ import { jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { STALE_PARTIAL, cause, explainError } from '../downloads/errors.js';
 import { WAITING, shownState } from '../downloads/labels.js';
-import { Choice, TextAction } from './Choice.jsx';
+import { Choice, ReadyPick, TextAction } from './Choice.jsx';
 import { DISABLED, DownloadLabel, statusLine } from './DownloadLabel.jsx';
 import { MoreOptions, ProblemNote } from './DownloadProblem.jsx';
 import { canDownload, spaceAdvice, spaceNeeded } from './releases.js';
-import { captureStanding, describeSource, fallbacks, isBackport, isCdnProvider, isDlc, labelFirmware, preferredRelease } from './sources.js';
+import { captureStanding, describeSource, fallbacks, isBackport, isCdnProvider, isDlc, labelFirmware, preferredRelease, runsHere, sourceOrder } from './sources.js';
 import { useDownload } from './useDownload.js';
 import { useFreeSpace } from './useFreeSpace.js';
 import { useShadowMount } from './useShadowMount.js';
 import { formatPercent2 } from '../i18n/core.js';
 import { useT } from '../i18n/index.js';
-import { editionsOf } from '../state/catalog.js';
+import { editionsOf, readyLabel } from '../state/catalog.js';
 import { BUSY, COMPLETE } from '../state/download-queue.js';
 import { checkLinksNow, useHealthyReleases } from '../state/links.js';
 import { debridSource, debridSupports } from '../state/debrid.js';
@@ -54,13 +54,15 @@ import { colors, radius } from '../ui/colors.js';
       }
       const owned2 = jobs.map((job3) => {
         const id = job3.requestedId ?? job3.release.id;
-        const index = releases.findIndex((release2) => release2.id === id.replace(/~torbox$/, ""));
-        return index >= 0 ? { index, debrid: id.endsWith("~torbox") } : null;
+        // 0.5.1: "~alldebrid" for one through AllDebrid.
+        const index = releases.findIndex((release2) => release2.id === id.replace(/~(?:torbox|alldebrid)$/, ""));
+        return index >= 0 ? { index, debrid: /~(?:torbox|alldebrid)$/.test(id) } : null;
       }).find(Boolean);
       if (owned2) return owned2;
       // With TorBox set up, a browser-only source it can take goes through TorBox from the start: no browser.
       const index = preferredRelease(releases);
-      return { index, debrid: Boolean(releases[index]) && describeSource(releases[index]).group === "browser" && debridSupports(releases[index]) };
+      // 0.5.1: a torrent too, which has no other way.
+      return { index, debrid: Boolean(releases[index]) && ["browser", "torrent"].includes(describeSource(releases[index]).group) && debridSupports(releases[index]) };
     });
     const [selected, setSelected] = (0, useState)(initial.index);
     // Whether the picked source goes through TorBox (its TorBox button in the source list).
@@ -211,6 +213,8 @@ import { colors, radius } from '../ui/colors.js';
       const here = consoleFirmware(deviceFacts().firmware);
       if (need !== null && here && here[0] < need) return { title: t2("tips.firmware.title", { need: `${need}.xx` }), action: t2("tips.firmware.action", { firmware: firmwareText(here) }) };
       if (!release.debrid && describeSource(release).group === "browser") return { title: t2("tips.browser.title", { host: describeSource(release).host }), action: t2(captureStanding(release) === "works" ? "tips.browser.capture" : "tips.browser.action") };
+      // 0.5.1: a torrent picked without a debrid key: what to add.
+      if (!release.debrid && describeSource(release).group === "torrent") return { title: t2("tips.torrent.title"), action: t2("tips.torrent.action") };
       return null;
     })();
     const sourceWarning = job2 || !release ? null : allGone ? { title: t2("links.allGone.title"), action: t2("links.allGone.action") } : wontLaunch ? { title: t2("release.fpkg.title"), action: t2("release.fpkg.action") } : hardHost ? { title: t2("capture.hard.title", { host: describeSource(release).host }), action: t2(debridSupports(release) ? "capture.hard.torbox" : "capture.hard.action") } : release.linkHealth?.status === "unreachable" ? { title: t2("links.unreachable.title", { host: describeSource(release).host }), action: t2("links.unreachable.action") } : tip;
@@ -254,6 +258,17 @@ import { colors, radius } from '../ui/colors.js';
       // Every link asked again, the dead ones too.
       checkLinks: () => checkLinksNow(game.id, game.releases || [])
     });
+    // 0.5.1: up to three other sources that run on this console (a dump or image, release-sets.js
+    // compatible1360; a PS5 fake package too at 11.60 or lower), in view under the chosen one so nobody has to
+    // open the list to find a "13.60 Ready" link; best first (sources.js order). Not add-ons, backports,
+    // links found gone, nor sources that need the browser.
+    const readyPicks = (0, useMemo)(() => {
+      if (!choosing || !release) return [];
+      const firmware = deviceFacts().firmware;
+      return sourceOrder(releases).map((index) => ({ item: releases[index], index })).filter(({ item, index }) => index !== selected && runsHere(item, firmware) && describeSource(item).group !== "browser").slice(0, 3);
+    }, [releases, selected, choosing, release?.id]);
+    const readyTag = readyLabel(t2("release.compat.ready"));
+    const readyKey = (index) => `download-ready:${game.id}:${index}`;
     const saved = job2?.written ? formatBytes(job2.written) : null;
     const removal = { icon: "x", label: t2("download.remove.label"), detail: t2("download.remove.detail"), onSelect: remove };
     const deletion = job2 && {
@@ -298,6 +313,7 @@ import { colors, radius } from '../ui/colors.js';
     const browserFocus = `download-continue:${game.id}`;
     const queueFocus = `download-queue:${game.id}`;
     const roomFocus = `download-room:${game.id}`;
+    const linksFocus = `download-links:${game.id}`;
     const mainFocus = `download:${game.id}`;
     const disabled = DISABLED.includes(status);
     const sourceChoice = releases.length > 1 || editions.length > 1;
@@ -305,6 +321,8 @@ import { colors, radius } from '../ui/colors.js';
       mainFocus,
       roomless && release && roomFocus,
       choosing && release && sourceChoice && sourceFocus,
+      ...readyPicks.map(({ index }) => readyKey(index)),
+      choosing && release && releases.length > 1 && linksFocus,
       !job2 && roots.length > 1 && storageFocus,
       browser && browserFocus,
       job2 && queueFocus,
@@ -366,11 +384,15 @@ import { colors, radius } from '../ui/colors.js';
             name: release.provider,
             detail: [t2("sources.cdnFastest"), release.sizeBytes && formatBytes(release.sizeBytes)].filter(Boolean).join(" \xB7 ")
           } : null,
-          // What the gamer gets first ("Disk image · USA v1.10"), then where from and how big.
+          // 0.5.1: "13.60 Ready" first when the chosen source runs here, so the page says so at a glance; then
+          // what the gamer gets ("Disk image · USA v1.10"), where from and how big.
           // A warning (won't launch here, offline) right after the name: the line is cut to the button's width.
-          text: [describeSource(release).name, compatTag, linkTag, describeSource(release).host, release.sizeBytes && formatBytes(release.sizeBytes)].filter(Boolean).join(" \xB7 ")
+          text: [runsHere(release, deviceFacts().firmware) ? readyTag : null, describeSource(release).name, compatTag, linkTag, describeSource(release).host, release.sizeBytes && formatBytes(release.sizeBytes)].filter(Boolean).join(" \xB7 ")
         }
       ) : null,
+      ...readyPicks.map(({ item, index }) => /* @__PURE__ */ (0, jsx)(ReadyPick, { focusKey: readyKey(index), nextFocusDown: after(readyKey(index)), onPress: () => pick2(index, describeSource(item).group === "torrent"), tag: readyTag, text: [describeSource(item).name, describeSource(item).host, item.sizeBytes && formatBytes(item.sizeBytes)].filter(Boolean).join(" \xB7 ") }, readyKey(index))),
+      // 0.5.1: the full list, said plainly ("More download links (12)"), not only the chevron on the chosen one.
+      choosing && release && releases.length > 1 ? /* @__PURE__ */ (0, jsx)(TextAction, { focusKey: linksFocus, nextFocusDown: after(linksFocus), onPress: () => chooseSource(linksFocus), text: t2("download.moreLinks", { count: String(releases.length) }) }) : null,
       !job2 ? /* @__PURE__ */ (0, jsx)(
         Choice,
         {

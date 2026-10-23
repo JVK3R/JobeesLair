@@ -6,7 +6,7 @@ import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { memo, useRef, useState } from 'react';
 import { formatNumber2 } from '../i18n/core.js';
 import { useT } from '../i18n/index.js';
-import { FACETS, activeCount, facetCounts, facetTitle, filterGames, optionLabel } from '../state/catalog.js';
+import { FACETS, activeCount, facetCounts, facetTitle, filterGames, oneEach, optionLabel } from '../state/catalog.js';
 import { useNavActions } from '../state/nav.jsx';
 import { useStore } from '../state/store.jsx';
 import { Button2 } from '../ui/Button.jsx';
@@ -120,7 +120,7 @@ import { colors, radius } from '../ui/colors.js';
     const { filters, clearFilters } = store;
     const { focusLater } = useNavActions();
     const count = activeCount(filters);
-    const total = filterGames(store).length;
+    const total = (filters.platform?.length || store.query?.trim() ? filterGames(store) : oneEach(filterGames(store))).length;
     const opened = (0, useRef)(JSON.stringify(filters));
     const close = () => {
       if (JSON.stringify(filters) !== opened.current) focusLater("catalog:filters");

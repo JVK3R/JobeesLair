@@ -64,6 +64,8 @@ import { Text, View, motion } from '@ps5-react/core';
     if (state === "failed") return { icon: "download", label: "downloads.action.retry", onPress: () => run("resume") };
     if (state === "awaiting-browser") return { icon: "play", label: "downloads.action.continueOnPage", onPress: openGame };
     if (state === "downloaded") return { icon: "circleCheck", label: "downloads.action.install", onPress: () => run("register") };
+    // 0.5.1: extracted, but its game folder was not found then: look again and install.
+    if (state === "extracted") return { icon: "circleCheck", label: "downloads.action.install", onPress: () => run("installExtracted") };
     if (state === "attention") return { icon: "restart", label: "downloads.action.checkAgain", onPress: () => run("register") };
     return null;
   }

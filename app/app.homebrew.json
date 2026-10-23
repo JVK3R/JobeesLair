@@ -1,0 +1,51 @@
+{
+  "$schema": "https://raw.githubusercontent.com/half144/ps5-react/main/app.schema.json",
+  "titleId": "PPSA99472",
+  "contentId": "UP9000-PPSA99472_00-JOBEESLAIRHB0000",
+  "name": "Jobee'sLair Homebrew",
+  "version": "01.005.001",
+  "render": {
+    "width": 1920,
+    "height": 1080
+  },
+  "surface": {
+    "width": 1920,
+    "height": 1080
+  },
+  "refreshRate": 60,
+  "textFonts": [
+    "chinese",
+    "japanese",
+    "bengali",
+    "devanagari",
+    "arabic"
+  ],
+  "resources": [
+    "data/releases",
+    "data/pages",
+    "data/homebrew.json",
+    "data/private",
+    "i18n/locales"
+  ],
+  "payloads": [
+    {
+      "source": "native/companion_daemon.c",
+      "name": "companion-daemon.elf",
+      "libs": [
+        "-lSceUserService",
+        "-lSceSystemService"
+      ]
+    },
+    {
+      "source": "native/sandbox_sweeper.c",
+      "name": "sandbox-sweeper.elf",
+      "libs": [
+        "-lSceSystemService"
+      ]
+    }
+  ],
+  "filesystemAccess": "console",
+  "networking": true,
+  "userAgent": "JobeesLair-Homebrew/0.5.1 (PS5)",
+  "timeoutSeconds": 0
+}

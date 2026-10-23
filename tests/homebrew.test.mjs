@@ -285,19 +285,7 @@ test('companion: the homebrew list, an app, installing it and the dashboard', as
   assert.equal(dashboard.drives[0].name, 'Internal');
 });
 
-// 0.5.0 Pre Release 3: the list grows with nexgen999's PS5 Repository List (tools/homebrew/build-index.mjs).
-test('sources: every PS5 Repository List category maps to one of ours or to nothing; exclusions stay out', () => {
-  const sources = JSON.parse(readFileSync(path.join(repo, 'homebrew/sources.json'), 'utf8'));
-  const ours = new Set(sources.categories.map((category) => category.id));
-  assert.match(sources.upstream.config, /^https:\/\/raw\.githubusercontent\.com\/nexgen999\/PS5-Repository-List\//);
-  for (const [name, category] of Object.entries(sources.upstream.categories)) assert.ok(category === null || ours.has(category), `${name} -> ${category}`);
-  assert.equal(sources.upstream.categories.pc_apps, null, 'PC tools are not listed');
-  for (const repo2 of ['JVK3R/JobeesLair', 'axotk1k1/hdrezka-ps5']) assert.ok(sources.exclude.includes(repo2), repo2);
-  const listed = new Set(sources.apps.map((entry) => entry.repo.toLowerCase()));
-  for (const repo2 of sources.exclude) assert.ok(!listed.has(repo2.toLowerCase()), `${repo2} is excluded but listed`);
-  const builder = readFileSync(path.join(repo, 'tools/homebrew/build-index.mjs'), 'utf8');
-  assert.match(builder, /if \(excluded\.has\(lower\(full\)\)\) return \{ skip: 'excluded' \}/, 'a moved repository is excluded by its current name too');
-});
+// 0.5.1: the list (sources.json) and its builder live in JVK3R/JobeesLair-Homebrew, with their own test.
 
 // 0.5.0 Pre Release 4: "Report a problem" on the phone fetches the debug log as text.
 test('companion: the debug log comes as plain text, and only when the app hands one over', async () => {

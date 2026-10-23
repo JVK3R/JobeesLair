@@ -123,7 +123,7 @@ This notice is not legal advice and does not change the [LICENSE](LICENSE).
 | Path | What it is |
 | --- | --- |
 | `app/` | The application (JSX, state, catalog data) and `app.json` (title ID `PPSA99471`) |
-| `ps5-react/` | The framework it runs on, vendored from [half144/ps5-react](https://github.com/half144/ps5-react) |
+| `ps5-react/` | The framework it runs on, vendored from [JVK3R/ps5-react](https://github.com/JVK3R/ps5-react), the continuation of half144's PS5 React |
 | `tests/` | The app's tests and benchmarks |
 | `packaging/` | Builds the exFAT image and adds these docs to it |
 | `INSTALLATION-GUIDE.md`, `FEEDS.md`, `CHANGELOG.md` | Install steps, the feed format, what changed |
@@ -143,9 +143,11 @@ The tests need only Node.js 22+ and run on every push: `npm test` (logic), `npm 
 (screens), `npm run test:all` (both).
 
 The Homebrew section's list is nexgen999's [PS5 Repository List](https://github.com/nexgen999/PS5-Repository-List),
-read live, plus `homebrew/sources.json` (our own picks and categories, how his categories map to ours, and
-what is never listed); `node tools/homebrew/build-index.mjs` builds `homebrew/index.json` from each project's
-own GitHub data, and the `homebrew index` workflow does it every six hours.
+read live, plus our own picks and categories. It is built from each project's own GitHub data every six hours
+in its own repository, [JVK3R/JobeesLair-Homebrew](https://github.com/JVK3R/JobeesLair-Homebrew), which
+consoles read directly; `npm run homebrew:pull` refreshes the copy shipped in the app (`app/data/homebrew.json`)
+before a release. The same repository is the home of **Jobee'sLair Homebrew**, the Homebrew section built on its
+own (`packaging/homebrew-edition.sh`, title `PPSA99472`), which installs beside the store.
 
 To publish: raise the version in `app/version.js`, build, test the image on a console, then publish a
 release tagged with the same version (`v0.5.0`). Attach `JobeesLair.exfat` and `update.zip`
@@ -170,7 +172,8 @@ for money. If you'd like to support it, you can **[buy me a coffee ☕](https://
   list comes from it, with his permission, and grows with it
 - **Every homebrew developer** whose work the Homebrew section lists
 - **PS5 React — created by half144 and PS5 React contributors.**
-  [github.com/half144/ps5-react](https://github.com/half144/ps5-react)
+  The original repository is gone; the framework continues at
+  [github.com/JVK3R/ps5-react](https://github.com/JVK3R/ps5-react), where the changes made for Jobee'sLair live.
 
 Distributed under the GPL-3.0-or-later ([LICENSE](LICENSE)). Third-party notices are in `notices/` inside the
 app and in `ps5-react/docs/DEPENDENCIES.md`.

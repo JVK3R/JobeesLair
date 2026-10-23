@@ -79,6 +79,19 @@ jobs:
           sys.exit(1 if problems else 0)
           EOF
 
+      - name: Bug report relay
+        # "Report a bug" posts to the relay (tools/report-relay), whose address is this repository's REPORT_URL
+        # secret; the Discord webhook itself lives only in the relay. Without the secret the build has no button.
+        env:
+          REPORT_URL: ${{ secrets.REPORT_URL }}
+        run: |
+          if [ -n "$REPORT_URL" ]; then
+            printf '{"reportUrl": "%s"}\n' "$REPORT_URL" > app/data/private/report.json
+            echo "report.json written"
+          else
+            echo "REPORT_URL not set: no Report a bug in this build"
+          fi
+
       - name: Build
         working-directory: ps5-react
         run: python3 tools/build_ps5.py --app-dir "$GITHUB_WORKSPACE/app" --llvm /usr/bin

@@ -570,8 +570,11 @@ std::string extract(Session& session, CommandData& command, Archive& archive, Cm
     if (header.Dir) {
       if (mkdir(target.c_str(), 0777) && (errno != EEXIST || !plain_directory(target))) return strerror(errno);
     } else {
-      const int fd = open(target.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0666);
+      // MODIFIED (Jobee'sLair 0.5.1): 0777, as shared/archives.cpp create_file: a game's eboot.bin without the
+      // execute bit is refused by ShellCore before any process exists, and apps copied over FTP are 0777 throughout.
+      const int fd = open(target.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0777);
       if (fd < 0) return strerror(errno);
+      chmod(target.c_str(), 0777);
       session.writer.begin(fd, name);
       session.writing = true;
     }

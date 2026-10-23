@@ -4,3 +4,11 @@ homebrew/cache.json
 
 # Python bytecode from the brand scripts
 __pycache__/
+
+# Per-build private files (app/data/private/README.txt): the bug report webhook
+app/data/private/*
+!app/data/private/README.txt
+
+# wrangler state of the bug report relay (tools/report-relay)
+tools/report-relay/.wrangler/
+tools/report-relay/.dev.vars

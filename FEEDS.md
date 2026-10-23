@@ -87,11 +87,11 @@ dropped.
 
 | Field | Meaning |
 | --- | --- |
-| `url` | The file, or the host page the app resolves it from (MediaFire, Buzzheavier, …). |
+| `url` | The file, the host page the app resolves it from (MediaFire, Buzzheavier, …), or a `magnet:` link. A magnet downloads through the gamer's debrid service (TorBox or AllDebrid): the service fetches the torrent, the console downloads from it. A torrent of one file (or of one big file beside small ones) downloads as that file; one of many files comes as a single zip through TorBox and extracts like any archive (AllDebrid gives no zip, so it refuses those). Without a debrid key the source is listed but greyed. |
 | `browserUrl` | A page to open in the console's browser when the host needs a check there. |
 | `requiresBrowser` | `true` when the source always needs the browser. |
 | `format` | `pkg`, `fpkg`, `exfat`, `ffpfs`, `ffpfsc`, `ffpkg`, `rar`, `7z`, `zip` or `binary`; from the file name when absent. |
-| `filename` | The name to save as; the URL's last segment when absent. |
+| `filename` | The name to save as; the URL's last segment (a magnet's `dn` name) when absent. For a torrent, also which of its files to download. |
 | `sizeBytes`, `version`, `sha256` | Size check, the version shown, and a whole-file SHA-256 checked after download. |
 | `provider` | The host's name as shown; the URL's host when absent. |
 | `label` | The source's name in the source list. Volumes of one archive share a label but for `part 1`, `part 2`…, and are offered as one set. |

@@ -15,12 +15,14 @@ import { colors, radius } from './colors.js';
   var HOST = { full: radius.pill, lg: radius.lg, md: radius.md };
   // `inset` draws the frame inside the element (cards clip what is drawn outside them).
   // MODIFIED (0.5.0 Pre Release 2): `color` draws it in another color (the Homebrew section's own).
-  function Frame({ host, inset = false, color }) {
+  // 0.5.1: `instant` draws it at once. A card's frame (ShineBorder) faded in on every step along a row, so the
+  // frame blinked while the row scrolled; it is solid from the first frame now, as CardFocus intends.
+  function Frame({ host, inset = false, color, instant = false }) {
     const outer = inset || host >= radius.pill ? host : host + OUTSET;
     const out = inset ? 0 : -px(OUTSET);
     return /* @__PURE__ */ (0, jsx)(motion.View, {
       pointerEvents: "none",
-      initial: { opacity: 0 },
+      initial: instant ? false : { opacity: 0 },
       animate: { opacity: 1 },
       transition: ARRIVE,
       style: { position: "absolute", top: out, right: out, bottom: out, left: out, borderRadius: outer, borderWidth: px(WIDTH), borderColor: color ?? colors.accentHi }
@@ -33,7 +35,7 @@ import { colors, radius } from './colors.js';
     return useIsFocused() ? /* @__PURE__ */ (0, jsx)(Frame, { host: host ?? (round === "xl" ? radius.lg : HOST[round] ?? radius.md) }) : null;
   }
   function ShineBorder({ radius: host = radius.md }) {
-    return /* @__PURE__ */ (0, jsx)(Frame, { host, inset: true });
+    return /* @__PURE__ */ (0, jsx)(Frame, { host, inset: true, instant: true });
   }
 
 export { FocusFrame, FocusRing, ShineBorder };

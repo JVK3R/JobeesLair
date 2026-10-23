@@ -10,8 +10,8 @@ import { memo } from 'react';
 import { GameRail } from './GameRail.jsx';
 import { games } from '../data/catalog.js';
 import { useT } from '../i18n/index.js';
-import { NO_FILTERS, fromArchive, sortGames } from '../state/catalog.js';
-import { ready1360 } from '../state/formats.js';
+import { NO_FILTERS, fromArchive, oneEach, ratingScore, readyHere, readyLabel, sortGames, topRated } from '../state/catalog.js';
+import { isoDate } from '../state/clock.js';
 import { useNavActions } from '../state/nav.jsx';
 import { useStoreActions } from '../state/store.jsx';
 import { GameCard } from '../ui/GameCard.jsx';
@@ -27,11 +27,18 @@ import { useEffect, useState } from 'react';
 
   var PORTRAIT = 152;
   // Famous games with banner art, the ones Archive.org serves (fastest) first.
-  var FEATURED = [...games].filter((game) => game.art.hero).sort((a, b) => fromArchive(b) - fromArchive(a) || b.recommendations - a.recommendations).slice(0, 12);
-  var RECENT = sortGames(games.filter((game) => game.releaseDate), "newest").slice(0, 15);
-  var TOP = sortGames(games.filter((game) => game.metacritic != null), "rating").slice(0, 15);
-  var READY_ALL = games.filter((game) => ready1360(game.formats ?? []));
-  var READY = sortGames(READY_ALL, "relevance").slice(0, 15);
+  // 0.5.1: each row shows a game once (state/catalog.js oneEach), not its PS4 and PS5 editions side by side.
+  var FEATURED = oneEach([...games].filter((game) => game.art.hero).sort((a, b) => fromArchive(b) - fromArchive(a) || b.recommendations - a.recommendations)).slice(0, 12);
+  var RECENT = oneEach(sortGames(games.filter((game) => game.releaseDate), "newest")).slice(0, 15);
+  // 0.5.1: by PlayStation Store rating, weighed by how many rated (state/catalog.js topRated), over every game.
+  var TOP = topRated(games).slice(0, 20);
+  // 0.5.1: the games the live catalog added in the last seven days (their addedAt, state/feed-format.js), the
+  // newest first, then the best rated. Nothing new: no row.
+  var WEEK_AGO = isoDate(Date.now() - 7 * 864e5);
+  var NEW_ALL = oneEach(games.filter((game) => game.addedAt && game.addedAt >= WEEK_AGO).sort((a, b) => b.addedAt.localeCompare(a.addedAt) || ratingScore(b) - ratingScore(a)));
+  var NEW_WEEK = NEW_ALL.slice(0, 20);
+  var READY_ALL = games.filter(readyHere);
+  var READY = oneEach(sortGames(READY_ALL, "relevance")).slice(0, 15);
   var READY_GREEN = "#4ade80";
   var FIRST_FEATURED = FEATURED.length ? `lane:featured:${FEATURED[0].id}` : void 0;
   function useSeeAll() {
@@ -113,11 +120,15 @@ import { useEffect, useState } from 'react';
       setSort("relevance");
       focusLater("catalog:filters");
     };
-    return /* @__PURE__ */ (0, jsx)(Lane, { name: "ready", title: t2("browse.lane.ready"), list: READY, accent: READY_GREEN, count: READY_ALL.length, seeAll });
+    return /* @__PURE__ */ (0, jsx)(Lane, { name: "ready", title: readyLabel(t2("browse.lane.ready")), list: READY, accent: READY_GREEN, count: READY_ALL.length, seeAll });
+  });
+  var NewLane = (0, memo)(function NewLane2() {
+    const t2 = useT();
+    return jsx(Lane, { name: "new", title: t2("browse.lane.newWeek"), list: NEW_WEEK, count: NEW_ALL.length });
   });
   var TopLane = (0, memo)(function TopLane2() {
     const t2 = useT();
     return /* @__PURE__ */ (0, jsx)(Lane, { name: "top", title: t2("browse.lane.top"), list: TOP, seeAll: useSeeAll()("rating") });
   });
 
-export { FIRST_FEATURED, FeaturedLane, HomebrewLane, ReadyLane, RecentLane, TopLane };
+export { FIRST_FEATURED, FeaturedLane, HomebrewLane, NewLane, ReadyLane, RecentLane, TopLane };

@@ -17,8 +17,16 @@ import { webURL } from './download-sources.js';
 import { savedList } from './saved.js';
 import { FileSystem, Http } from '@ps5-react/core';
 
-  // The JS heap is 32 MiB for everything: a few modest feeds, each read whole.
-  var MAX_FEEDS = 4, MAX_BYTES = 2 * 1024 * 1024;
+  // The JS heap is 32 MiB for everything: a few modest feeds, each read whole. MODIFIED (0.5.1): the live
+  // catalog below takes one of the four places, so a player adds up to three of their own.
+  var MAX_FEEDS = 3, MAX_BYTES = 2 * 1024 * 1024;
+  // MODIFIED (0.5.1): the live catalog, built every few hours from the public Pegasus catalogs
+  // (tools/catalog/live-feed.mjs, .github/workflows/catalog-live.yml): games and links newer than this build's
+  // bundled catalog. Every console reads it like a feed the player added, without being listed in Settings,
+  // so a game added there shows up in the store the next time Jobee'sLair starts.
+  var LIVE_FEED = "https://raw.githubusercontent.com/JVK3R/JobeesLair/main/catalog/live.json";
+  // The feeds read and refreshed: the live catalog first, then the player's.
+  var allFeeds = () => [LIVE_FEED, ...feedList.get().filter((url) => url !== LIVE_FEED)];
   var DIR = `${DATA_DIR}/feeds`;
   // Caches an earlier build left in the old data folder are read until the feed refreshes into this one.
   var LEGACY_DIR = `${LEGACY_DATA_DIR}/feeds`;
@@ -51,9 +59,11 @@ import { FileSystem, Http } from '@ps5-react/core';
   };
   var summary = (cache) => ({ name: cache.name, games: cache.games, fetchedAt: cache.fetchedAt, from: cache.from ?? cache.url, mirrors: Array.isArray(cache.mirrors) ? cache.mirrors : [] });
   // Every listed feed's cached games, validated again: { game, page, releases } as parseFeed gives them.
+  // The store ratings the feeds carry (0.5.1), [stars, count] by title ID; the live catalog's first, as it is listed first.
+  var feedRatings = {};
   function loadFeedGames() {
     const out = [];
-    for (const url of feedList.get()) {
+    for (const url of allFeeds()) {
       const cache = readCache(url);
       if (!cache) continue;
       try {
@@ -62,6 +72,7 @@ import { FileSystem, Http } from '@ps5-react/core';
         meta.set(url, summary(cache));
         setIndex(url, feed.games);
         out.push(...feed.games);
+        for (const [id, pair] of Object.entries(feed.ratings ?? {})) if (!feedRatings[id]) feedRatings[id] = pair;
       } catch (error2) {
         console.log(`feeds: cached ${url} unreadable: ${error2.message}`);
       }
@@ -116,7 +127,7 @@ import { FileSystem, Http } from '@ps5-react/core';
     if (!inflight.has(url)) inflight.set(url, fetchFeed(url).finally(() => inflight.delete(url)));
     return inflight.get(url);
   }
-  var listed = (url) => feedList.get().includes(url);
+  var listed = (url) => url === LIVE_FEED || feedList.get().includes(url);
   // A refresh runs while the store or Settings is on screen, and checking a 2 MiB feed took the console's
   // interpreter about a second per feed in one piece: the screen stopped answering (Settings froze when
   // opened just after launch, when the feeds refresh, or on Refresh feeds). Its checking and hashing now
@@ -182,7 +193,7 @@ import { FileSystem, Http } from '@ps5-react/core';
   function refreshFeeds() {
     return refreshing ?? (refreshing = (async () => {
       try {
-        for (const url of feedList.get()) await refreshFeed(url);
+        for (const url of allFeeds()) await refreshFeed(url);
       } finally {
         refreshing = null;
       }
@@ -192,7 +203,7 @@ import { FileSystem, Http } from '@ps5-react/core';
   function addFeed(value) {
     const url = checkURL(value);
     const urls = feedList.get();
-    if (urls.includes(url)) throw new Error("That feed is already added.");
+    if (urls.includes(url) || url === LIVE_FEED) throw new Error("That feed is already added.");
     if (urls.length >= MAX_FEEDS) throw new Error(`Up to ${MAX_FEEDS} feeds. Remove one first.`);
     feedList.set([...urls, url]);
     void refreshFeed(url);
@@ -250,7 +261,7 @@ import { FileSystem, Http } from '@ps5-react/core';
       void refreshFeed(url);
       return;
     }
-    if (urls.includes(url)) throw new Error("That feed is already added.");
+    if (urls.includes(url) || url === LIVE_FEED) throw new Error("That feed is already added.");
     feedList.set(urls.map((item, at) => at === index ? url : item));
     const mine = userMirrors(from).filter((mirror) => mirror !== url);
     const next = { ...mirrorStore.get() };
@@ -305,4 +316,4 @@ import { FileSystem, Http } from '@ps5-react/core';
     return feedsSnapshot(urls);
   }
 
-export { MAX_FEEDS, MAX_MIRRORS, addFeed, addMirror, feedIndexVersion, feedIndexes, feedsSnapshot, loadFeedGames, refreshFeeds, removeFeed, removeMirror, replaceFeed, subscribeFeeds, useFeeds };
+export { LIVE_FEED, MAX_FEEDS, MAX_MIRRORS, addFeed, addMirror, feedIndexVersion, feedIndexes, feedRatings, feedsSnapshot, loadFeedGames, refreshFeeds, removeFeed, removeMirror, replaceFeed, subscribeFeeds, useFeeds };

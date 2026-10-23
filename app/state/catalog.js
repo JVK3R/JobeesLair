@@ -6,16 +6,43 @@
 // MODIFIED: bundledIndex keeps the bundled titles' ids and direct flags for the live game counter.
 // MODIFIED: each game carries `formats`, the kinds of download it has (state/formats.js), for the Format filter:
 // the bundled games' from data/formats.js, a feed's releases sorted when the feeds load.
+// MODIFIED (0.5.1): each game carries its PlayStation Store star rating, `stars` and `ratingCount` (the live
+// catalog's when it has one, else data/ratings.js), and the rating sort and Top Rated go by ratingScore.
 
 import { features, games, twins } from '../data/catalog.js';
 import { formats as bundledFormats } from '../data/formats.js';
 import { formatDate2, t } from '../i18n/core.js';
 import { createPageCache } from './page-cache.js';
-import { loadFeedGames } from './feeds.js';
+import { feedRatings, loadFeedGames } from './feeds.js';
+import { ratings as bundledRatings } from '../data/ratings.js';
 import { createReleaseCache } from './release-cache.js';
 import { KINDS, gameFormats, ready1360 } from './formats.js';
+import { deviceFacts } from './device.js';
+import { consoleFirmware, firmwareText, ps5FakePackagesLaunch } from './firmware.js';
 import { FileSystem, Image } from '@ps5-react/core';
 
+  // 0.5.1: "Ready" is for this console's firmware. At 11.60 or lower PS5 fake packages start too, so a PS5 game
+  // with one is ready there, and the label names that firmware ("Ready for 9.60"); above, it is 13.60's rule and
+  // label, as before. Unknown firmware reads as 13.60.
+  // Read once the console has said its firmware (it cannot change while the app runs): readyHere asks for
+  // every game of every pass.
+  var lowKnown;
+  var lowFirmware = () => {
+    if (lowKnown !== void 0) return lowKnown;
+    try {
+      const text = deviceFacts().firmware;
+      if (!text) return null;
+      lowKnown = ps5FakePackagesLaunch(text) === true ? firmwareText(consoleFirmware(text)) : null;
+      return lowKnown;
+    } catch {
+      return null;
+    }
+  };
+  var readyHere = (game) => ready1360(game.formats ?? []) || Boolean(lowFirmware()) && game.platform === "ps5" && (game.formats ?? []).includes("fpkg");
+  var readyLabel = (text) => {
+    const low = lowFirmware();
+    return low ? text.replace("13.60", low) : text;
+  };
   var COVER_WIDTH = 440;
   var coverSize = (url) => url.startsWith("https://image.api.playstation.com/") ? url.replace(/([?&]w=)\d+/, `$1${COVER_WIDTH}`) : url;
   var releaseCache = createReleaseCache((path) => FileSystem.readFile(`/app0/${path}`));
@@ -104,6 +131,16 @@ import { FileSystem, Image } from '@ps5-react/core';
   }
   var editionsByWork = /* @__PURE__ */ new Map();
   for (const game of entries) if (game.work) editionsByWork.set(game.work, [...editionsByWork.get(game.work) ?? [], game]);
+  for (const game of entries) {
+    const pair = feedRatings[game.id] ?? bundledRatings[game.id];
+    if (pair) [game.stars, game.ratingCount] = pair;
+  }
+  // An edition the store has no rating for takes its work's best-known one (the PS4 and PS5 versions of a game).
+  for (const game of entries) {
+    if (game.ratingCount || !game.work) continue;
+    const rated = (editionsByWork.get(game.work) ?? []).filter((edition2) => edition2.ratingCount).sort((a, b) => b.ratingCount - a.ratingCount)[0];
+    if (rated) [game.stars, game.ratingCount] = [rated.stars, rated.ratingCount];
+  }
   var listed = new Set(games);
   for (const game of entries) game.platforms = [...new Set(editionsOf(game).map((edition2) => edition2.platform))].sort();
   function editionsOf(game) {
@@ -124,14 +161,37 @@ import { FileSystem, Image } from '@ps5-react/core';
     // Most popular puts the games Archive.org serves first: the app downloads them fastest.
     { id: "relevance", compare: (a, b) => fromArchive(b) - fromArchive(a) || b.recommendations - a.recommendations },
     { id: "newest", compare: (a, b) => b.releaseDate.localeCompare(a.releaseDate) },
-    { id: "rating", compare: (a, b) => (b.metacritic ?? 0) - (a.metacritic ?? 0) },
+    { id: "rating", compare: (a, b) => ratingScore(b) - ratingScore(a) || (b.metacritic ?? 0) - (a.metacritic ?? 0) },
     { id: "size", compare: (a, b) => (b.sizeGb ?? 0) - (a.sizeGb ?? 0) },
     { id: "title", compare: (a, b) => a.title.localeCompare(b.title) }
   ];
+  // A game's store rating weighed by how many rated it: the average pulled toward RATING_PRIOR stars by
+  // RATING_WEIGHT imagined ratings, so 4.9 stars from 40 people ranks under 4.8 from 70 000. 0 when unrated.
+  var RATING_PRIOR = 3.5, RATING_WEIGHT = 500;
+  // The fewest ratings a game needs to stand in Top Rated.
+  var TOP_RATED_MIN = 200;
+  var ratingScore = (game) => game.ratingCount ? (game.stars * game.ratingCount + RATING_PRIOR * RATING_WEIGHT) / (game.ratingCount + RATING_WEIGHT) : 0;
+  // One card a game, the first of each in `list`'s order: the PS4 and PS5 editions of a work, and the regions of
+  // one store page (they share its rating exactly; a rating from TOP_RATED_MIN people is never shared by chance).
+  // The Browse rows and the catalog grid show a game once; its page offers the other editions.
+  // A title as editions share it: no ™/®, no platform word, letters and digits only.
+  var plainTitle = (title) => title.toLowerCase().replace(/[™®©]/g, "").replace(/\b(?:ps[45]|playstation ?[45])\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  function oneEach(list) {
+    const seen = /* @__PURE__ */ new Set();
+    return list.filter((game) => {
+      // The same name and the same stars is one game too (eFootball's editions, rated a person apart).
+      const keys = [...game.work ? [`work:${game.work}`] : [], ...game.ratingCount >= TOP_RATED_MIN ? [`rated:${game.stars}/${game.ratingCount}`, `named:${plainTitle(game.title)}/${game.stars}`] : []];
+      if (keys.some((key) => seen.has(key))) return false;
+      for (const key of keys) seen.add(key);
+      return true;
+    });
+  }
+  var topRated = (list) => oneEach(sortGames(list.filter((game) => game.ratingCount >= TOP_RATED_MIN), "rating"));
   var sortLabel = (id) => t(`sort.${id}`);
   var sortGames = (list, id) => [...list].sort(SORTS.find((sort) => sort.id === id).compare);
   var fromArchive = (game) => Boolean(game.providers?.includes("archive.org"));
   function showcase(list, count) {
+    list = oneEach(list);
     const first = list.filter(fromArchive);
     return first.length >= count ? first.slice(0, count) : [...first, ...list.filter((game) => !fromArchive(game))].slice(0, count);
   }
@@ -195,7 +255,7 @@ import { FileSystem, Image } from '@ps5-react/core';
         { value: "ready", label: "release.compat.ready", name: "13.60 Ready" },
         ...KINDS.filter((kind) => games.filter((game) => game.formats.includes(kind)).length >= MIN_KIND_GAMES).map((kind) => ({ value: kind, label: `release.type.${kind}`, name: kind }))
       ],
-      has: (game, value) => value === "ready" ? ready1360(game.formats) : game.formats.includes(value)
+      has: (game, value) => value === "ready" ? readyHere(game) : game.formats.includes(value)
     },
     // A source the app downloads by itself, with no CAPTCHA page to pass in a browser.
     { key: "access", options: [{ value: "direct", label: "filters.access.direct" }], has: (game) => Boolean(game.direct) },
@@ -223,7 +283,7 @@ import { FileSystem, Image } from '@ps5-react/core';
   function optionLabel(option) {
     if (!option.label) return option.name;
     const text = t(option.label);
-    return text === option.label ? option.name : text;
+    return readyLabel(text === option.label ? option.name : text);
   }
   var facetLabel = (key, value) => {
     const option = FACETS.find((facet) => facet.key === key).options.find((candidate) => candidate.value === value);
@@ -299,4 +359,4 @@ import { FileSystem, Image } from '@ps5-react/core';
   }
   var formatDate3 = (iso) => iso ? formatDate2(iso) : "\u2014";
 
-export { CDN_HOST, FACETS, NO_FILTERS, SORTS, activeCount, bundledIndex, editionsOf, facetCounts, facetLabel, facetTitle, featureLabel, filterGames, formatDate3, fromArchive, genreLabel, genres, getGame, listedId, onCdn, optionLabel, relatedGames, showcase, sortGames, sortLabel, summaryOf, toggleValue, warmCovers };
+export { CDN_HOST, FACETS, NO_FILTERS, SORTS, activeCount, bundledIndex, editionsOf, facetCounts, facetLabel, facetTitle, featureLabel, filterGames, formatDate3, fromArchive, genreLabel, genres, getGame, listedId, onCdn, oneEach, optionLabel, ratingScore, readyHere, readyLabel, relatedGames, showcase, sortGames, sortLabel, summaryOf, toggleValue, topRated, warmCovers };

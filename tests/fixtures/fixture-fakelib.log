@@ -1,0 +1,69 @@
+[01:37:29]   [IMG] Mounting image (pfsc, legacy-1.6): /data/homebrew/PPSA02530.ffpfsc -> /mnt/shadowmnt/pfsc/PPSA02530_07821acd
+[01:37:29]   [IMG][LVD] attach backend selected for /data/homebrew/PPSA02530.ffpfsc
+[01:37:29]   [IMG][LVD] attach try: ver=0 sec=4096 sec2=4096 raw=0x9 flags=0x1c img=9
+[01:37:29]   [IMG][LVD] attach returned unit=2
+[01:37:29]   [IMG][LVD] Attached as /dev/lvd2
+[01:37:29]   [IMG][LVD] PFS ro=1 budgetid=game mkeymode=AC sigverify=0 playgo=0 disc=0 finalized=0 pubkey_ver=0 key_ver=0
+[01:37:29]   [IMG][LVD] nested PFS profile: selector=0x02 lvd_img=9 gddr5=0
+[01:37:29]   [IMG][LVD] Mounted (pfsc) /dev/lvd2 -> /mnt/shadowmnt/pfsc/PPSA02530_07821acd
+[01:37:29]   [IMG] FS stats: path=/mnt/shadowmnt/pfsc/PPSA02530_07821acd type=pfs bsize=65536 iosize=65536 blocks=587510 bfree=0 bavail=0 files=0 ffree=0 flags=0x210001041 total=38503055360B free=0B avail=0B
+[01:37:29]   [IMG] Mounting image (exfatfs, legacy-1.6): /mnt/shadowmnt/pfsc/PPSA02530_07821acd/PPSA02530.exfat -> /mnt/shadowmnt/PPSA02530_78a0f641
+[01:37:29]   [IMG][LVD] attach backend selected for /mnt/shadowmnt/pfsc/PPSA02530_07821acd/PPSA02530.exfat
+[01:37:29]   [IMG][LVD] attach try: ver=0 sec=512 sec2=65536 raw=0x9 flags=0x1c img=0
+[01:37:29]   [IMG][LVD] attach returned unit=3
+[01:37:29]   [IMG][LVD] Attached as /dev/lvd3
+[01:37:29]   [IMG][LVD] Mounted (exfatfs) /dev/lvd3 -> /mnt/shadowmnt/PPSA02530_78a0f641
+[01:37:29]   [IMG] FS stats: path=/mnt/shadowmnt/PPSA02530_78a0f641 type=exfatfs bsize=65536 iosize=65536 blocks=1394736 bfree=7429 bavail=7429 files=2856419328 ffree=15214592 flags=0x210001041 total=91405418496B free=486866944B avail=486866944B
+[01:37:29]   [ACTION] Installing: PRAGMATA (PPSA02530)
+[01:37:32]   [LINK] nullfs mounted: /mnt/shadowmnt/PPSA02530_78a0f641 -> /system_ex/app/PPSA02530
+[01:37:32]   [LINK] mount.lnk created: /user/app/PPSA02530/mount.lnk -> /mnt/shadowmnt/PPSA02530_78a0f641
+[01:37:32]   [LINK] mount_img.lnk created: /user/app/PPSA02530/mount_img.lnk -> /data/homebrew/PPSA02530.ffpfsc layers=2
+[01:37:32]   [LINK] image source cache update failed: /data/homebrew/PPSA02530.ffpfsc -> /mnt/shadowmnt/PPSA02530_78a0f641
+[01:37:32]   [SHELLCORE] AppInstallAll bridge consumed: PPSA02530 result=0x00000000
+[01:37:32]   [REG] Installed NEW!
+[01:37:32] NOTIFY: installed game PPSA02530
+[01:37:32]   [DB] snd0info updated rows=1
+[01:37:32]   [LINK] runtime layers released: PPSA02530
+[01:37:32]   [IMG][LVD] unmount start: source=/data/homebrew/JobeesLair.exfat mount=/mnt/shadowmnt/JobeesLair_a25d8451 unit=1
+[01:37:32]   [IMG] Removed mount directory: /mnt/shadowmnt/JobeesLair_a25d8451
+[01:37:32]   [IMG][LVD] unmount complete: source=/data/homebrew/JobeesLair.exfat mount=/mnt/shadowmnt/JobeesLair_a25d8451 unit=1 error=0
+[01:37:32]   [IMG][LVD] unmount start: source=/data/homebrew/PPSA02530.ffpfsc mount=/mnt/shadowmnt/pfsc/PPSA02530_07821acd unit=2
+[01:37:32]   [IMG] container child unmount: /mnt/shadowmnt/pfsc/PPSA02530_07821acd source=/mnt/shadowmnt/pfsc/PPSA02530_07821acd/PPSA02530.exfat
+[01:37:32]   [IMG][LVD] unmount start: source=/mnt/shadowmnt/pfsc/PPSA02530_07821acd/PPSA02530.exfat mount=/mnt/shadowmnt/PPSA02530_78a0f641 unit=3
+[01:37:32]   [IMG] Removed mount directory: /mnt/shadowmnt/PPSA02530_78a0f641
+[01:37:32]   [IMG][LVD] unmount complete: source=/mnt/shadowmnt/pfsc/PPSA02530_07821acd/PPSA02530.exfat mount=/mnt/shadowmnt/PPSA02530_78a0f641 unit=3 error=0
+[01:37:32]   [IMG] Removed mount directory: /mnt/shadowmnt/pfsc/PPSA02530_07821acd
+[01:37:32]   [IMG][LVD] unmount complete: source=/data/homebrew/PPSA02530.ffpfsc mount=/mnt/shadowmnt/pfsc/PPSA02530_07821acd unit=2 error=0
+[01:37:32] NOTIFY: Library synchronized.
+Found 11 games.
+[01:37:32] [STARTUP] scanner startup sync done
+[01:37:32]   [API] HTTP/JSON ready: http://127.0.0.1:10101/api/v1 (v1, workers=8, limit=32)
+[01:37:35]   [IMG] Mounting image (pfsc, legacy-1.6): /data/homebrew/PPSA02530.ffpfsc -> /mnt/shadowmnt/pfsc/PPSA02530_07821acd
+[01:37:35]   [IMG][LVD] attach backend selected for /data/homebrew/PPSA02530.ffpfsc
+[01:37:35]   [IMG][LVD] attach try: ver=0 sec=4096 sec2=4096 raw=0x9 flags=0x1c img=9
+[01:37:35]   [IMG][LVD] attach returned unit=1
+[01:37:35]   [IMG][LVD] Attached as /dev/lvd1
+[01:37:35]   [IMG][LVD] PFS ro=1 budgetid=game mkeymode=AC sigverify=0 playgo=0 disc=0 finalized=0 pubkey_ver=0 key_ver=0
+[01:37:35]   [IMG][LVD] nested PFS profile: selector=0x02 lvd_img=9 gddr5=0
+[01:37:35]   [IMG][LVD] Mounted (pfsc) /dev/lvd1 -> /mnt/shadowmnt/pfsc/PPSA02530_07821acd
+[01:37:35]   [IMG] FS stats: path=/mnt/shadowmnt/pfsc/PPSA02530_07821acd type=pfs bsize=65536 iosize=65536 blocks=587510 bfree=0 bavail=0 files=0 ffree=0 flags=0x210001041 total=38503055360B free=0B avail=0B
+[01:37:35]   [IMG] Mounting image (exfatfs, legacy-1.6): /mnt/shadowmnt/pfsc/PPSA02530_07821acd/PPSA02530.exfat -> /mnt/shadowmnt/PPSA02530_78a0f641
+[01:37:35]   [IMG][LVD] attach backend selected for /mnt/shadowmnt/pfsc/PPSA02530_07821acd/PPSA02530.exfat
+[01:37:35]   [IMG][LVD] attach try: ver=0 sec=512 sec2=65536 raw=0x9 flags=0x1c img=0
+[01:37:35]   [IMG][LVD] attach returned unit=2
+[01:37:35]   [IMG][LVD] Attached as /dev/lvd2
+[01:37:35]   [IMG][LVD] Mounted (exfatfs) /dev/lvd2 -> /mnt/shadowmnt/PPSA02530_78a0f641
+[01:37:35]   [IMG] FS stats: path=/mnt/shadowmnt/PPSA02530_78a0f641 type=exfatfs bsize=65536 iosize=65536 blocks=1394736 bfree=7429 bavail=7429 files=2856419328 ffree=15214592 flags=0x210001041 total=91405418496B free=486866944B avail=486866944B
+[01:37:35]   [LINK] nullfs mounted: /mnt/shadowmnt/PPSA02530_78a0f641 -> /system_ex/app/PPSA02530
+[01:37:35]   [SHELLCORE] launch mount ready: PPSA02530
+[01:37:35]   [FAKELIB] game mounted for PPSA02530: /mnt/shadowmnt/PPSA02530_78a0f641/fakelib -> /mnt/sandbox/PPSA02530_000/GRzf2AS97L/common/lib
+[01:37:35]   [FAKELIB] directory mounted for PPSA02530: /data -> /mnt/sandbox/PPSA02530_000/data
+[01:37:35]   [FAKELIB] directory mounted for PPSA02530: /preinst/common/font -> /mnt/sandbox/PPSA02530_000/preinst/common/font
+[01:37:35]   [SHELLCORE] sandbox ready handled: PPSA02530
+[01:37:36]   [SHELLFLAG] SceLncUtilSystemStatus poll rc=0x80020010
+[01:37:37]   [GAME] started: PPSA02530 pid=246 app_id=0x0000E018
+[01:37:37]   [MDBG] coredump privileges enabled
+[01:37:37]   [MDBG] log monitor ready: PPSA02530 buffer_size=0x20018
+[01:37:37]   [MDBG] monitoring game errors: PPSA02530 pid=246 for up to 60 seconds
+[01:37:38]   [SHELLFLAG] SceShellCoreUtilAppFocus value=0x000000000000E018 delta=0x000000000000E01F low32=0x0000E018 high32=0x00000000 decoded=APP_ID=0x0000E018
+[01:38:37]   [MDBG] game error monitoring expired: PPSA02530 pid=246

@@ -26,8 +26,10 @@ import { useFocus } from '@ps5-react/core';
     }, []);
     return null;
   }
+import { HOMEBREW_ONLY } from '../edition.js';
   function NavProvider({ children }) {
-    const [stack, setStack] = (0, useState)([{ name: "browse" }]);
+    // 0.5.1: the homebrew-only edition opens on the Homebrew section; there is no store page under it.
+    const [stack, setStack] = (0, useState)([{ name: HOMEBREW_ONLY ? "homebrew" : "browse" }]);
     const [request, setRequest] = (0, useState)(null);
     const [immersive, setImmersive] = (0, useState)(0);
     const current = (0, useRef)(stack);

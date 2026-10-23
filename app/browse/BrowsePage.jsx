@@ -17,7 +17,7 @@ import { PageHints } from './PageHints.jsx';
 import { PopularRail } from './PopularRail.jsx';
 import { RecentRow } from './RecentRow.jsx';
 import { Spotlight } from './Spotlight.jsx';
-import { FeaturedLane, HomebrewLane, ReadyLane, RecentLane, TopLane } from './Lanes.jsx';
+import { NewLane, FeaturedLane, HomebrewLane, ReadyLane, RecentLane, TopLane } from './Lanes.jsx';
 import { useT } from '../i18n/index.js';
 import { StoreFreeze } from '../state/store.jsx';
 import { useFavoriteAction } from '../ui/GameCard.jsx';
@@ -39,12 +39,13 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
         /* @__PURE__ */ (0, jsx)(Spotlight, {})
       ] }),
       /* @__PURE__ */ (0, jsx)(FeaturedLane, {}),
+      /* @__PURE__ */ (0, jsx)(TopLane, {}),
+      /* @__PURE__ */ (0, jsx)(NewLane, {}),
       /* @__PURE__ */ (0, jsx)(ReadyLane, {}),
       /* @__PURE__ */ (0, jsx)(ContinueRow, {}),
       /* @__PURE__ */ (0, jsx)(PopularRail, {}),
       /* @__PURE__ */ (0, jsx)(RecentLane, {}),
       /* @__PURE__ */ (0, jsx)(HomebrewLane, {}),
-      /* @__PURE__ */ (0, jsx)(TopLane, {}),
       /* @__PURE__ */ (0, jsx)(RecentRow, {}),
       /* @__PURE__ */ (0, jsx)(CdnRail, {}),
       /* @__PURE__ */ (0, jsx)(GenreRail, {}),
