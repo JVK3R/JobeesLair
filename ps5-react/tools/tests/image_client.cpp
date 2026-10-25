@@ -150,6 +150,25 @@ int main(int argc, char** argv) {
                 "\"pressed\":%zu,\"relieved\":%s,\"full\":\"%s\"}\n",
                 loaded, calm, held, held_decoded, reloaded, restored, pressed,
                 !relieved.empty() && relieved[0].ready ? "true" : "false", full.empty() ? "" : full[0].error.c_str());
+  } else if (mode == "starved") {
+    // 12 images of 4 MiB fit the 64 MiB budget, 11 of them unused. A decode refused for want of heap (69% of a
+    // 100 MiB probe: no pressure yet, but the decode would pass 85%) trims the unused ones to 16 MiB before its
+    // retry 1 s later, as a memory hold does; the retry finishes once the heap has room.
+    std::vector<std::uint32_t> ids;
+    for (int i = 0; i < 12; ++i) ids.push_back(load(url + "?n=" + std::to_string(i), 1024, 1024, 2, now));
+    const auto loaded = wait(12, 30000).size();
+    for (std::size_t i = 1; i < ids.size(); ++i) images::release(ids[i], false);
+    wait(1, 50);
+    const auto calm = evicted.size();
+    images::set_heap_probe([] { return images::Heap{heap_live.load(), 100 * 1024 * 1024}; });
+    heap_live = 69 * 1024 * 1024;
+    load(url + "?n=starved", 1024, 1024, 2, now);
+    const auto early = wait(1, 600);
+    const auto trimmed = evicted.size() - calm;
+    heap_live = 50 * 1024 * 1024;
+    const auto retried = wait(1, 10000);
+    std::printf("{\"loaded\":%zu,\"calm\":%zu,\"early\":%zu,\"trimmed\":%zu,\"ready\":%s}\n", loaded, calm, early.size(),
+                trimmed, !retried.empty() && retried[0].ready ? "true" : "false");
   } else {
     return 2;
   }

@@ -4,6 +4,74 @@ What changed in each version of Jobee'sLair. Each release on
 [GitHub](https://github.com/JVK3R/JobeesLair/releases) carries the full notes, the files and their
 SHA-256 checksums.
 
+## 0.5.2 (2026-10-25)
+
+- **Jobee'sLair online.** The bottom bar shows how many people are on Jobee'sLair right now, and announcements
+  from Jobee'sLair sit in a bar under the top menu on every section until they're taken down; with a few up, they
+  take turns, warnings first (Settings, About & credits shows them whole). To help decide what to test and fix,
+  the app shares anonymous stats every five minutes while it's open: a random ID made on the console, the app's
+  version, the firmware and the language, plus which Homebrew apps install or fail (without the ID). Never your
+  PSN name, the console's own ID, your games or your downloads, and IP addresses aren't kept. Turn it off in
+  Settings, About & credits; the count and announcements still come, with nothing sent about the console. The
+  server is a Cloudflare Worker at api.jobees.org (tools/online).
+- **Fix it.** A game or Homebrew app that won't start has a Fix it button: ✕ on its Library tile, in its
+  Options, and in "Why won't it start?". It reads ShadowMount's log first and tells you where things stand:
+  not started yet (start it once first), started fine last time (nothing to fix), or what it changed. The
+  fixes are the two that used to be manual: opening the game's files so the console can run them, and its
+  backport's too, and turning off the game's own fakelibs when they may be what crashes it, but only on a
+  console new enough for the game. Then you start it from the home screen. If it still won't start, the next
+  press turns fakelibs back on for one more try; after that it points you to "Why won't it start?".
+- **Backports can run.** A backport's files are now opened when it's placed, the same as a game's, and
+  backports placed by earlier builds are opened once the next time the app starts.
+- **Homebrew apps and games copied over FTP say whether they start.** Their Library tiles now show Won't
+  start or Played from ShadowMount's log, like the games Jobee'sLair downloaded.
+
+- **L1 and R1 stop at Browse.** They stepped from Discover straight to Top rated, so Browse could only be
+  reached with the D-pad. Browse is now a section of its own, the whole catalog A to Z (its menu still picks a
+  genre), and "All games" in its menu lights Browse instead of Discover.
+- **Games stay in the Library after a 33rd download.** Starting a download with 32 others in Downloads took
+  every finished game out of the queue: their tiles turned into loose files, Make Room could no longer move
+  them, and deleting one left its backport behind. Finished games now only leave Downloads, as ✕ does.
+- **TorBox being down says so.** When TorBox answers with a page instead of its API (it did for a while on
+  2026-10-25), the error now says TorBox isn't answering, instead of a bare HTTP code.
+- **Sets sent through TorBox stay with TorBox.** While part 1 of a set downloaded through TorBox or AllDebrid, the
+  app opened the console's browser for part 2 as if it had to pass the host's check, then took the link it caught
+  there instead of the service's. Every part now comes from the service, one after another.
+- **New games have their pictures.** A game the live catalog adds took its picture from the Pegasus catalogs, and
+  some of those are WebP files the console can't draw (MediEvil Resurrection, Jak and Daxter, Planet Zoo), so
+  their tiles stayed blank. They now get the PlayStation Store's own cover, like every other game, and its
+  background on their page. This comes through the live catalog, so 0.5.1 gets it too.
+- **Moving a big game says when it won't fit.** Before a move, only a game's first 20,000 files were counted,
+  so a game with more could start moving to a drive without room and fail partway (the game itself stayed
+  where it was). The copy counts every file before it starts, and the move now stops right away and says how
+  much more room it needs.
+- **The update dialog remembers that you closed it.** 0.5.1 saved which release it had offered, then
+  refused to read that note back at the next launch and set it aside as "unreadable". Once a new release
+  was out, its dialog would have come back at every launch, however often you closed it. Every saved file
+  is now listed with its shape, and a test catches one that isn't.
+- **The screen saver keeps its pictures after a download.** After a game downloaded, about two pictures in
+  three failed to load for the rest of the session ("out of memory for decoded pixels") and the screen saver
+  sat on black for hours. Once a picture fails, it now shows one at a time, as it already did while a game
+  extracts. When a picture can't be decoded, the app also lets go of the art it was keeping for later, so
+  the retry a second later has room.
+- **Homebrew updates keep your saves.** Updating an app replaced its whole folder and deleted the old one,
+  along with anything the app kept inside it: an emulator's saves, settings and caches. PS5X360's update from
+  0.6.0 to 1.0.0 lost its Xbox 360 profile that way; only a folder the app couldn't delete kept it on the
+  console. An update now puts the new version's files into the app's folder, replacing only the files the new
+  version has, and leaves everything else where it is. It also stays on the drive the app is on: with the
+  internal drive short of space, an update used to go to another drive as a second copy, without the saves.
+  When that drive has no room, it now says so and changes nothing, and an update that can't finish puts back
+  the version you had.
+- **Removing a Homebrew app asks first.** When an app has saved things in its own folder, Remove (on its
+  page, or ▢ on its Library tile) asks whether to keep them. Kept, they wait in homebrew-saves on the same
+  drive and go back into the app's folder when you install it again, which installs it on that drive. An app
+  installed before this version is kept whole, because nothing told its own files from its saves; installing
+  it again brings back only the saves. Anything that can't go back in is set aside, never deleted, and if the
+  app itself can't be removed, its saves go back into its folder.
+- **PS5X360 updates install again.** What that earlier update left behind stopped every later one ("Existing
+  extraction has no matching, valid completion receipt"). It's now moved to downloads/homebrew/kept and kept,
+  and a leftover folder that won't clear can't stop an install any more.
+
 ## 0.5.1 (2026-10-22)
 
 The release where far more of the catalog actually plays. Every game that comes down as an archive, which is

@@ -192,7 +192,10 @@ import { parseStamp } from '../state/clock.js';
         answer = await response.json();
       } catch {
       }
-      if (!answer || typeof answer !== "object") throw new TorBoxError(`HTTP_${response.status}`, `TorBox answered HTTP ${response.status}.`);
+      // 0.5.2: a page instead of an answer, on a redirect or a server error, is TorBox having trouble (on 2026-10-25 every
+      // request got a 307 for a while, then a 502): it says so, rather than a bare status.
+      const trouble = response.status >= 500 || response.status >= 300 && response.status < 400;
+      if (!answer || typeof answer !== "object") throw new TorBoxError(`HTTP_${response.status}`, trouble ? `TorBox isn't answering right now (HTTP ${response.status}). Try again in a few minutes.` : `TorBox answered HTTP ${response.status}.`);
       if (!answer.success) {
         const code = answer.error || `HTTP_${response.status}`;
         log(`${method} ${path} refused: ${code}`);

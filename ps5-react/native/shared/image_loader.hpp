@@ -24,9 +24,10 @@ constexpr std::size_t kMaxEncodedBytes = 4 * 1024 * 1024;
 constexpr std::size_t kEncodedCacheBytes = 4 * 1024 * 1024;
 // Encoded responses kept on disk between launches; entries older than a week are fetched again.
 constexpr std::size_t kDiskCacheBytes = 256 * 1024 * 1024;
-// While memory is held (see hold_memory) or the heap is above kPressurePercent of its size, unused
-// decoded images are kept to kLowCacheBytes and encoded bytes to kLowEncodedBytes; a decode that would
-// take the heap past kCeilingPercent is refused and tried again later. Images re-decode when shown.
+// While memory is held (see hold_memory), the heap is above kPressurePercent of its size, or for a minute
+// after a decode ran out of heap, unused decoded images are kept to kLowCacheBytes and encoded bytes to
+// kLowEncodedBytes; a decode that would take the heap past kCeilingPercent is refused and tried again
+// later. Images re-decode when shown.
 constexpr std::size_t kLowCacheBytes = 16 * 1024 * 1024;
 constexpr std::size_t kLowEncodedBytes = 1024 * 1024;
 constexpr std::size_t kPressurePercent = 70, kCeilingPercent = 85;

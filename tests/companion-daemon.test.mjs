@@ -168,3 +168,41 @@ test('a helper from 0.5.0 Pre Release 1 is told to stop, and the new one takes i
   assert.equal(heard[0].split('\n')[0], 'CMP1');
   assert.equal(heard[0].split('\n')[3], '-', 'told to stop');
 });
+
+// 0.5.2: what the app's own server already did. Sends `text` on a raw connection, or `trickle` one byte every `every`
+// ms, and resolves with what came back and how long the connection stayed open.
+function raw(port, { text = '', trickle = '', every = 0 } = {}) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const socket = net.connect(port, '127.0.0.1');
+    let answer = '', timer = null;
+    socket.on('data', (chunk) => { answer += chunk; });
+    socket.on('error', () => {});
+    socket.on('close', () => { clearInterval(timer); resolve({ answer, open: Date.now() - started }); });
+    socket.on('connect', () => {
+      if (text) socket.write(text);
+      let at = 0;
+      if (trickle) timer = setInterval(() => { if (at < trickle.length && !socket.destroyed) socket.write(trickle[at++]); }, every);
+    });
+  });
+}
+
+test('the helper answers only to the console by its IP address, and cuts off a request that trickles in', { skip }, async (t) => {
+  assert.equal(build().status, 0, build().stderr);
+  const [web, control] = [await freePort(), await freePort()];
+  const env = { COMPANION_TEST_RUNNING: running, COMPANION_TEST_CONTROL: String(control), COMPANION_TEST_LOADER: '1', COMPANION_TEST_REQUEST_S: '2' };
+  const { answer, child } = await start(env, ['CMP2', 'PPSA99471', String(web), '482913', payloads, queue, '-']);
+  t.after(() => child.kill());
+  assert.equal(answer, 'ready');
+  await wait(300);
+  const get = (host) => raw(web, { text: `GET / HTTP/1.1\r\nHost: ${host}\r\n\r\n` }).then((reply) => reply.answer);
+  const named = await get('jobees.example:80');
+  assert.match(named, /^HTTP\/1\.1 403 /, 'a domain name is refused: a web page could reach the helper through DNS rebinding');
+  assert.match(named, /by its IP address/);
+  for (const host of ['127.0.0.1', `127.0.0.1:${web}`, 'localhost', `LOCALHOST:${web}`]) assert.match(await get(host), /^HTTP\/1\.1 200 /, host);
+  for (const host of ['127.0.0.1.5', '256.1.1.1', '1.2.3', '127.0.0.1:', '127.0.0.1:123456', '[::1]']) assert.match(await get(host), /^HTTP\/1\.1 403 /, host);
+  const slow = await raw(web, { trickle: `GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nX-Pad: ${'x'.repeat(40)}\r\n\r\n`, every: 250 });
+  assert.match(slow.answer, /^HTTP\/1\.1 400 /, 'cut off');
+  assert.ok(slow.open < 4500, `cut off after ${slow.open} ms, not once the client was done`);
+  assert.match(await get('127.0.0.1'), /^HTTP\/1\.1 200 /, 'and the next phone is served at once');
+});

@@ -101,7 +101,12 @@ import { JLMark } from './JLMark.jsx';
     // extracts) is skipped for the next at once instead of leaving the screen black, up to once round the
     // list; a picture that shows starts the count again.
     const failed = useRef(0);
+    // 0.5.2: and from then on, one slide at a time (tight). After a game downloaded, about two slides in three
+    // failed for hours ("out of memory for decoded pixels") with three screen-size pictures held at once; in
+    // the same session, one at a time while the game extracted, none failed.
+    const [short, setShort] = useState(false);
     const skip = (at) => {
+      setShort(true);
       if (failed.current++ >= slides.length) return;
       setIndex((n) => n === at ? (n + 1) % slides.length : n);
     };
@@ -112,8 +117,8 @@ import { JLMark } from './JLMark.jsx';
       const id = setInterval(() => setTime(clock(locale)), 15e3);
       return () => clearInterval(id);
     }, [locale]);
-    // One slide at a time while a game extracts (SHOT).
-    const tight = extracting();
+    // One slide at a time while a game extracts (SHOT), and once a slide could not be shown (skip).
+    const tight = short || extracting();
     // The next picture is fetched while this one shows, so it is ready to fade in.
     useEffect(() => {
       if (tight) return;

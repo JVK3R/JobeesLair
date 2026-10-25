@@ -16,6 +16,7 @@ import { heldReason, runner } from './services.js';
 import { useShelf } from './useShelf.js';
 import { deleteFile } from '../files/useFiles.js';
 import { DiagnosisSheet } from '../game/DiagnosisSheet.jsx';
+import { fixStateText, fixText } from '../game/fix-text.js';
 import { OptionsSheet } from '../game/OptionsSheet.jsx';
 import { formatNumber2, formatPercent2 } from '../i18n/core.js';
 import { useT } from '../i18n/index.js';
@@ -32,6 +33,8 @@ import { MARGIN2 } from '../state/space.js';
 import { Button2 } from '../ui/Button.jsx';
 import { ButtonGlyph, ButtonHints } from '../ui/ButtonHints.jsx';
 import { HomebrewArt, gradientOf } from '../homebrew/HomebrewArt.jsx';
+import { RemoveSheet } from '../homebrew/RemoveSheet.jsx';
+import { homebrew } from '../state/homebrew-store.js';
 import { Cover } from '../ui/Cover.jsx';
 import { JLMark } from '../ui/JLMark.jsx';
 import { FocusRing } from '../ui/FocusRing.jsx';
@@ -222,12 +225,33 @@ import { AnimatePresence, DeviceInfo, FocusScope, Image, ScrollView, Text, View,
       if (!action) return;
       if (action.name === "gamePage") return openGame(entry);
       if (action.name === "seeWhy") return setSheet({ kind: "diagnosis", entry });
+      if (action.name === "fixIt") return fixIt(entry);
       try {
         void Promise.resolve(downloadQueue()[action.name](job2.id)).catch(fail);
       } catch (error2) {
         fail(error2);
       }
     };
+    // 0.5.2: what Fix it and "Why won't it start?" work on for a tile: its download, else (a Homebrew app, a game
+    // copied over by hand) the folder ShadowMount installed it from, by its title ID. Null: nothing ShadowMount runs.
+    function fixTarget(entry) {
+      const job2 = entry.job;
+      if (job2) return job2.artifact?.nextAction === "shadowmount" && job2.state === "installed" ? { jobId: job2.id, titleId: titleOf(entry) } : null;
+      const file = entry.files[0];
+      return file?.installed && file.titleId ? { titleId: file.titleId, folders: [file.path], root: file.root } : null;
+    }
+    // Fix it (state/download-queue.js fixIt / fixTitle), its answer in the notice line: what it changed, or that the
+    // game has not been started yet, started fine, or has nothing left to try.
+    function fixIt(entry) {
+      const target = fixTarget(entry);
+      if (!target) return;
+      setNotice({ text: t2("fix.working", { title: entry.game.title }), bad: false });
+      const queue = downloadQueue();
+      void Promise.resolve().then(() => target.jobId ? queue.fixIt(target.jobId) : queue.fixTitle({ title: target.titleId, folders: target.folders, root: target.root, label: entry.game.title })).then((result) => {
+        setNotice(fixText(t2, result, entry.game.title));
+        setVersion((value) => value + 1);
+      }, fail);
+    }
     // One game to another drive, from its Options: a one-step Make Room that leaves downloads running.
     function move(entry, to) {
       const why = heldReason(entry, { jobs, mounts, room });
@@ -268,6 +292,18 @@ import { AnimatePresence, DeviceInfo, FocusScope, Image, ScrollView, Text, View,
       }
       if (entry.root === "/data") items.push(entry.kept ? { icon: "star", label: t2("shelf.unkeep"), detail: t2("shelf.unkeepDetail"), onSelect: () => setKeptInternal(entry.key, false) } : { icon: "star", label: t2("shelf.keep"), detail: t2("shelf.keepDetail"), onSelect: () => setKeptInternal(entry.key, true) });
       items.push({ icon: "hardDrive", label: t2("shelf.makeRoom"), detail: t2("shelf.makeRoomDetail"), onSelect: () => setSheet({ kind: "room", from: tileKey(entry.key) }), next: true });
+      // 0.5.2: a game or app ShadowMount runs: Fix it (✕ on a tile that won't start), saying where it stands before
+      // it is pressed (not started yet, started fine, what it would do), and what its logs say.
+      const target = fixTarget(entry);
+      if (target) {
+        let state = "notLaunched";
+        try {
+          state = downloadQueue().fixState(target.titleId);
+        } catch {
+        }
+        items.push({ icon: "restart", label: t2("fix.label"), detail: fixStateText(t2, state, entry.game.title), onSelect: () => fixIt(entry) });
+        items.push({ icon: "alert", label: t2("download.diagnose.label"), detail: t2("download.diagnose.detail"), onSelect: () => setSheet({ kind: "diagnosis", entry }), next: true });
+      }
       // 0.5.1: a PS5 game's own fakelib, off or back on, from its next launch.
       if (fakelib?.canToggle) {
         const off = fakelib.mode === "disabled";
@@ -285,7 +321,22 @@ import { AnimatePresence, DeviceInfo, FocusScope, Image, ScrollView, Text, View,
     // folder, its backport and add-ons, extracted files and kept notes go), then any copy no job put there.
     // Resolves with what the gamer should know once everything is gone (ShadowMount uninstalls after the
     // app closes, say), or null.
-    const remove = async (entry) => {
+    // 0.5.2: an app Jobee'sLair installed from the Homebrew section goes through its store (state/homebrew.js remove),
+    // after asking whether to keep what it saved in its folder (RemoveSheet, `keep`); one copied by hand goes as files.
+    const installedApp = (entry) => {
+      const app = entry.game.homebrewApp;
+      try {
+        return app && !app.self && homebrew().statusOf(app.id)?.record ? app : null;
+      } catch {
+        return null;
+      }
+    };
+    const remove = async (entry, keep = false) => {
+      const app = installedApp(entry);
+      if (app) {
+        const kept = await homebrew().remove(app.id, { keep });
+        return kept ? t2("homebrew.removedKept", { name: app.name, path: kept }) : null;
+      }
       const queue = downloadQueue();
       let note = null;
       for (const job2 of entry.jobs) note = (await queue.deleteFromDisk(job2.id))?.note ?? note;
@@ -326,19 +377,33 @@ import { AnimatePresence, DeviceInfo, FocusScope, Image, ScrollView, Text, View,
         return true;
       }
       setArmed(null);
+      const app = installedApp(entry);
+      let saved = null;
+      try {
+        saved = app ? homebrew().savedData(app.id) : null;
+      } catch {
+      }
+      if (saved) {
+        setSheet({ kind: "removeApp", entry, app, saved });
+        return true;
+      }
+      removeEntry(entry, false);
+      return true;
+    };
+    // Deletes a tile's game or app, says how it went, and moves the focus to its neighbour.
+    function removeEntry(entry, keep) {
       const list = latest2.current;
       const index = list.indexOf(entry);
       const next = list[index + 1] ?? list[index - 1];
       setNotice({ text: t2("shelf.deleting"), bad: false });
-      remove(entry).then((note) => {
+      remove(entry, keep).then((note) => {
         setNotice({ text: [t2("files.deleted", { name: entry.game.title }), note].filter(Boolean).join(". "), bad: false });
         focusLater(next ? tileKey(next.key) : EMPTY_KEY);
-      }, (error2) => setNotice({ text: /ShadowMount|download|move/i.test(error2.message) ? error2.message : t2("files.deleteFailed"), bad: true })).finally(() => {
+      }, (error2) => setNotice({ text: /ShadowMount|download|move|keep/i.test(error2.message) ? error2.message : t2("files.deleteFailed"), bad: true })).finally(() => {
         setVersion((value) => value + 1);
         void refreshDrives();
       });
-      return true;
-    };
+    }
     const back2 = () => {
       if (armed) setArmed(null);
       else onBack();
@@ -365,7 +430,11 @@ import { AnimatePresence, DeviceInfo, FocusScope, Image, ScrollView, Text, View,
       HINT.back
     ].filter(Boolean);
     const summary = room.running ? t2("room.working") : entries.length ? [t2("shelf.summary", { count: entries.length }), played ? t2("shelf.played", { count: formatNumber2(played) }) : "", hours ? t2("shelf.hours", { count: hours }) : "", formatBytes(total)].filter(Boolean).join(" \xB7 ") : " ";
-    const Sheet = sheet?.kind === "options" ? /* @__PURE__ */ (0, jsx)(OptionsSheet, { title: sheet.entry.game.title, items: options(sheet.entry), onClose: closeSheet }) : sheet?.kind === "room" ? /* @__PURE__ */ (0, jsx)(MakeRoomSheet, { onClose: closeSheet }) : sheet?.kind === "diagnosis" ? /* @__PURE__ */ (0, jsx)(DiagnosisSheet, { title: sheet.entry.game.title, jobId: sheet.entry.job.id, onClose: closeSheet }) : null;
+    const Sheet = sheet?.kind === "options" ? /* @__PURE__ */ (0, jsx)(OptionsSheet, { title: sheet.entry.game.title, items: options(sheet.entry), onClose: closeSheet }) : sheet?.kind === "room" ? /* @__PURE__ */ (0, jsx)(MakeRoomSheet, { onClose: closeSheet }) : sheet?.kind === "diagnosis" ? /* @__PURE__ */ (0, jsx)(DiagnosisSheet, { title: sheet.entry.game.title, ...fixTarget(sheet.entry), onClose: closeSheet }) : sheet?.kind === "removeApp" ? /* @__PURE__ */ (0, jsx)(RemoveSheet, { name: sheet.app.name, saved: sheet.saved, onClose: closeSheet, onChoose: (keep) => {
+      const entry = sheet.entry;
+      setSheet(null);
+      removeEntry(entry, keep);
+    } }) : null;
     return /* @__PURE__ */ (0, jsx)(FocusScope, { autoFocus: true, onBack: back2, onAction, children: /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1 }, children: [
       /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingHorizontal: 48, paddingTop: 12, paddingBottom: 30 }, children: [
         /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 4 }, children: [

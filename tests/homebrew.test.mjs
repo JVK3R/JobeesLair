@@ -59,17 +59,27 @@ function memoryFs(seed = {}) {
   for (const p of files.keys()) addDirs(p);
   const under = (p) => [...files.keys(), ...dirs].filter((q) => q.startsWith(`${p}/`));
   const modes = new Map();
+  // Paths a delete cannot get through (a folder an app made that only it may enter): removeTree of anything
+  // holding one fails with Permission denied and deletes nothing.
+  const stuck = new Set();
+  // Folders an app made that only it may enter or move (PS5X360's phone-camera, drwx------).
+  const closed = new Set();
   return {
-    files, dirs, modes,
+    files, dirs, modes, stuck, closed,
     chmod: (p, mode) => { modes.set(p, mode); },
     exists: (p) => files.has(p) || dirs.has(p),
+    stat: (p) => files.has(p) ? { isFile: true, isDirectory: false } : dirs.has(p) ? { isFile: false, isDirectory: true } : null,
     readFile: (p) => { if (!files.has(p)) throw new Error(`ENOENT ${p}`); return files.get(p); },
     writeFile: (p, text) => { addDirs(p); files.set(p, text); },
     mkdir: (p) => { dirs.add(p); addDirs(p); },
     remove: (p) => { files.delete(p); dirs.delete(p); },
-    removeTree: (p) => { for (const q of under(p)) { files.delete(q); dirs.delete(q); } files.delete(p); dirs.delete(p); },
+    removeTree: (p) => {
+      if ([...stuck].some((q) => q === p || q.startsWith(`${p}/`))) throw new Error(`fs.removeTree ${p}: Permission denied`);
+      for (const q of under(p)) { files.delete(q); dirs.delete(q); } files.delete(p); dirs.delete(p);
+    },
     removeAsync: async (p) => { for (const q of under(p)) { files.delete(q); dirs.delete(q); } files.delete(p); dirs.delete(p); },
     rename: (from, to) => {
+      if (closed.has(from)) throw new Error(`fs.rename ${from}: Permission denied`);
       if (!files.has(from) && !dirs.has(from)) throw new Error(`ENOENT ${from}`);
       if (files.has(from)) { files.set(to, files.get(from)); files.delete(from); addDirs(to); return; }
       for (const q of under(from)) {
@@ -78,7 +88,10 @@ function memoryFs(seed = {}) {
       }
       dirs.delete(from); dirs.add(to); addDirs(to);
     },
-    readDir: (p) => [...new Set([...files.keys(), ...dirs].filter((q) => parent(q) === p && q !== p))].map((q) => ({ name: q.slice(p.length + 1), isDirectory: dirs.has(q), isFile: files.has(q) })),
+    readDir: (p) => {
+      if (closed.has(p)) throw new Error(`fs.readDir ${p}: Permission denied`);
+      return [...new Set([...files.keys(), ...dirs].filter((q) => parent(q) === p && q !== p))].map((q) => ({ name: q.slice(p.length + 1), isDirectory: dirs.has(q), isFile: files.has(q) }));
+    },
   };
 }
 // Downloads write the release file's text; archives unpack the file list each fake zip names.
@@ -94,6 +107,8 @@ function console2({ seed, archivesHold = {} } = {}) {
   };
   const archives = {
     extract({ sources, destination }) {
+      // The console's extractor keeps a folder it did not finish rather than writing over it.
+      if (fs.exists(destination) && fs.readDir(destination).length) throw new Error(`Archives.extract ${destination}: Existing extraction has no matching, valid completion receipt; files preserved.`);
       for (const [rel, text] of Object.entries(archivesHold[sources[0].slice(sources[0].lastIndexOf('/') + 1)] ?? {})) fs.writeFile(`${destination}/${rel}`, text);
       return { done: Promise.resolve({}), cancel() {} };
     },
@@ -102,11 +117,11 @@ function console2({ seed, archivesHold = {} } = {}) {
   return { fs, downloads, archives, payloads, enqueued, sent };
 }
 const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
-function store(world, apps) {
+function store(world, apps, extra = {}) {
   return createHomebrew({
     fs: world.fs, http: { request: async () => ({ ok: false, status: 404 }) }, downloads: world.downloads, archives: world.archives, payloads: world.payloads,
     dataDir: '/download0/JobeesLair', payloadDir: '/data/JobeesLair/payloads', roots: () => ['/data', '/mnt/usb0'], freeBytes: () => 1e12,
-    readBundled: () => JSON.stringify(doc(apps)), now: () => 5, log: () => {}, defer: (work) => work(),
+    readBundled: () => JSON.stringify(doc(apps)), now: () => 5, log: () => {}, defer: (work) => work(), ...extra,
   });
 }
 
@@ -136,6 +151,337 @@ test('install: an app folder from a zip is placed under its title ID, replacing 
   assert.equal(world.fs.readFile('/data/homebrew/PPSA99001/eboot.bin'), 'new');
   assert.equal(hb.statusOf('a/emu').record.titleId, 'PPSA99001');
   for (const p of ['/data/homebrew/PPSA99001/eboot.bin', '/data/homebrew/PPSA99001/sce_sys/param.json', '/data/homebrew/PPSA99001/sce_sys', '/data/homebrew/PPSA99001']) assert.equal(world.fs.modes.get(p), 0o777, `${p} is open to everyone, as an FTP copy is: the console cannot start an app it can't execute`);
+});
+
+// 0.5.2, from PS5X360 on Jake's console: its 1.0.0 update swapped the folder and deleted the old one, saves and
+// all, but for a folder the emulator made that the app could not enter; what that left in the staging then
+// stopped every later update ("Existing extraction has no matching, valid completion receipt").
+const X360 = '/data/homebrew/PPSA50011';
+const X360_WORK = '/data/downloads/homebrew/brinootk__ps5x360';
+const LEFT = `${X360_WORK}/unpacked/.replaced-1792647011300-PPSA50011`;
+function x360World(extra = {}) {
+  const world = console2({
+    seed: {
+      [`${X360}/eboot.bin`]: 'v1.0.0', [`${X360}/sce_sys/param.json`]: JSON.stringify({ titleId: 'PPSA50011' }), [`${X360}/assets/ui.bin`]: 'old ui',
+      [`${X360}/saves/E000FE8300000000/Account`]: 'current profile', [`${X360}/assets/user.cfg`]: 'my settings', [`${X360}/web-settings.key`]: 'key',
+      [`${LEFT}/saves/E03000005387BA79/Account`]: 'v0.6.0 profile',
+      ...extra,
+    },
+    archivesHold: { 'PPSA50011.zip': { 'PPSA50011/eboot.bin': 'v1.0.2', 'PPSA50011/sce_sys/param.json': JSON.stringify({ titleId: 'PPSA50011' }), 'PPSA50011/assets/ui.bin': 'new ui', 'PPSA50011/dlc/readme.txt': 'new' } },
+  });
+  world.fs.writeFile('/download0/JobeesLair/homebrew-installed.json', JSON.stringify({ version: 1, apps: { 'brinootk/ps5x360': { tag: 'v1.0.0', file: 'PPSA50011.zip', kind: 'app', paths: [X360], root: '/data', titleId: 'PPSA50011', opened: true } } }));
+  const hb = store(world, [app('brinootk/ps5x360', [{ name: 'PPSA50011.zip', kind: 'app', folder: 'PPSA50011', url: release('brinootk/PS5X360', 'PPSA50011.zip'), size: 10 }], { release: { tag: 'v1.0.2', date: 2 } })]);
+  return { world, hb };
+}
+
+test("update: an app's new files go into its folder, and what it keeps there (saves, settings) stays", async () => {
+  const { world, hb } = x360World();
+  assert.equal(hb.statusOf('brinootk/ps5x360').update, true);
+  hb.install('brinootk/ps5x360');
+  await settle();
+  const { fs } = world;
+  assert.equal(hb.statusOf('brinootk/ps5x360').task?.error ?? '', '');
+  assert.equal(fs.readFile(`${X360}/eboot.bin`), 'v1.0.2');
+  assert.equal(fs.readFile(`${X360}/assets/ui.bin`), 'new ui', 'a file the new version has replaces the old one');
+  assert.equal(fs.readFile(`${X360}/dlc/readme.txt`), 'new', 'a folder only the new version has comes in');
+  assert.equal(fs.readFile(`${X360}/saves/E000FE8300000000/Account`), 'current profile', 'its saves stay');
+  assert.equal(fs.readFile(`${X360}/assets/user.cfg`), 'my settings', 'what it keeps inside its own folders stays');
+  assert.equal(fs.readFile(`${X360}/web-settings.key`), 'key');
+  assert.equal(hb.statusOf('brinootk/ps5x360').record.tag, 'v1.0.2');
+  // What the 1.0.0 update left in the staging is moved out of the way and kept, never cleared with it.
+  assert.equal(fs.readFile('/data/downloads/homebrew/kept/brinootk__ps5x360/replaced-1792647011300-PPSA50011/saves/E03000005387BA79/Account'), 'v0.6.0 profile');
+  assert.ok(!fs.exists(X360_WORK), 'the staging is tidied');
+});
+
+test('update: a staging folder that will not clear no longer stops the install', async () => {
+  const stray = `${X360_WORK}/unpacked/PPSA50011/phone-camera/shot.jpg`;
+  const { world, hb } = x360World({ [stray]: 'x' });
+  world.fs.stuck.add(stray);
+  hb.install('brinootk/ps5x360');
+  await settle();
+  assert.equal(hb.statusOf('brinootk/ps5x360').task?.error ?? '', '', 'installed beside it');
+  assert.equal(world.fs.readFile(`${X360}/eboot.bin`), 'v1.0.2');
+  assert.ok(world.fs.exists(stray), 'what would not clear is left alone');
+});
+
+test('update: an earlier leftover that cannot be moved out of the way stops the install before anything is cleared', async () => {
+  const { world, hb } = x360World();
+  const rename = world.fs.rename;
+  world.fs.rename = (from, to) => {
+    if (from === LEFT) throw new Error('Permission denied');
+    return rename(from, to);
+  };
+  hb.install('brinootk/ps5x360');
+  await settle();
+  assert.match(hb.statusOf('brinootk/ps5x360').task.error, /could not be moved out of the way \(Permission denied\)\. Nothing was changed\./);
+  assert.equal(world.fs.readFile(`${LEFT}/saves/E03000005387BA79/Account`), 'v0.6.0 profile');
+  assert.equal(world.fs.readFile(`${X360}/eboot.bin`), 'v1.0.0', 'the installed version is untouched');
+  assert.equal(world.enqueued.length, 0, 'nothing was downloaded');
+});
+
+test("update: a payload's folder keeps the data files beside it", async () => {
+  const world = console2({
+    seed: { '/data/JobeesLair/payloads/a__tool/tool.elf': 'old', '/data/JobeesLair/payloads/a__tool/config.ini': 'mine' },
+    archivesHold: { 'Tool.zip': { 'Tool/tool.elf': 'new', 'Tool/readme.txt': 'r' } },
+  });
+  world.fs.writeFile('/download0/JobeesLair/homebrew-installed.json', JSON.stringify({ version: 1, apps: { 'a/tool': { tag: 'v0', file: 'Tool.zip', kind: 'archive-payload', paths: ['/data/JobeesLair/payloads/a__tool'], run: '/data/JobeesLair/payloads/a__tool/tool.elf' } } }));
+  const hb = store(world, [app('a/tool', [{ name: 'Tool.zip', kind: 'archive-payload', inner: 'Tool/tool.elf', url: release('a/tool', 'Tool.zip'), size: 10 }])]);
+  hb.install('a/tool');
+  await settle();
+  assert.equal(world.fs.readFile('/data/JobeesLair/payloads/a__tool/tool.elf'), 'new');
+  assert.equal(world.fs.readFile('/data/JobeesLair/payloads/a__tool/config.ini'), 'mine');
+});
+
+// 0.5.2: an update stays on the app's own drive. Files only move within a drive: anywhere else it was a second
+// copy without the saves, which stayed in the old one (found in the review of 0.5.2 Pre Release 1).
+const MiB = 1024 ** 2;
+function usbWorld({ seedRoot = '/mnt/usb0', recorded = true, free = () => 1e12, roots } = {}) {
+  const folder = `${seedRoot}/homebrew/PPSA50011`;
+  const world = console2({
+    seed: { [`${folder}/eboot.bin`]: 'v1.0.0', [`${folder}/sce_sys/param.json`]: JSON.stringify({ titleId: 'PPSA50011' }), [`${folder}/saves/E000FE8300000000/Account`]: 'current profile' },
+    archivesHold: { 'PPSA50011.zip': { 'PPSA50011/eboot.bin': 'v1.0.2', 'PPSA50011/sce_sys/param.json': JSON.stringify({ titleId: 'PPSA50011' }) } },
+  });
+  if (recorded) world.fs.writeFile('/download0/JobeesLair/homebrew-installed.json', JSON.stringify({ version: 1, apps: { 'brinootk/ps5x360': { tag: 'v1.0.0', file: 'PPSA50011.zip', kind: 'app', paths: [folder], root: seedRoot, titleId: 'PPSA50011', opened: true } } }));
+  const hb = store(world, [app('brinootk/ps5x360', [{ name: 'PPSA50011.zip', kind: 'app', folder: 'PPSA50011', url: release('brinootk/PS5X360', 'PPSA50011.zip'), size: 150 * MiB }], { release: { tag: 'v1.0.2', date: 2 } })], { freeBytes: free, ...(roots ? { roots } : {}) });
+  return { world, hb, folder };
+}
+
+test('update: an app on another drive is updated there, even with room on the internal one', async () => {
+  const { world, hb, folder } = usbWorld();
+  hb.install('brinootk/ps5x360');
+  await settle();
+  const { fs } = world;
+  assert.equal(hb.statusOf('brinootk/ps5x360').task?.error ?? '', '');
+  assert.equal(fs.readFile(`${folder}/eboot.bin`), 'v1.0.2');
+  assert.equal(fs.readFile(`${folder}/saves/E000FE8300000000/Account`), 'current profile', 'its saves are where it runs');
+  assert.ok(!fs.exists('/data/homebrew/PPSA50011'), 'no second copy on the internal drive');
+  assert.equal(hb.statusOf('brinootk/ps5x360').record.paths[0], folder);
+});
+
+test('update: an app found installed by hand is updated on its own drive too', async () => {
+  const { world, hb, folder } = usbWorld({ recorded: false });
+  assert.equal(hb.statusOf('brinootk/ps5x360').outside?.path, folder);
+  hb.install('brinootk/ps5x360');
+  await settle();
+  assert.equal(world.fs.readFile(`${folder}/eboot.bin`), 'v1.0.2');
+  assert.equal(world.fs.readFile(`${folder}/saves/E000FE8300000000/Account`), 'current profile');
+  assert.ok(!world.fs.exists('/data/homebrew/PPSA50011'));
+});
+
+test('update: with no room on its own drive it stops and says so, with no second copy on another', async () => {
+  const { world, hb, folder } = usbWorld({ seedRoot: '/data', free: (root) => root === '/data' ? 100 * MiB : 1e12 });
+  hb.install('brinootk/ps5x360');
+  await settle();
+  const { fs } = world;
+  assert.match(hb.statusOf('brinootk/ps5x360').failed, /^Not enough free space to update ps5x360: \/data, where it's installed, needs about 414 MB free\.$/);
+  assert.deepEqual(world.enqueued, [], 'nothing is downloaded');
+  assert.ok(!fs.exists('/mnt/usb0/homebrew/PPSA50011'));
+  assert.equal(fs.readFile(`${folder}/eboot.bin`), 'v1.0.0', 'the version it has stays');
+  assert.equal(fs.readFile(`${folder}/saves/E000FE8300000000/Account`), 'current profile');
+  assert.equal(hb.statusOf('brinootk/ps5x360').record.tag, 'v1.0.0');
+});
+
+test("update: an app on a drive that isn't plugged in is not installed again somewhere else", async () => {
+  const { world, hb } = usbWorld({ seedRoot: '/mnt/ext0' });
+  assert.equal(hb.statusOf('brinootk/ps5x360').installed, true, 'its record stays while the drive is out');
+  hb.install('brinootk/ps5x360');
+  await settle();
+  assert.match(hb.statusOf('brinootk/ps5x360').failed, /ps5x360 is on a drive that isn't plugged in\. Plug it in to update it, or remove ps5x360 and install it again\./);
+  assert.deepEqual(world.enqueued, []);
+  assert.ok(!world.fs.exists('/data/homebrew/PPSA50011') && !world.fs.exists('/mnt/usb0/homebrew/PPSA50011'));
+});
+
+test('update: a merge that fails partway moves everything back, so the version it had still runs; a retry works', async () => {
+  const { world, hb } = x360World();
+  const { fs } = world;
+  const rename = fs.rename;
+  fs.rename = (from, to) => {
+    if (from === `${X360_WORK}/unpacked/PPSA50011/dlc`) throw new Error('Input/output error');
+    return rename(from, to);
+  };
+  hb.install('brinootk/ps5x360');
+  await settle();
+  fs.rename = rename;
+  assert.match(hb.statusOf('brinootk/ps5x360').failed, /The new version could not be put in place, so the one you had was left as it was \(Input\/output error\)\./);
+  assert.equal(fs.readFile(`${X360}/eboot.bin`), 'v1.0.0', 'the files it had replaced are back');
+  assert.equal(fs.readFile(`${X360}/assets/ui.bin`), 'old ui');
+  assert.ok(!fs.exists(`${X360}/dlc`));
+  assert.equal(fs.readFile(`${X360}/saves/E000FE8300000000/Account`), 'current profile');
+  assert.equal(fs.readFile(`${X360}/assets/user.cfg`), 'my settings');
+  assert.equal(hb.statusOf('brinootk/ps5x360').record.tag, 'v1.0.0');
+  hb.install('brinootk/ps5x360');
+  await settle();
+  assert.equal(hb.statusOf('brinootk/ps5x360').failed, '');
+  assert.equal(fs.readFile(`${X360}/eboot.bin`), 'v1.0.2');
+  assert.equal(fs.readFile(`${X360}/dlc/readme.txt`), 'new');
+  assert.equal(fs.readFile(`${X360}/saves/E000FE8300000000/Account`), 'current profile');
+  assert.ok(!fs.exists(X360_WORK), 'the staging, with the replaced files, is tidied');
+});
+
+// 0.5.2: removing an app asks first when it saved things in its folder (Jake: "Ask first"); kept, they come back.
+const EMU = '/data/homebrew/PPSA99001';
+function emuWorld() {
+  const world = console2({ archivesHold: { 'Emu.zip': { 'Emu/eboot.bin': 'e', 'Emu/sce_sys/param.json': JSON.stringify({ titleId: 'PPSA99001' }), 'Emu/assets/ui.bin': 'ui' } } });
+  const hb = store(world, [app('a/emu', [{ name: 'Emu.zip', kind: 'app', folder: 'Emu', url: release('a/emu', 'Emu.zip'), size: 10 }])]);
+  return { world, hb };
+}
+
+test('remove: an app with nothing saved in its folder is not asked about', async () => {
+  const { world, hb } = emuWorld();
+  hb.install('a/emu');
+  await settle();
+  assert.deepEqual(JSON.parse(world.fs.readFile('/download0/JobeesLair/homebrew-files/a__emu.json')).files.sort(), ['assets/ui.bin', 'eboot.bin', 'sce_sys/param.json'], "its package's files are listed");
+  assert.equal(hb.savedData('a/emu'), null);
+  assert.equal(await hb.remove('a/emu'), null);
+  assert.ok(!world.fs.exists(EMU) && !world.fs.exists('/download0/JobeesLair/homebrew-files/a__emu.json'));
+});
+
+test('remove: what an app saved in its folder is kept when asked, and goes back in when it is installed again', async () => {
+  const { world, hb } = emuWorld();
+  hb.install('a/emu');
+  await settle();
+  const { fs } = world;
+  fs.writeFile(`${EMU}/saves/profile/Account`, 'my profile');
+  fs.writeFile(`${EMU}/assets/content/dlc.bin`, 'dlc');
+  fs.writeFile(`${EMU}/web-settings.key`, 'key');
+  fs.mkdir(`${EMU}/phone-camera`);
+  fs.closed.add(`${EMU}/phone-camera`);
+  const saved = hb.savedData('a/emu');
+  assert.deepEqual(saved.paths.sort(), ['assets/content', 'phone-camera', 'saves', 'web-settings.key'], 'its own folders whole, never a file of its package');
+  assert.deepEqual([saved.whole, saved.keptAt], [false, '/data/homebrew-saves/a__emu']);
+  const kept = await hb.remove('a/emu', { keep: true });
+  assert.equal(kept, '/data/homebrew-saves/a__emu');
+  assert.equal(fs.readFile('/data/homebrew-saves/a__emu/saves/profile/Account'), 'my profile');
+  assert.equal(fs.readFile('/data/homebrew-saves/a__emu/assets/content/dlc.bin'), 'dlc');
+  assert.ok(!fs.exists('/data/homebrew-saves/a__emu/eboot.bin'), 'its own files are not kept');
+  assert.equal(hb.statusOf('a/emu').installed, false);
+  fs.closed.clear();
+  hb.install('a/emu');
+  await settle();
+  assert.equal(fs.readFile(`${EMU}/saves/profile/Account`), 'my profile', 'back in its folder');
+  assert.equal(fs.readFile(`${EMU}/assets/content/dlc.bin`), 'dlc');
+  assert.equal(fs.readFile(`${EMU}/eboot.bin`), 'e');
+  assert.ok(!fs.exists('/data/homebrew-saves/a__emu'), 'and nothing is left waiting');
+});
+
+test('remove: deleting everything keeps nothing', async () => {
+  const { world, hb } = emuWorld();
+  hb.install('a/emu');
+  await settle();
+  world.fs.writeFile(`${EMU}/saves/s`, 'x');
+  assert.ok(hb.savedData('a/emu'));
+  assert.equal(await hb.remove('a/emu', { keep: false }), null);
+  assert.ok(!world.fs.exists('/data/homebrew-saves/a__emu'));
+});
+
+test('remove: an app installed before its files were listed is kept whole, and only its saves come back', async () => {
+  const { world, hb } = emuWorld();
+  hb.install('a/emu');
+  await settle();
+  const { fs } = world;
+  fs.remove('/download0/JobeesLair/homebrew-files/a__emu.json');
+  fs.writeFile(`${EMU}/saves/s`, 'mine');
+  fs.writeFile(`${EMU}/old-module.prx`, 'from an older version');
+  const saved = hb.savedData('a/emu');
+  assert.equal(saved.whole, true, 'nothing tells its files from its saves');
+  await hb.remove('a/emu', { keep: true });
+  assert.equal(fs.readFile('/data/homebrew-saves/a__emu/eboot.bin'), 'e', 'its whole folder is kept');
+  hb.install('a/emu');
+  await settle();
+  assert.equal(fs.readFile(`${EMU}/saves/s`), 'mine');
+  assert.equal(fs.readFile(`${EMU}/eboot.bin`), 'e', 'the new package wins over the kept copy of its own files');
+  assert.equal(fs.readFile(`${EMU}/old-module.prx`), 'from an older version', 'what the new package does not ship comes back');
+  assert.ok(!fs.exists('/data/homebrew-saves/a__emu'), 'what was its own old files goes');
+});
+
+test('remove: kept whole, what will not go back in when it is installed again is set aside, never deleted', async () => {
+  const { world, hb } = emuWorld();
+  hb.install('a/emu');
+  await settle();
+  const { fs } = world;
+  fs.remove('/download0/JobeesLair/homebrew-files/a__emu.json');
+  fs.writeFile(`${EMU}/saves/s`, 'mine');
+  await hb.remove('a/emu', { keep: true });
+  const rename = fs.rename;
+  fs.rename = (from, to) => {
+    if (from === '/data/homebrew-saves/a__emu/saves') throw new Error('Input/output error');
+    return rename(from, to);
+  };
+  hb.install('a/emu');
+  await settle();
+  fs.rename = rename;
+  assert.equal(fs.readFile(`${EMU}/eboot.bin`), 'e');
+  assert.equal(fs.readFile('/data/homebrew-saves/a__emu-5/saves/s'), 'mine');
+  assert.ok(!fs.exists('/data/homebrew-saves/a__emu'));
+});
+
+test('remove: if the app itself cannot be removed, what was kept goes back in with it', async () => {
+  const { world, hb } = emuWorld();
+  hb.install('a/emu');
+  await settle();
+  const { fs } = world;
+  fs.writeFile(`${EMU}/saves/s`, 'mine');
+  const rename = fs.rename;
+  fs.rename = (from, to) => {
+    if (from === EMU) throw new Error('Device busy');
+    return rename(from, to);
+  };
+  await assert.rejects(hb.remove('a/emu', { keep: true }), /Could not remove PPSA99001: Device busy/);
+  fs.rename = rename;
+  assert.equal(fs.readFile(`${EMU}/saves/s`), 'mine', 'its saves are back in its folder');
+  assert.ok(!fs.exists('/data/homebrew-saves/a__emu'));
+  assert.equal(hb.statusOf('a/emu').installed, true);
+});
+
+test('remove: if what it saved cannot be kept, it is put back and the app stays', async () => {
+  const { world, hb } = emuWorld();
+  hb.install('a/emu');
+  await settle();
+  const { fs } = world;
+  fs.writeFile(`${EMU}/saves/s`, 'mine');
+  fs.writeFile(`${EMU}/web-settings.key`, 'key');
+  const rename = fs.rename;
+  fs.rename = (from, to) => {
+    if (from === `${EMU}/web-settings.key`) throw new Error('Input/output error');
+    return rename(from, to);
+  };
+  await assert.rejects(hb.remove('a/emu', { keep: true }), /Could not keep what emu saved, so nothing was removed: web-settings.key: Input\/output error/);
+  fs.rename = rename;
+  assert.equal(fs.readFile(`${EMU}/saves/s`), 'mine', 'what was moved is put back');
+  assert.equal(hb.statusOf('a/emu').installed, true);
+});
+
+test('remove: installed again, an app goes back to the drive its saves wait on; with no room there it stops', async () => {
+  const world = console2({ archivesHold: { 'Emu.zip': { 'Emu/eboot.bin': 'e', 'Emu/sce_sys/param.json': JSON.stringify({ titleId: 'PPSA99001' }) } } });
+  let internal = 1e12;
+  const hb = store(world, [app('a/emu', [{ name: 'Emu.zip', kind: 'app', folder: 'Emu', url: release('a/emu', 'Emu.zip'), size: 10 }])], { freeBytes: (root) => root === '/data' ? internal : 1e12 });
+  const { fs } = world;
+  hb.install('a/emu');
+  await settle();
+  fs.writeFile(`${EMU}/saves/s`, 'mine');
+  assert.equal(await hb.remove('a/emu', { keep: true }), '/data/homebrew-saves/a__emu');
+  internal = 1;
+  hb.install('a/emu');
+  await settle();
+  assert.match(hb.statusOf('a/emu').failed, /Not enough free space to install emu again: \/data, where what it saved is kept \(\/data\/homebrew-saves\/a__emu\), needs about 68 MB free\. Free up some room there, or delete that folder to install it on another drive\./);
+  assert.ok(!fs.exists('/mnt/usb0/homebrew/PPSA99001'), 'not installed on another drive without its saves');
+  assert.equal(fs.readFile('/data/homebrew-saves/a__emu/saves/s'), 'mine', 'they wait where they were');
+  internal = 1e12;
+  hb.install('a/emu');
+  await settle();
+  assert.equal(fs.readFile(`${EMU}/saves/s`), 'mine', 'back in its folder');
+  assert.ok(!fs.exists('/data/homebrew-saves/a__emu'));
+});
+
+test('remove: saves kept on an external drive bring the app back there, not to the internal one', async () => {
+  const world = console2({ seed: { '/mnt/usb0/homebrew-saves/a__emu/saves/s': 'mine' }, archivesHold: { 'Emu.zip': { 'Emu/eboot.bin': 'e', 'Emu/sce_sys/param.json': JSON.stringify({ titleId: 'PPSA99001' }) } } });
+  const hb = store(world, [app('a/emu', [{ name: 'Emu.zip', kind: 'app', folder: 'Emu', url: release('a/emu', 'Emu.zip'), size: 10 }])]);
+  hb.install('a/emu');
+  await settle();
+  assert.equal(world.fs.readFile('/mnt/usb0/homebrew/PPSA99001/saves/s'), 'mine');
+  assert.ok(!world.fs.exists('/data/homebrew/PPSA99001'));
+  assert.ok(!world.fs.exists('/mnt/usb0/homebrew-saves/a__emu'));
+  assert.equal(hb.statusOf('a/emu').record.root, '/mnt/usb0');
 });
 
 test('install: an app\'s helper payload comes with it, runs from the app, and goes when the app does', async () => {
@@ -249,6 +595,54 @@ test('a failed install says why and can be tried again', async () => {
   await settle();
   assert.equal(hb.statusOf('a/img').failed, 'HTTP 404');
   assert.equal(hb.statusOf('a/img').installed, false);
+});
+
+test("install: a package goes to the console's installer from its staging, unpacked first when it comes zipped; the staging goes once it is in", async () => {
+  // The zip holds another package before the app's own: the one the index names (`inner`) is installed.
+  const world = console2({ archivesHold: { 'Tool.zip': { 'Patch/Tool-patch.pkg': 'patch bytes', 'Tool/Tool-1.0.pkg': 'pkg bytes' } } });
+  const installs = [];
+  // Packages.install resolves once the console has the app installed (pkg_installer.c: "playable" or "completed").
+  const packages = { install: ({ path, name }) => (installs.push({ path, name, there: world.fs.exists(path) }), { done: Promise.resolve({}), cancel() {} }) };
+  const hb = store(world, [
+    app('a/pkg', [{ name: 'Tool.pkg', kind: 'pkg', url: release('a/pkg', 'Tool.pkg'), size: 10 }]),
+    app('b/zip', [{ name: 'Tool.zip', kind: 'archive-pkg', inner: 'Tool/Tool-1.0.pkg', url: release('b/zip', 'Tool.zip'), size: 10 }]),
+  ], { packages });
+  hb.install('a/pkg');
+  await settle();
+  hb.install('b/zip');
+  await settle();
+  assert.deepEqual(installs, [
+    { path: '/data/downloads/homebrew/a__pkg/Tool.pkg', name: 'pkg', there: true },
+    { path: '/data/downloads/homebrew/b__zip/unpacked/Tool/Tool-1.0.pkg', name: 'zip', there: true },
+  ]);
+  assert.ok(!world.fs.exists('/data/downloads/homebrew/a__pkg') && !world.fs.exists('/data/downloads/homebrew/b__zip'), 'the staging goes once the install is done');
+  assert.equal(hb.statusOf('a/pkg').record.package, true);
+  assert.equal(hb.statusOf('b/zip').installed, true);
+  // Refused by the console, it says why and stays not installed; without the installer (the desktop), it says so.
+  const refusing = store(console2(), [app('c/pkg', [{ name: 'Other.pkg', kind: 'pkg', url: release('c/pkg', 'Other.pkg') }])], { packages: { install: () => ({ done: Promise.reject(new Error('The console refused the package.')), cancel() {} }) } });
+  refusing.install('c/pkg');
+  await settle();
+  assert.equal(refusing.statusOf('c/pkg').failed, 'The console refused the package.');
+  assert.equal(refusing.statusOf('c/pkg').installed, false);
+  const desktop = store(console2(), [app('c/pkg', [{ name: 'Other.pkg', kind: 'pkg', url: release('c/pkg', 'Other.pkg') }])]);
+  desktop.install('c/pkg');
+  await settle();
+  assert.match(desktop.statusOf('c/pkg').failed, /cannot install packages/);
+});
+
+test('0.5.2: every install that finishes or fails is told to onInstalled (the online stats), a cancelled one is not', async () => {
+  const told = [];
+  const world = console2();
+  const hb = store(world, [app('a/img', [{ name: 'Tool.exfat', kind: 'image', url: release('a/img', 'Tool.exfat') }])], { onInstalled: (result) => told.push(result) });
+  hb.install('a/img');
+  await settle();
+  world.downloads.enqueue = () => ({ done: Promise.reject(new Error('HTTP 404')), cancel() {}, subscribe: () => () => {} });
+  hb.install('a/img');
+  await settle();
+  world.downloads.enqueue = () => ({ done: Promise.reject(Object.assign(new Error('stopped'), { name: 'AbortError' })), cancel() {}, subscribe: () => () => {} });
+  hb.install('a/img');
+  await settle();
+  assert.deepEqual(told, [{ app: 'a/img', ok: true }, { app: 'a/img', ok: false, error: 'HTTP 404' }]);
 });
 
 // ---- The companion's routes ----------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import { installedTitles } from '../files/useFiles.js';
 import { getGame } from '../state/catalog.js';
 import { homebrew } from '../state/homebrew-store.js';
 import { useDrives } from '../state/drives.js';
+import { downloadQueue } from '../state/downloads.js';
 import { FileSystem } from '@ps5-react/core';
 
   var HOMEBREW = KINDS.filter((kind) => kind.key === "images").map((kind) => ({ ...kind, folders: ["homebrew"] }));
@@ -42,11 +43,19 @@ import { FileSystem } from '@ps5-react/core';
       return null;
     }
   }
+  // 0.5.2: a title's last launch and what Fix it did, for the entries no job is for.
+  function titleLaunch(title) {
+    try {
+      return downloadQueue().titleLaunch?.(title) ?? null;
+    } catch {
+      return null;
+    }
+  }
   function useShelf(version = 0) {
     const { jobs } = useJobs();
     const drives = useDrives();
     const files = useHomebrew(drives.roots, version);
-    const entries = (0, useMemo)(() => shelfEntries({ jobs, files, gameOf: getGame, homebrewOf }).map((entry) => ({
+    const entries = (0, useMemo)(() => shelfEntries({ jobs, files, gameOf: getGame, homebrewOf, titleLaunch }).map((entry) => ({
       ...entry,
       root: entry.jobs[0]?.root ?? entry.files[0]?.root ?? null,
       addedAt: Math.max(0, ...entry.files.map((file) => file.modified || 0), ...entry.jobs.map((job) => modifiedOf(job.artifact?.destination)))

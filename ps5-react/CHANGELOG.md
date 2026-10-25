@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — image retries that find room
+
+- A decode that runs out of heap now counts as memory pressure for a minute: unused decoded images are
+  kept to 16 MiB, as during a memory hold, so its retries 1 and 2 s later find the room those images
+  held. Before, a retry met the same heap and failed the same way: on the console, after a download,
+  about two in three full-screen screenshots failed for hours with "out of memory for decoded pixels".
+  `tools/test_images.py` covers it (`starved`). Not yet hardware-tested.
+
 ## Unreleased — an app replaces its own image
 
 - Add `SelfUpdate.arm(controlDir)` (native ABI v20, `update.arm`). It sends `updater.elf`

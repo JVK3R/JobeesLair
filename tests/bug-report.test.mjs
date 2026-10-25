@@ -9,6 +9,7 @@ import path from 'node:path';
 const repo = process.env.JL_REPO || fileURLToPath(new URL('..', import.meta.url));
 const load = (rel) => import(pathToFileURL(path.join(repo, rel)).href);
 const { REPORT_GAP_MS, reportRelay, reportWait, sendReport } = await load('app/state/bug-report.js');
+const { VERSION_LABEL } = await load('app/version.js');
 
 const RELAY = 'https://jobeeslair-report.example.workers.dev';
 
@@ -36,7 +37,7 @@ test('a report carries the logs as files and the facts as fields, and the next w
   assert.equal(sent[0].url, RELAY);
   const body = sent[0].options.body;
   assert.match(sent[0].options.headers['Content-Type'], /^multipart\/form-data; boundary=/);
-  assert.match(body, /name="version"\r\n\r\n0\.5\.1\r\n/);
+  assert.ok(body.includes(`name="version"\r\n\r\n${VERSION_LABEL}\r\n`), 'the version as the screens write it');
   assert.match(body, /name="firmware"\r\n\r\n\S+\r\n/);
   assert.match(body, /filename="jobeeslair\.log"[\s\S]*app line/);
   assert.match(body, /filename="shadowmount\.log"[\s\S]*SM line 2/);

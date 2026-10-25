@@ -18,10 +18,11 @@ import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useState } from 'react';
 import { CREATOR, choosePin, setCompanion, setCompanionAway, useCompanion } from '../companion/service.js';
 import { URLDialog } from '../downloads/URLDialog.jsx';
-import { formatDate2 } from '../i18n/core.js';
+import { formatDate2, formatNumber2 } from '../i18n/core.js';
 import { chooseLanguage, languageChoice, systemLocale, useT } from '../i18n/index.js';
 import { LOCALES } from '../i18n/locales.js';
 import { reportRelay, sendReport } from '../state/bug-report.js';
+import { online, useOnline } from '../state/online.js';
 import { setAllDebridKey, setTorBoxKey, testAllDebrid, testTorBox, useDebrid } from '../state/debrid.js';
 import { HOMEBREW_ONLY } from '../edition.js';
 import { LIMITS as SPEED_LIMITS, setSpeedLimit, useSpeedLimit } from '../state/speed-limit.js';
@@ -482,8 +483,20 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       report.state === "failed" ? jsx(Callout, { tone: "error", children: report.error }) : null
     ] });
   }
+  // 0.5.2: the announcements up now, whole (the bar under the top island can cut a long one short), the stats
+  // switch and what it sends (state/online.js).
+  function OnlineRows() {
+    const t2 = useT();
+    const { enabled, announcements } = useOnline();
+    return jsxs(Fragment, { children: [
+      ...announcements.map((note) => jsx(Callout, { tone: note.level === "warning" ? "warn" : "info", children: `${t2("news.title")}: ${note.text}` }, note.id)),
+      jsx(Row, { focusKey: "settings:stats", name: t2("settings.online.row"), hint: t2("settings.online.detail"), end: jsx(Switch, { on: enabled }), onPress: () => online().setEnabled(!enabled) }),
+      jsx(Folded, { focusKey: "settings:stats:what", name: t2("settings.online.what"), paragraphs: [t2("settings.online.sends"), t2("settings.online.never")] })
+    ] });
+  }
   function AboutCard() {
     const t2 = useT();
+    const { online: count } = useOnline();
     const update = useUpdate();
     const install = useInstall();
     const automatic = useAutoInstall();
@@ -496,7 +509,8 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
         /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, gap: 4 }, children: [
           /* @__PURE__ */ (0, jsx)(Text, { style: text(26, colors.fg, { fontWeight: 600 }), children: t2("settings.about.version", { version: VERSION_LABEL }) }),
           /* @__PURE__ */ (0, jsx)(Text, { style: text(22, colors.glow), children: t2("settings.about.creator", { creator: CREATOR }) }),
-          /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.about.ai", { creator: CREATOR }) })
+          /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.about.ai", { creator: CREATOR }) }),
+          count ? jsx(Text, { style: text(20, colors.glow), children: t2("online.now", { count: formatNumber2(count) }) }) : null
         ] })
       ] }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:update", name: t2("settings.update.row"), detail: updateDetail(t2, update, install), end: /* @__PURE__ */ (0, jsx)(Icon, { name: update.update ? "download" : "restart", color: update.update ? colors.glow : colors.muted }), onPress: () => update.update ? openUpdateDialog() : void checkForUpdate() }),
@@ -516,6 +530,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
         focusLater("settings:support");
       } }) : null,
       jsx(ReportRow, {}),
+      jsx(OnlineRows, {}),
       /* @__PURE__ */ (0, jsx)(Folded, { focusKey: "settings:credits", name: t2("settings.about.creditsRow"), paragraphs: [t2("settings.about.origin"), t2("settings.about.credits")] })
     ] });
   }

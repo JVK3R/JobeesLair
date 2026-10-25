@@ -96,7 +96,7 @@ fetched again) and samples at most about 16k pixels: use it for an accent or
 | Encoded size | 4 MiB per response (store covers and 1920 × 1080 screenshots measure under 2 MiB) |
 | Source size | 5 megapixels (for example 3840 × 1300) |
 | Request | GET, 30-second total timeout, the shared transport policy of [NETWORKING.md](NETWORKING.md) (verified TLS, at most five redirects, identity encoding) |
-| Retries | Four more attempts, 0.5, 1, 2 and 4 s apart, after connection failures, timeouts, HTTP 429/502/503/504 and running out of heap for the response; two more, 1 and 2 s apart, from the fetched bytes after running out of heap to decode |
+| Retries | Four more attempts, 0.5, 1, 2 and 4 s apart, after connection failures, timeouts, HTTP 429/502/503/504 and running out of heap for the response; two more, 1 and 2 s apart, from the fetched bytes after running out of heap to decode, and for a minute after that unused decoded images are kept to 16 MiB, so the retries find room |
 | Connections | At most 8 per origin, kept alive between requests (HTTP/1.1: the console's libcurl has no HTTP/2) |
 
 ## Memory and threads

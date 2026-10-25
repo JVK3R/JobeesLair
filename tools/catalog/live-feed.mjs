@@ -112,6 +112,55 @@ async function pageName(url) {
     return null;
   }
 }
+// 0.5.2: the pictures of a game the app does not bundle come from the PlayStation Store, as the bundled games'
+// do: its square cover (MASTER, at the bundled covers' size) and its background for the game page. Pegasus's
+// poster stays as the last fallback: some catalogs link a WebP (cdn.prosperopatches.com .../icon0.webp), which the
+// console cannot draw, and those games showed no picture at all. Each game is asked once (catalog/art.json keeps
+// the answer, `none` for a title the store does not know, asked again after ART_RETRY_DAYS).
+const ART = join(ROOT, 'catalog', 'art.json');
+const STORE = (id) => `https://m.np.playstation.com/api/catalog/v2/titles/${id}_00/concepts?country=US&language=en&age=999`;
+const COVERS = ['MASTER', 'GAMEHUB_COVER_ART', 'PORTRAIT_BANNER'], BACKDROPS = ['BACKGROUND_LAYER_ART', 'SIXTEEN_BY_NINE_BANNER', 'FOUR_BY_THREE_BANNER'];
+const ART_RETRY_DAYS = 14, ART_PER_RUN = 400;
+const STORE_IMAGE = /^https:\/\/image\.api\.playstation\.com\/[^?#\s"]+$/;
+// { cover: [urls], hero }, { none: true } when the store has no such title, or null when it did not answer.
+async function storeArt(id) {
+  try {
+    const response = await fetch(STORE(id), { headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' }, signal: AbortSignal.timeout(20000) });
+    if (response.status === 404) return { none: true };
+    if (!response.ok) return null;
+    const images = (await response.json())?.[0]?.media?.images;
+    if (!Array.isArray(images)) return { none: true };
+    const of = (types) => types.flatMap((type) => images.filter((image) => image?.type === type && STORE_IMAGE.test(image.url)).map((image) => image.url));
+    const cover = [...new Set(of(COVERS))].slice(0, 3), hero = of(BACKDROPS)[0];
+    return cover.length || hero ? { cover, ...(hero ? { hero } : {}) } : { none: true };
+  } catch {
+    return null;
+  }
+}
+async function readArt(ids, art, today) {
+  const stale = (entry) => !entry || entry.none && (Date.parse(today) - Date.parse(entry.at || 0)) / 864e5 >= ART_RETRY_DAYS;
+  const queue = ids.filter((id) => stale(art[id])).slice(0, ART_PER_RUN);
+  let asked = 0;
+  const worker = async () => {
+    while (queue.length) {
+      const id = queue.shift();
+      const found = await storeArt(id);
+      if (found) art[id] = found.none ? { none: true, at: today } : found;
+      asked++;
+    }
+  };
+  await Promise.all(Array.from({ length: 4 }, worker));
+  return asked;
+}
+// A game's art in the feed: the store's covers first (the size the bundled ones use), then Pegasus's poster.
+function artOf(game, store) {
+  const covers = [...(store?.cover ?? []).map((url) => `${url}?w=384&thumb=false`), ...(game.cover ? [game.cover] : [])];
+  return {
+    ...(covers.length ? { cover: covers[0] } : {}),
+    ...(covers.length > 1 ? { coverFallbacks: covers.slice(1, 5) } : {}),
+    ...(store?.hero ? { hero: `${store.hero}?w=1920&thumb=false` } : {}),
+  };
+}
 async function readNames(urls, names) {
   const queue = urls.filter((url) => !(url in names));
   let looked = 0;
@@ -247,6 +296,10 @@ async function main() {
   let firstSeen = {};
   try { firstSeen = JSON.parse(readFileSync(FIRST_SEEN, 'utf8')); } catch {}
   const today = new Date().toISOString().slice(0, 10);
+  // 0.5.2: the store's pictures of the games the app does not bundle (catalog/art.json, artOf).
+  let art = {};
+  try { art = JSON.parse(readFileSync(ART, 'utf8')); } catch {}
+  const asked = await readArt(candidates.slice(0, MAX_GAMES + 200).filter((game) => !bundledIds.has(game.id)).map((game) => game.id), art, today);
   const out = [];
   let links = 0, bytes = 200 + Buffer.byteLength(JSON.stringify(ratings)), fresh = 0, regrouped = 0;
   for (const game of candidates) {
@@ -262,7 +315,7 @@ async function main() {
     const entry = {
       id: game.id,
       title: game.title,
-      ...(known ? {} : { art: game.cover ? { cover: game.cover } : {}, summary: game.about.slice(0, 2).join(' ').slice(0, 300), about: game.about, addedAt: firstSeen[game.id] ??= today }),
+      ...(known ? {} : { art: artOf(game, art[game.id]), summary: game.about.slice(0, 2).join(' ').slice(0, 300), about: game.about, addedAt: firstSeen[game.id] ??= today }),
       releases: chosen.flatMap((set) => set.links.map((link) => ({
         url: link.url,
         // Hosts name files "file" or nothing at all: the download is named after the game and the link instead.
@@ -291,8 +344,11 @@ async function main() {
   writeFileSync(OUT, `${JSON.stringify(feed)}\n`);
   writeFileSync(NAMES, `${JSON.stringify(Object.fromEntries(Object.entries(names).sort()), null, 0)}\n`);
   writeFileSync(FIRST_SEEN, `${JSON.stringify(Object.fromEntries(Object.entries(firstSeen).sort()), null, 1)}\n`);
+  // One game a line, so a run's changes read as lines added.
+  writeFileSync(ART, `{\n${Object.entries(art).sort(([a], [b]) => a.localeCompare(b)).map(([id, entry]) => `${JSON.stringify(id)}:${JSON.stringify(entry)}`).join(',\n')}\n}\n`);
   console.log(`catalogs: ${counts.join(', ')}`);
   console.log(`ratings: ${Object.keys(ratings).length} games`);
+  console.log(`store art: ${Object.values(art).filter((entry) => !entry.none).length} games with pictures, ${Object.values(art).filter((entry) => entry.none).length} the store has none of (${asked} asked this run)`);
   console.log(`file names: ${Object.keys(names).length} known (${looked} pages read this run), ${regrouped} sets regrouped by them`);
   console.log(`wrote catalog/live.json: ${out.length} games (${fresh} new to the app), ${links} links, ${(bytes / 1048576).toFixed(2)} MiB; ${candidates.length - out.length} left for a later run`);
 }

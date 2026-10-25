@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { downloadQueue } from '../state/downloads.js';
+import { shapeOf } from './shape.js';
 
   function subscribe2(listener) {
     try {
@@ -11,10 +12,8 @@ import { downloadQueue } from '../state/downloads.js';
       return void 0;
     }
   }
-  // Everything a card or library tile shows that is not progress: the last launch's outcome, the drive (a
-  // move changes it) and whether a move is under way or stopped.
-  var shapeOf = (job2) => `${job2.id}|${job2.state}|${job2.phase || ""}|${job2.error}|${job2.message || ""}|${job2.total}|${job2.launch?.outcome || ""}|${job2.root}|${job2.moving ? `${job2.moving.to}:${job2.moving.interrupted ? "stopped" : "moving"}:${job2.moving.error || ""}` : ""}|${job2.extras || ""}|${job2.autoOpenAt || ""}|${job2.partIndex ?? ""}|${job2.inspected || ""}|${job2.fileName || ""}|${job2.aheadAt || ""}|${job2.aheadState || ""}|${job2.aheadPart ?? ""}|${job2.cleared || ""}`;
   var fractionOf = (progress) => progress?.total ? Math.min(1, progress.written / progress.total) : 0;
+  // Redraws only when a job's shape changes (downloads/shape.js): what is shown besides progress.
   function useJobs() {
     const [state, setState] = (0, useState)({ jobs: [], shape: "", error: "" });
     (0, useEffect)(() => {

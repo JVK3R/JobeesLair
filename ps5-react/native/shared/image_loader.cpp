@@ -108,9 +108,15 @@ Heap heap() {
   const auto probe = heap_probe.load();
   return probe ? probe() : Heap{};
 }
+// A decode that ran out of heap counts as pressure for this long: the next poll trims unused decoded images
+// to kLowCacheBytes, so its retries find the room they held. Otherwise a retry met the same heap: on the
+// console, screen-size screenshots failed for hours after a download, every retry the way the first had.
+constexpr auto kShortOfHeap = std::chrono::seconds(60);
+std::atomic<Clock::rep> short_until{0};
 bool low_memory() {
   const Heap h = heap();
-  return holds > 0 || (h.size && h.live > h.size / 100 * kPressurePercent);
+  return holds > 0 || Clock::now().time_since_epoch().count() < short_until.load() ||
+         (h.size && h.live > h.size / 100 * kPressurePercent);
 }
 std::atomic<Clock::rep> deferred_until{0};
 // New fetches wait while encoded bytes held anywhere (transfers, the decode queue, the encoded
@@ -1000,7 +1006,9 @@ private:
       const auto started = Clock::now();
       const bool decoded = decode(*entry);
       counters.decode_us += std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - started).count();
-      // Out of heap: fetched again (usually from the encoded or disk cache) once memory may be free.
+      // Out of heap: fetched again (usually from the encoded or disk cache) once memory may be free, and the
+      // cache gives up its unused images meanwhile (kShortOfHeap).
+      if (!decoded) short_until = (Clock::now() + kShortOfHeap).time_since_epoch().count();
       const bool retry = !decoded && ++entry->attempts < kDecodeAttempts;
       if (retry) {
         entry->error.clear();

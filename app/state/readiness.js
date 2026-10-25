@@ -27,7 +27,8 @@ import { t } from '../i18n/core.js';
     if (state === "attention") return stage("wontStart", "attention", { action: "checkAgain" });
     if (state === "installed") {
       if (job2.role === "backport") return stage("installed", "backport");
-      if (job2.launch?.outcome === "wontStart") return stage("wontStart", "lastLaunch", { action: "seeWhy" });
+      // 0.5.2: Fix it changed something since that launch (download-queue.js fixIt): starting it again tells.
+      if (job2.launch?.outcome === "wontStart") return stage("wontStart", job2.fixIt && (job2.fixIt.mark ?? null) === (job2.launch.mark ?? null) ? "fixWaiting" : "lastLaunch", { action: "seeWhy" });
       if (job2.launch?.outcome === "played") return stage("played");
       return stage("installed", job2.artifact?.nextAction === "shadowmount" ? "notPlayedYet" : null);
     }

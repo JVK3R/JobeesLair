@@ -13,7 +13,7 @@ import { consoleFirmware, firmwareText, newerFirmware, requiredFirmware } from '
   var RECEIPT = ".ps5-react-extraction";
   var baseName = (path) => path.slice(path.lastIndexOf("/") + 1);
   /** `firmware`: the console's system software ("13.60") or null; `storageIdentity`: the queue's drive check. */
-  function createPayloadChecks({ fs, firmware, storageIdentity }) {
+  function createPayloadChecks({ fs, firmware, storageIdentity, openFiles = () => 0 }) {
     // What is wrong with a finished transfer, or null: the file must be there, not empty, with no partial
     // beside it, and hold exactly the bytes its source declared (or the server reported).
     function transferProblem(path, expected, result) {
@@ -161,6 +161,10 @@ import { consoleFirmware, firmwareText, newerFirmware, requiredFirmware } from '
         for (const name of [RECEIPT, ".ps5-react-stage"]) if (fs.exists(`${destination}/${name}`)) fs.remove(`${destination}/${name}`);
       }
       const extras = folder !== job2.output ? await keepExtras(job2) : null;
+      // 0.5.2: its files opened to every user, as a game folder's are: ShadowMount lays its eboot.bin and libraries
+      // over the game, and the console runs none of them while they are rw-rw-rw- (download-queue.js openGameFiles).
+      openFiles(destination);
+      job2.opened = true;
       console.log(`[download-queue] ${job2.id}: backport for ${title} placed in ${destination}`);
       job2.output = destination;
       job2.publishTo = destination;

@@ -71,3 +71,25 @@ assert.ok(top.every((game) => game.ratingCount >= 200 && game.stars >= 4.5), 'To
 const grid = oneEach(sortGames(everything, 'rating')).slice(0, 100);
 assert.equal(new Set(grid.map((game) => plain(game.title))).size, grid.length, 'no game twice in the rating grid');
 console.log(`OK: one card a game (${everything.length} -> ${oneEach(everything).length}); Top Rated opens with ${top.slice(0, 3).map((game) => game.title).join(', ')}`);
+
+// The sections (0.5.2, app/ui/sections.js): Browse is one L1 and R1 step to, between Discover and Top rated. It was
+// only a menu, and they stepped past it (Jake: "it never lets you select it, it just jumps over it").
+const { BROWSE_SORT, TABS, sectionOf, stepFrom } = await import(pathToFileURL(path.join(repo, 'app/ui/sections.js')).href);
+assert.deepEqual(TABS.slice(0, 5), ['search', 'discover', 'catalog', 'top', 'new']);
+assert.equal(stepFrom('discover', true), 'catalog', 'R1 from Discover is Browse');
+assert.equal(stepFrom('catalog', true), 'top');
+assert.equal(stepFrom('top', false), 'catalog', 'L1 from Top rated is Browse');
+assert.equal(stepFrom('catalog', false), 'discover');
+assert.equal(stepFrom('search', false), null, 'nothing before Search');
+assert.equal(stepFrom('settings', true), null, 'nothing after Settings');
+const at = (filters, sort, query = '') => sectionOf({ filters, sort }, query);
+assert.equal(at(NO_FILTERS, BROWSE_SORT), 'catalog', "Browse's own order lights Browse, not Discover");
+assert.equal(at(NO_FILTERS, 'relevance'), 'discover');
+assert.equal(at(NO_FILTERS, 'size'), 'catalog');
+assert.equal(at({ ...NO_FILTERS, genre: [genre] }, 'relevance'), 'catalog', 'a genre is Browse');
+assert.equal(at(NO_FILTERS, 'relevance', 'zelda'), 'catalog');
+assert.equal(at(NO_FILTERS, 'rating'), 'top');
+assert.equal(at(NO_FILTERS, 'newest'), 'new');
+assert.equal(at({ ...NO_FILTERS, wishlist: true }, BROWSE_SORT), 'favorites');
+for (const name of TABS) if (name !== 'search') assert.ok(stepFrom(stepFrom(name, false) ?? name, true) === name || stepFrom(name, false) === null, `${name} is reached back from its neighbour`);
+console.log(`OK: L1 and R1 step through ${TABS.join(' > ')}`);

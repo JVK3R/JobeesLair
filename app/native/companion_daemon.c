@@ -42,6 +42,10 @@
 #define MAX_SESSIONS 8
 #define MAX_TRIES 20
 #define MAX_FILE (4 * 1024 * 1024)
+// A request's whole head and body arrive within this, however slowly they trickle in (0.5.2): it serves one at a
+// time, so a client sending a byte every few seconds held it, and with it the port the app takes back and the
+// control port the app's settings come in on.
+#define REQUEST_S 8
 
 #ifdef COMPANION_HOST_TEST
 // The desktop test: the title "runs" while $COMPANION_TEST_RUNNING exists, a launch creates it, and the
@@ -69,6 +73,10 @@ static int loader_port(void) {
   const char* value = getenv("COMPANION_TEST_LOADER");
   return value && *value ? atoi(value) : 9021;
 }
+static int request_seconds(void) {
+  const char* value = getenv("COMPANION_TEST_REQUEST_S");
+  return value && *value ? atoi(value) : REQUEST_S;
+}
 #else
 typedef struct {
   uint32_t size, user_id, app_opt;
@@ -90,6 +98,7 @@ static int launch_title(const char* title) {
 }
 static int control_port(void) { return CONTROL_PORT; }
 static int loader_port(void) { return 9021; }
+static int request_seconds(void) { return REQUEST_S; }
 #endif
 
 typedef struct {
@@ -309,6 +318,7 @@ typedef struct {
   char method[8];
   char path[256];
   int header_ok;
+  int host_ok;
   char cookie[72];
   char body[4097];
 } Request;
@@ -356,12 +366,39 @@ static int header(const char* headers, const char* name, char* out, size_t capac
   return 0;
 }
 
+// The Host a request names: an IPv4 address (with a port) or localhost, as the app's own server takes it (0.5.2). A
+// domain name is how a web page would reach this through DNS rebinding and guess PINs; no phone needs one.
+static int literal_host(const char* headers) {
+  char host[96];
+  if (!header(headers, "Host", host, sizeof host)) return 1; // HTTP/1.0 tools; every browser sends one
+  for (char* c = host; *c; ++c) if (*c >= 'A' && *c <= 'Z') *c = (char)(*c - 'A' + 'a');
+  char* colon = strrchr(host, ':');
+  if (colon) {
+    size_t digits = strlen(colon + 1);
+    if (!digits || digits > 5 || strspn(colon + 1, "0123456789") != digits) return 0;
+    *colon = 0;
+  }
+  if (!strcmp(host, "localhost")) return 1;
+  int parts = 0;
+  for (const char* at = host;;) {
+    size_t length = strspn(at, "0123456789");
+    if (!length || length > 3 || atoi(at) > 255) return 0;
+    ++parts;
+    at += length;
+    if (!*at) break;
+    if (*at != '.' || parts == 4) return 0;
+    ++at;
+  }
+  return parts == 4;
+}
+
 static int read_request(int fd, Request* request) {
   char buffer[16384 + 4097];
   size_t used = 0;
   char* end = NULL;
+  const time_t started = time(NULL);
   while (!end) {
-    if (used >= 16384) return 0;
+    if (used >= 16384 || time(NULL) - started > request_seconds()) return 0;
     ssize_t count = recv(fd, buffer + used, 16384 - used, 0);
     if (count <= 0) return 0;
     used += (size_t)count;
@@ -376,6 +413,7 @@ static int read_request(int fd, Request* request) {
   const char* headers = strstr(buffer, "\r\n") + 2;
   char value[256];
   request->header_ok = header(headers, "X-JBH", value, sizeof value) && !strcmp(value, "1");
+  request->host_ok = literal_host(headers);
   request->cookie[0] = 0;
   if (header(headers, "Cookie", value, sizeof value)) {
     // The app's own cookie name: "jbh=" at the start or after "; ".
@@ -393,6 +431,7 @@ static int read_request(int fd, Request* request) {
   if (have > content) have = content;
   memcpy(request->body, end + 4, have);
   while (have < content) {
+    if (time(NULL) - started > request_seconds()) return 0;
     ssize_t count = recv(fd, request->body + have, content - have, 0);
     if (count <= 0) return 0;
     have += (size_t)count;
@@ -446,6 +485,7 @@ static void serve(int fd) {
   memset(&request, 0, sizeof request);
   timeouts(fd, 5);
   if (!read_request(fd, &request)) { json(fd, 400, "{\"error\":\"Bad request.\"}"); return; }
+  if (!request.host_ok) { json(fd, 403, "{\"error\":\"Open the console by its IP address.\",\"app\":\"closed\"}"); return; }
   if (!strcmp(request.method, "GET") && !strcmp(request.path, "/")) {
     respond(fd, 200, "text/html; charset=utf-8", PAGE, sizeof PAGE - 1, NULL);
     return;

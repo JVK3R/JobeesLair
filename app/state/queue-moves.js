@@ -95,8 +95,13 @@ import { MARGIN2 } from './space.js';
         rootIdentityOf(to);
         const { copies: copies2, sidecars } = movable(job2);
         if (!copies2.length) throw new Error(t("move.nothing"));
-        const sizes = copies2.map((path) => treeSize(path));
-        const total = sizes.reduce((sum, size) => sum + size, 0);
+        // 0.5.2: a folder of more entries than treeSize counts here (on the JS thread) came out short, so the room check
+        // could pass and the copy run the other drive out of space part-way. Its copy counts it whole on its worker
+        // thread before it writes (copyAsync's first `total`), and the room is checked again on that count.
+        const budgets = copies2.map(() => ({ left: 2e4 }));
+        const sizes = copies2.map((path, index) => treeSize(path, budgets[index]));
+        const counted = budgets.map((budget) => budget.left >= 0);
+        let total = sizes.reduce((sum, size) => sum + size, 0);
         const staged = (path) => {
           try {
             return treeSize(`${onRoot(path, from, to)}.partial`);
@@ -119,13 +124,30 @@ import { MARGIN2 } from './space.js';
             const target = onRoot(path, from, to);
             fs.mkdir(target.slice(0, target.lastIndexOf("/")), { recursive: true });
             const task = control.task = fs.copyAsync(path, target, { verify: true, resume: true, receipt: true });
+            let noRoom = null;
             task.subscribe((progress) => {
+              if (!counted[index] && progress.total) {
+                counted[index] = true;
+                total += progress.total - sizes[index];
+                sizes[index] = progress.total;
+                job2.moving.total = total;
+                const need = sizes.slice(index).reduce((sum, size) => sum + size, 0) + MARGIN2;
+                const room2 = fs.diskUsage(to).free + staged(path);
+                if (room2 < need) {
+                  log2(`${path} holds ${progress.total} bytes, more than counted before; ${room2} bytes there`);
+                  noRoom = new Error(t("move.noRoom", { size: formatBytes(need - room2) }));
+                  task.cancel();
+                  return;
+                }
+              }
               // Copying, then reading back: each half of the work.
               job2.moving.written = copied + ((progress.written || 0) + (progress.verified || 0)) / 2;
               onProgress(total ? job2.moving.written / total : 0);
               emit();
             });
-            const result = await task.done;
+            const result = await task.done.catch((error2) => {
+              throw noRoom ?? error2;
+            });
             copied += sizes[index];
             log2(`copied ${path} to ${target}${result.receipt ? ` (download receipt: ${result.receipt})` : ""}, read back and matched`);
           }

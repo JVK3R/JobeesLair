@@ -73,6 +73,11 @@ test('errors: TorBox\'s codes in plain words, 429, and a transport failure never
   await assert.rejects(api({ 'POST /webdl/createwebdownload': () => fail('UNSUPPORTED_SITE') }).createDownload(FICHIER), { code: 'UNSUPPORTED_SITE', message: "TorBox doesn't support this host." });
   const broken = createTorBox({ key: () => KEY, http: { request: async (url) => { throw new Error(`could not connect to ${url}`); } } });
   await assert.rejects(broken.getUnrestrictedLink('webdl', 7, 3), (error) => error.code === 'NETWORK' && !error.message.includes(KEY));
+  // 0.5.2: a page instead of an answer (TorBox down, or every request redirected as on 2026-10-25) says TorBox has trouble.
+  for (const status of [307, 502]) {
+    await assert.rejects(api({ 'GET /webdl/hosters': () => ({ status, body: null }) }).hosters(), { code: `HTTP_${status}`, message: `TorBox isn't answering right now (HTTP ${status}). Try again in a few minutes.` });
+  }
+  await assert.rejects(api({ 'GET /user/me': () => ({ status: 404, body: null }) }).me(), { message: 'TorBox answered HTTP 404.' });
 });
 
 test('checkCachedLinks: each link asked by its MD5 (and its MD5 without the query), the held ones returned', async () => {

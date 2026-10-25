@@ -12,7 +12,7 @@
 
 <p align="center">
   <b>Менеджер загрузок для homebrew на PS5 с открытым исходным кодом.</b><br>
-  Версия 0.5.0 · Title ID <code>PPSA99471</code> · автор: JVK3R<br>
+  Версия 0.5.2 · Title ID <code>PPSA99471</code> · автор: JVK3R<br>
   <i>Proudly created alongside AI by JVK3R</i>
 </p>
 

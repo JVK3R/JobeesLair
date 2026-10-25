@@ -11,20 +11,21 @@ const which = process.env.UPDATE_STATE ?? 'ready';
 const load = (rel) => import(pathToFileURL(path.join(repo, rel)).href);
 const en = (await load('app/i18n/locales/en.json')).default;
 (await load('app/i18n/core.js')).configure(() => en, en);
-// The fake release is 0.5.2, one past this build's 0.5.1, so it counts as an update whatever the app's version.
+const { VERSION } = await load('app/version.js');
+// The fake release is 0.5.3, past this build's 0.5.2, so it counts as an update.
 
-const staging = '/mnt/usb0/JobeesLair/update_staging/0.5.2';
-const asset = (name, size) => ({ url: `https://github.com/JVK3R/JobeesLair/releases/download/v0.5.2/${name}`, size, sha256: 'a'.repeat(64) });
-const latest = { version: '0.5.2', url: 'https://github.com/JVK3R/JobeesLair/releases/tag/v0.5.2', notes: 'Fixes.', published: '', assets: which === 'none' ? null : { image: asset('JobeesLair.exfat', 466616320), zip: asset('update.zip', 21421243) } };
+const staging = '/mnt/usb0/JobeesLair/update_staging/0.5.3';
+const asset = (name, size) => ({ url: `https://github.com/JVK3R/JobeesLair/releases/download/v0.5.3/${name}`, size, sha256: 'a'.repeat(64) });
+const latest = { version: '0.5.3', url: 'https://github.com/JVK3R/JobeesLair/releases/tag/v0.5.3', notes: 'Fixes.', published: '', assets: which === 'none' ? null : { image: asset('JobeesLair.exfat', 466616320), zip: asset('update.zip', 21421243) } };
 const saved = {
-  ready: { phase: 'ready', version: '0.5.2', staging, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: latest.assets?.image },
-  paused: { phase: 'downloading', version: '0.5.2', staging, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: latest.assets?.image },
-  failed: { phase: 'armed', version: '0.5.2', staging, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: latest.assets?.image },
+  ready: { phase: 'ready', version: '0.5.3', staging, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: latest.assets?.image },
+  paused: { phase: 'downloading', version: '0.5.3', staging, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: latest.assets?.image },
+  failed: { phase: 'armed', version: '0.5.3', staging, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: latest.assets?.image },
 }[which] ?? {};
 const files = new Map([
   ['/download0/JobeesLair/update-check.json', JSON.stringify({ checkedAt: Date.now(), latest })],
   ['/download0/JobeesLair/auto-update.json', JSON.stringify(saved)],
-  ['/data/JobeesLair/update/result.txt', which === 'failed' ? 'outcome=rolledback\nversion=0.5.2\nreason=the new version closed before it finished starting\n' : null],
+  ['/data/JobeesLair/update/result.txt', which === 'failed' ? 'outcome=rolledback\nversion=0.5.3\nreason=the new version closed before it finished starting\n' : null],
 ]);
 const sizes = new Map([[`${staging}/JobeesLair.exfat.staged`, 466616320]]);
 const writes = [];
@@ -70,7 +71,7 @@ if (which === 'ready') {
   assert.ok(has(/^Update ready – Restart app to apply$/), 'the ready badge');
   assert.ok(has(/^Restart to apply$/) && has(/^View release$/));
   assert.ok(has(/the new version takes this one's place/));
-  assert.ok(writes.some(([p, text]) => p === '/data/JobeesLair/update/booted.txt.tmp' && text === '0.5.1\n'), 'this build said it started');
+  assert.ok(writes.some(([p, text]) => p === '/data/JobeesLair/update/booted.txt.tmp' && text === `${VERSION}\n`), 'this build said it started');
 } else if (which === 'paused') {
   assert.ok(has(/^Download and install$/) && has(/download stopped when Jobee'sLair closed/));
 } else if (which === 'failed') {

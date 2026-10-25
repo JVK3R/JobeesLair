@@ -9,6 +9,6 @@ __pycache__/
 app/data/private/*
 !app/data/private/README.txt
 
-# wrangler state of the bug report relay (tools/report-relay)
-tools/report-relay/.wrangler/
-tools/report-relay/.dev.vars
+# wrangler state of the Workers (tools/report-relay, tools/online): its cache names the Cloudflare account
+tools/*/.wrangler/
+tools/*/.dev.vars

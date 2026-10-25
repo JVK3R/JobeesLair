@@ -9,14 +9,20 @@ import { cardPick, readinessOf } from '../state/readiness.js';
   // Every path a job put on its drive, as the Files screen counts them (files/useFiles.js).
   var ownedBy = (job2) => [job2.artifact?.destination, ...job2.artifact?.images ?? [], job2.downloadDestination, job2.output, job2.publishTo, job2.backportPath, job2.extras].filter(Boolean);
   var related = (a, b) => a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
-  // A game copied over FTP: installed once its title ID is in /user/app, else waiting on ShadowMount.
-  var untracked = (file) => readinessOf({ state: file.installed ? "installed" : "downloaded", artifact: { nextAction: "shadowmount" } });
+  // A game copied over FTP: installed once its title ID is in /user/app, else waiting on ShadowMount. 0.5.2: with
+  // its last launch and what Fix it did, by its title ID (download-queue.js titleLaunch), as a job carries them:
+  // a Homebrew app or a copied game that will not start says so, and offers Fix it.
+  var untracked = (file, titleLaunch) => {
+    const known = file.installed && file.titleId ? titleLaunch?.(file.titleId) : null;
+    return readinessOf({ state: file.installed ? "installed" : "downloaded", artifact: { nextAction: "shadowmount" }, launch: known?.launch ?? null, fixIt: known?.fixIt ?? null });
+  };
   /**
    * `jobs`: the queue's snapshots, in queue order (newest last). `files`: homebrew/ entries
    * (files/scan.js, with `root` and `installed`). `gameOf(id)`: the catalog's game, or undefined.
+   * `titleLaunch(title)`: { launch, fixIt } of a title no job is for (0.5.2), or null.
    * Returns the entries, the ones that need the gamer first, then the newest.
    */
-  function shelfEntries({ jobs, files = [], gameOf, homebrewOf = null }) {
+  function shelfEntries({ jobs, files = [], gameOf, homebrewOf = null, titleLaunch = null }) {
     const entries = /* @__PURE__ */ new Map();
     const owned = [];
     const entryOf = (key, game, order) => {
@@ -44,15 +50,16 @@ import { cardPick, readinessOf } from '../state/readiness.js';
     }
     return [...entries.values()].map((entry) => {
       const pick = cardPick(entry.jobs);
-      const ready = pick?.ready ?? untracked(entry.files[0]);
+      const ready = pick?.ready ?? untracked(entry.files[0], titleLaunch);
       const removing = entry.jobs.some((job2) => job2.state === "removing");
       const size = entry.jobs.reduce((sum, job2) => sum + (job2.total || job2.written || 0), 0) + entry.files.reduce((sum, file) => sum + (file.size || 0), 0);
       return { ...entry, job: pick?.job ?? null, ready, removing, size, catalog: Boolean(gameOf(entry.game.id)), action: actionOf(pick?.job ?? null, ready, Boolean(gameOf(entry.game.id))) };
     }).sort((a, b) => Number(b.ready.tone === "bad") - Number(a.ready.tone === "bad") || b.order - a.order || a.game.title.localeCompare(b.game.title));
   }
-  // ✕ on a tile: "See why" for a game that won't start, the install step it waits on, else its game page.
+  // ✕ on a tile: "Fix it" for a game that won't start (0.5.2; See why is in its Options), the install step it
+  // waits on, else its game page.
   function actionOf(job2, ready, catalog) {
-    if (job2 && ready.action === "seeWhy") return { name: "seeWhy", label: "ready.seeWhy", icon: "alert" };
+    if (ready.action === "seeWhy") return { name: "fixIt", label: "fix.label", icon: "restart" };
     if (job2 && ["downloaded", "attention"].includes(job2.state)) return { name: "register", label: job2.state === "attention" ? "downloads.action.checkAgain" : "downloads.action.install", icon: "restart" };
     if (job2 && job2.state === "installer-required") return { name: "install", label: "downloads.action.install", icon: "package" };
     if (catalog) return { name: "gamePage", label: "downloads.action.gamePage", icon: "chevronRight" };

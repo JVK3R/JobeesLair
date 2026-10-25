@@ -36,6 +36,7 @@ import { downloadQueue } from './state/downloads.js';
 import { colors, useThemeEpoch } from './ui/colors.js';
 import { watchQueue } from './ui/lightBar.js';
 import { startInstaller, startUpdateChecks } from './state/update.js';
+import { startOnline } from './state/online.js';
 import { applySpeedLimit } from './state/speed-limit.js';
 import { installLogger } from './services/logger.js';
 import { VERSION } from './version.js';
@@ -51,6 +52,7 @@ import { Disclaimer } from './ui/Disclaimer.jsx';
 import { UpdateDialog } from './ui/UpdateDialog.jsx';
 import { ScreenSaver } from './ui/ScreenSaver.jsx';
 import { WhatsNew } from './ui/WhatsNew.jsx';
+import { AnnouncementBar, usePageGlide } from './ui/AnnouncementBar.jsx';
 import { useInterfaceHaptics } from './ui/haptics.js';
 import { useInterfaceSounds } from './ui/sounds.js';
 
@@ -70,7 +72,8 @@ import { useInterfaceSounds } from './ui/sounds.js';
     return /* @__PURE__ */ (0, jsx)(SearchScreen, { onBack: pop, onOpenGame: openCard });
   }
   // Pages start under the top island (Header.jsx: 24 from the top, 80 tall) with a gap, and end above
-  // the button hints (Legend, 60 tall).
+  // the button hints (Legend, 60 tall). 0.5.2: while announcements are up, they start under their bar too, and
+  // glide there when it comes or goes (ui/AnnouncementBar.jsx, usePageGlide).
   var PAGE_TOP = 128, PAGE_BOTTOM = 60;
   // The store comes up out of the vortex (ui/Reveal.jsx): it is mounted, still, under the reveal's backdrop,
   // which fades once the JL mark has popped and flown toward the island; the reveal unmounts when done.
@@ -82,7 +85,16 @@ import { useInterfaceSounds } from './ui/sounds.js';
   // While another page is up, the store's art goes (ReleaseImages): the engine registers at most 256
   // images, and the Homebrew section alone draws a few dozen.
   function BrowseLayer({ shown }) {
-    return /* @__PURE__ */ (0, jsx)(View, { style: shown ? { position: "absolute", left: 0, right: 0, top: PAGE_TOP, bottom: PAGE_BOTTOM } : { position: "absolute", left: 0, right: 0, top: PAGE_TOP, bottom: PAGE_BOTTOM, display: "none" }, children: /* @__PURE__ */ (0, jsx)(ReleaseImages, { when: !shown, children: /* @__PURE__ */ (0, jsx)(StoreFreeze, { frozen: !shown, children: /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "page", autoFocus: true, inert: !shown, children: /* @__PURE__ */ (0, jsx)(BrowsePage, {}) }) }) }) });
+    const glide = usePageGlide();
+    const top = PAGE_TOP + glide.top;
+    return /* @__PURE__ */ (0, jsx)(motion.View, { initial: false, animate: { y: glide.y }, transition: { y: glide.transition }, style: shown ? { position: "absolute", left: 0, right: 0, top, bottom: PAGE_BOTTOM } : { position: "absolute", left: 0, right: 0, top, bottom: PAGE_BOTTOM, display: "none" }, children: /* @__PURE__ */ (0, jsx)(ReleaseImages, { when: !shown, children: /* @__PURE__ */ (0, jsx)(StoreFreeze, { frozen: !shown, children: /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "page", autoFocus: true, inert: !shown, children: /* @__PURE__ */ (0, jsx)(BrowsePage, {}) }) }) }) });
+  }
+  // Any other page. It slides in over the one it replaces, and glides with the announcement bar; an immersive one
+  // covers the whole screen (the bar is not shown then) and stays put.
+  function ScreenFrame({ immersive, children }) {
+    const glide = usePageGlide();
+    const y = immersive ? 0 : glide.y;
+    return jsx(motion.View, { initial: { x: 56, y }, animate: { x: 0, y }, transition: { ...SCREEN_FADE, y: glide.transition }, style: immersive ? { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 } : { position: "absolute", left: 0, right: 0, top: PAGE_TOP + glide.top, bottom: PAGE_BOTTOM }, children });
   }
   var WARM_DELAY_MS = 3e3;
   // After the covers warm: a feed's new copy is only read at the next launch, so nothing here waits on it.
@@ -116,6 +128,8 @@ import { useInterfaceSounds } from './ui/sounds.js';
     (0, useEffect)(() => startUpdateChecks(), []);
     // The Homebrew section's live index, fetched once a while after launch (state/homebrew-store.js).
     (0, useEffect)(() => startHomebrewRefresh(), []);
+    // 0.5.2: the live count, announcements and (unless turned off) the anonymous stats (state/online.js).
+    (0, useEffect)(() => startOnline(() => downloadQueue().transferring?.() ?? false), []);
     const { top } = useNavState();
     const onBrowse = top.name === "browse";
     const key = top.name === "game" ? `game:${top.id}` : top.name === "homebrew-app" ? `homebrew-app:${top.id}` : top.name;
@@ -129,9 +143,10 @@ import { useInterfaceSounds } from './ui/sounds.js';
           onBrowse ? null : (
             // No background of its own: the root's canvas shows through, so a screen change does not
             // fill the whole screen twice. `screen` lets the header's Down return to where it was left.
-            /* @__PURE__ */ (0, jsx)(motion.View, { initial: { x: 56 }, animate: { x: 0 }, transition: SCREEN_FADE, style: immersive ? { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 } : top.name === "downloads" || top.name === "files" || top.name === "storage" ? { position: "absolute", left: 0, right: 0, top: PAGE_TOP, bottom: PAGE_BOTTOM } : { position: "absolute", left: 0, right: 0, top: PAGE_TOP, bottom: PAGE_BOTTOM }, children: /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "screen", children: /* @__PURE__ */ (0, jsx)(Screen, { screen: top }) }) }, key)
+            jsx(ScreenFrame, { immersive, children: /* @__PURE__ */ (0, jsx)(FocusScope, { focusKey: "screen", children: /* @__PURE__ */ (0, jsx)(Screen, { screen: top }) }) }, key)
           ),
           immersive ? null : /* @__PURE__ */ (0, jsx)(Legend, { screen: top.name }),
+          immersive ? null : jsx(AnnouncementBar, {}),
           /* @__PURE__ */ (0, jsx)(UpdateDialog, {})
         ] }),
         // 0.5.0 Pre Release 4: the one-time What's new, and the screen saver over everything.

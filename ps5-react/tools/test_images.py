@@ -200,6 +200,9 @@ def main():
         assert squeezed == {"loaded": 12, "calm": 0, "held": 8, "held_mib": 16, "reloaded": 8, "restored": 0,
                             "pressed": 8, "relieved": True,
                             "full": "Image.load " + origin + "/photo.jpg?n=full: out of memory to decode (heap near full)"}, squeezed
+        # A decode refused for want of heap trims unused images to 16 MiB before its retry, which then finishes.
+        starved = run("starved", origin + "/photo.jpg")
+        assert starved == {"loaded": 12, "calm": 0, "early": 0, "trimmed": 8, "ready": True}, starved
         # A second launch serves the encoded bytes from the disk cache without a request.
         cache = directory / "cache"
         before = len(Handler.requests)
@@ -207,7 +210,8 @@ def main():
         again = run("load", origin + "/photo.jpg?disk", 32, 32, COVER, directory / "pixels", cache=cache)
         assert first["ready"] and again["ready"] and len(Handler.requests) == before + 1, (first, again)
         print("Remote images: cover/contain/stretch fitting without enlargement, box-filter quality, premultiplied "
-              "alpha, error messages, allocation failure and recovery, shared fetches, cancellation, LRU eviction, memory holds, heap pressure and the disk cache passed.")
+              "alpha, error messages, allocation failure and recovery, shared fetches, cancellation, LRU eviction, memory holds, heap pressure, "
+              "a refused decode's trim and the disk cache passed.")
     server.shutdown()
 
 

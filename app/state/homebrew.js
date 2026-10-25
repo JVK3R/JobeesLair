@@ -17,8 +17,9 @@
 //                    127.0.0.1:9021 when the player runs it;
 //   archive-payload  an archive holding one: the payload's folder is kept the same way (its data with it);
 //   pkg, archive-pkg a package: handed to the console's installer (Packages.install).
-// An update installs the newer file over the older one: the old image or folder is moved aside first and
-// deleted once the new one is in place. What is installed is recorded in <dataDir>/homebrew-installed.json:
+// An update installs the newer file over the older one, on the drive it is on (rootFor): an old image is moved
+// aside first and deleted once the new one is in place; a folder takes the new version's files into it, and what
+// the app keeps there (saves, settings) stays (mergeInto). What is installed is recorded in <dataDir>/homebrew-installed.json:
 // the release tag (to tell an update), the file and where it went.
 // Apps installed by hand are found too: an app folder or image in a drive's homebrew/ folder that has the
 // name an app's release gives it counts as installed, version unknown.
@@ -57,10 +58,15 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
     // The drives an app may go to, the internal one first, and the free bytes of one (null: unknown).
     roots = () => [],
     freeBytes = () => null,
+    // A drive's and a size's names in the gamer's words, for the errors that stop an install (0.5.2).
+    driveName = (root) => root,
+    sizeText = (bytes) => bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.ceil(bytes / 1e6)} MB`,
     readBundled = () => null,
     platform = "ps5",
     now = Date.now,
-    log = (line) => console.log(`[homebrew] ${line}`)
+    log = (line) => console.log(`[homebrew] ${line}`),
+    // 0.5.2: told when an install finishes ({app, ok: true}) or fails ({app, ok: false, error}); not when cancelled.
+    onInstalled = () => {}
   }) {
     const indexFile = `${dataDir}/homebrew-index.json`;
     const installedFile = `${dataDir}/homebrew-installed.json`;
@@ -233,13 +239,31 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
     const updates = () => load().apps.filter((app) => statusOf(app.id).update);
     const installedApps = () => load().apps.filter((app) => statusOf(app.id).installed);
     // ---- Installing ----------------------------------------------------------------------------------------
-    // The drive an app goes to: the internal one when it has room, else the one with the most free space.
-    function rootFor(file) {
+    // The drive an app goes to: the internal one when it has room, else the one with the most free space. 0.5.2: an
+    // app already on the console (installed from here, or found in a homebrew/ folder) is updated on its own drive,
+    // and one removed with its saves kept goes back to the drive they wait on. Files only move within a drive: on
+    // another, the update would be a second copy without the saves, and kept saves would never come back. When that
+    // drive has no room, the install stops and says what to do instead.
+    function rootFor(file, app) {
       const list = roots();
       if (!list.length) throw new Error("No drive to install to.");
       const need = (file.size || 0) * (file.kind === "image" || file.kind === "payload" ? 1.1 : 2.2) + 64 * 1024 ** 2;
       const free = (root) => freeBytes(root);
-      if (free(list[0]) === null || free(list[0]) >= need) return list[0];
+      const room = (root) => free(root) === null || free(root) >= need;
+      const record = installed[app.id];
+      const at = record && !record.package ? record.root : found[app.id] ? list.find((root) => found[app.id].path.startsWith(`${root}/homebrew/`)) : null;
+      if (at) {
+        if (!list.includes(at)) throw new Error(`${app.name} is on a drive that isn't plugged in. Plug it in to update it, or remove ${app.name} and install it again.`);
+        if (!room(at)) throw new Error(`Not enough free space to update ${app.name}: ${driveName(at)}, where it's installed, needs about ${sizeText(need)} free.`);
+        return at;
+      }
+      const saves = `homebrew-saves/${slugOf(app.id)}`;
+      const kept = list.find((root) => fs.stat(`${root}/${saves}`)?.isDirectory);
+      if (kept) {
+        if (!room(kept)) throw new Error(`Not enough free space to install ${app.name} again: ${driveName(kept)}, where what it saved is kept (${kept}/${saves}), needs about ${sizeText(need)} free. Free up some room there, or delete that folder to install it on another drive.`);
+        return kept;
+      }
+      if (room(list[0])) return list[0];
       const best = [...list].sort((a, b) => (free(b) ?? 0) - (free(a) ?? 0))[0];
       if ((free(best) ?? 0) < need) throw new Error("Not enough free space on any drive.");
       return best;
@@ -277,20 +301,26 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
         task.cancel = null;
       }
     }
+    // Resolves with the folder the archive went to: `destination`, or one beside it when that will not clear.
     async function unpack(task, source, destination) {
       update(task, { phase: "extracting" });
       try {
         if (fs.exists(destination)) fs.removeTree(destination);
-      } catch {
+      } catch (error) {
+        log(`${destination} not cleared: ${error.message}`);
       }
-      fs.mkdir(parentOf(destination), { recursive: true });
-      const extraction = archives.extract({ sources: [source], destination, maxBytes: 64 * 1024 ** 3 });
+      // 0.5.2: the extractor refuses a folder it did not finish ("Existing extraction has no matching, valid
+      // completion receipt"), so a staging folder that will not clear made every later update of the app fail.
+      const into = fs.exists(destination) ? `${destination}-${now()}` : destination;
+      fs.mkdir(parentOf(into), { recursive: true });
+      const extraction = archives.extract({ sources: [source], destination: into, maxBytes: 64 * 1024 ** 3 });
       task.cancel = () => extraction.cancel();
       try {
         await extraction.done;
       } finally {
         task.cancel = null;
       }
+      return into;
     }
     // The first path under `dir` (depth-first, at most `depth` levels) whose name matches `test`.
     function findIn(dir, test, depth = 4) {
@@ -358,6 +388,248 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
           log(`${aside} not deleted: ${error.message}`);
         }
       }
+    }
+    // 0.5.2: an update of an app or payload folder moves the new version's files into the installed folder instead
+    // of putting a new folder in its place. A file replaces the old one of its name, a folder only the new version
+    // has moves in whole, a folder both have is merged the same way, and what only the installed folder holds is
+    // never touched: an emulator's saves, settings, caches and logs. The folder used to be swapped and the old one
+    // deleted with all of that in it; PS5X360 0.6.0 to 1.0.0 lost its Xbox 360 profile so, all but a folder the
+    // app could not enter. An old entry of the other kind (a folder where the new version has a file) goes to
+    // <keep>/<time>/<its path> and stays. A file the new version replaces goes to `backup` (in the staging, tidied
+    // once the install is done), so a merge that fails partway moves every file back and the old version still runs.
+    function mergeInto(from, to, keep, backup) {
+      const undo = [];
+      const stamp = now();
+      const move = (source, target) => {
+        fs.mkdir(parentOf(target), { recursive: true });
+        fs.rename(source, target);
+        undo.push([target, source]);
+      };
+      const merge = (fromDir, toDir, rel) => {
+        for (const entry of fs.readDir(fromDir)) {
+          if (entry.name.startsWith(".ps5-react-")) continue;
+          const path = rel ? `${rel}/${entry.name}` : entry.name;
+          const source = `${fromDir}/${entry.name}`, target = `${toDir}/${entry.name}`;
+          const there = fs.stat(target);
+          if (there?.isDirectory && entry.isDirectory) {
+            merge(source, target, path);
+            continue;
+          }
+          if (there) move(target, Boolean(there.isDirectory) !== Boolean(entry.isDirectory) ? `${keep}/${stamp}/${path}` : `${backup}/${path}`);
+          move(source, target);
+        }
+      };
+      try {
+        merge(from, to, "");
+      } catch (error) {
+        for (const [at, back] of undo.reverse()) {
+          try {
+            fs.rename(at, back);
+          } catch (failure) {
+            log(`${at} not put back: ${failure.message}`);
+          }
+        }
+        throw new Error(`The new version could not be put in place, so the one you had was left as it was (${error.message}).`);
+      }
+    }
+    // Earlier builds moved an updated folder aside inside its own staging (<work>/unpacked/.replaced-…), which the
+    // next install clears, and when ShadowMount held the folder its delete failed part-way: what the app kept there
+    // was left behind (PS5X360's saves). Such a folder goes to <drive>/downloads/homebrew/kept/<app>/ and stays.
+    // If it cannot be moved, the install stops before anything is cleared.
+    function keepLeftovers(work, slug) {
+      const kept = `${parentOf(work)}/kept/${slug}`;
+      for (const dir of [`${work}/unpacked`, work]) {
+        let entries = [];
+        try {
+          entries = fs.readDir(dir);
+        } catch {
+          continue;
+        }
+        for (const entry of entries) {
+          if (!entry.isDirectory || !entry.name.startsWith(".replaced-")) continue;
+          const to = `${kept}/${entry.name.slice(1)}`;
+          try {
+            fs.mkdir(kept, { recursive: true });
+            fs.rename(`${dir}/${entry.name}`, to);
+          } catch (error) {
+            throw new Error(`An earlier update left this app's old files in ${dir}/${entry.name}, and they could not be moved out of the way (${error.message}). Nothing was changed.`);
+          }
+          log(`what an earlier update left of this app (its saves and settings, if it kept any there) is kept in ${to}`);
+        }
+      }
+    }
+    // ---- What an app saves in its own folder (0.5.2) --------------------------------------------------------
+    // The files an app's package put in its folder, by their path inside it (<dataDir>/homebrew-files/<app>.json),
+    // so that removing it can tell them from what the app saved there since (an emulator's saves, settings,
+    // caches, logs) and ask whether to keep that. Kept, it waits in <drive>/homebrew-saves/<app>/ (a payload's
+    // in <payloadDir>/.saves/<app>/) and goes back into the folder when the app is installed again.
+    const shippedFile = (slug) => `${dataDir}/homebrew-files/${slug}.json`;
+    const keptDirOf = (slug, record) => record.run ? `${payloadDir}/.saves/${slug}` : `${record.root}/homebrew-saves/${slug}`;
+    // An app kept whole (installed before its files were listed) carries this, so its own files are not brought back.
+    var WHOLE = ".jobeeslair-kept-whole";
+    function listFiles(dir, rel = "", out = []) {
+      let entries = [];
+      try {
+        entries = fs.readDir(dir);
+      } catch {
+        return out;
+      }
+      for (const entry of entries) {
+        if (entry.name.startsWith(".ps5-react-")) continue;
+        const path = rel ? `${rel}/${entry.name}` : entry.name;
+        if (entry.isDirectory) listFiles(`${dir}/${entry.name}`, path, out);
+        else out.push(path);
+      }
+      return out;
+    }
+    function readShipped(slug) {
+      try {
+        const saved = JSON.parse(fs.readFile(shippedFile(slug)));
+        return saved?.version === 1 && Array.isArray(saved.files) ? new Set(saved.files) : null;
+      } catch {
+        return null;
+      }
+    }
+    // After an install: the new package's files, and after an update also the older ones still in the folder.
+    function rememberShipped(slug, files, folder) {
+      const all = new Set(files);
+      for (const path of readShipped(slug) ?? []) if (fs.exists(`${folder}/${path}`)) all.add(path);
+      try {
+        writeJSON(shippedFile(slug), { version: 1, files: [...all] });
+      } catch (error) {
+        log(`${slug}: its list of files is not saved: ${error.message}`);
+      }
+    }
+    /**
+     * What an installed app saved in its own folder: { folder, paths (inside it; a folder whole when none of the
+     * package is in it, or when it cannot be read), whole, keptAt }, or null when there is nothing (or no folder).
+     * An app installed before its files were listed counts as all saved (`whole`): nothing tells them apart.
+     */
+    function savedData(id) {
+      load();
+      const record = installed[id];
+      const folder = record?.paths?.[0];
+      if (!folder || !fs.stat(folder)?.isDirectory) return null;
+      const keptAt = keptDirOf(slugOf(id), record);
+      const shipped = readShipped(slugOf(id));
+      if (!shipped) {
+        const paths = listTop(folder);
+        return paths.length ? { folder, paths, whole: true, keptAt } : null;
+      }
+      const dirs = /* @__PURE__ */ new Set();
+      for (const path of shipped) for (let at = path.indexOf("/"); at > 0; at = path.indexOf("/", at + 1)) dirs.add(path.slice(0, at));
+      const walk = (dir, rel) => {
+        const out = [];
+        let entries = [];
+        try {
+          entries = fs.readDir(dir);
+        } catch {
+          return rel ? [rel] : [];
+        }
+        for (const entry of entries) {
+          if (entry.name.startsWith(".ps5-react-")) continue;
+          const path = rel ? `${rel}/${entry.name}` : entry.name;
+          if (entry.isDirectory) out.push(...dirs.has(path) ? walk(`${dir}/${entry.name}`, path) : [path]);
+          else if (!shipped.has(path)) out.push(path);
+        }
+        return out;
+      };
+      const paths = walk(folder, "");
+      return paths.length ? { folder, paths, whole: false, keptAt } : null;
+    }
+    function listTop(folder) {
+      try {
+        return fs.readDir(folder).filter((entry) => !entry.name.startsWith(".ps5-react-")).map((entry) => entry.name);
+      } catch {
+        return [];
+      }
+    }
+    // Moves what the app saved out of its folder before the folder goes; an earlier keep not brought back yet is
+    // set aside beside it, never replaced. A folder the app made that Jobee'sLair may not even read (PS5X360's
+    // phone-camera, drwx------) cannot be moved either: it stays with the app. Any other failure puts back what
+    // was moved and throws, so nothing is removed. Returns where it went, or null when there was nothing.
+    function keepSaved(id) {
+      const data = savedData(id);
+      if (!data) return null;
+      const kept = data.keptAt;
+      if (fs.exists(kept)) fs.rename(kept, `${kept}-${now()}`);
+      const moved = [];
+      for (const path of data.paths) {
+        const from = `${data.folder}/${path}`, to = `${kept}/${path}`;
+        try {
+          fs.mkdir(parentOf(to), { recursive: true });
+          fs.rename(from, to);
+          moved.push([from, to]);
+        } catch (error) {
+          let closed = false;
+          try {
+            if (fs.stat(from)?.isDirectory) fs.readDir(from);
+          } catch {
+            closed = true;
+          }
+          if (closed) {
+            log(`${id}: ${path} stays with the app: it cannot be read or moved (${error.message})`);
+            continue;
+          }
+          for (const [back, at] of moved.reverse()) {
+            try {
+              fs.rename(at, back);
+            } catch (failure) {
+              log(`${at} not put back: ${failure.message}`);
+            }
+          }
+          throw new Error(`${path}: ${error.message}`);
+        }
+      }
+      if (data.whole) writeJSON(`${kept}/${WHOLE}`, { version: 1 });
+      log(`${id}: what it saved (${data.paths.length} ${data.whole ? "entries of its folder, kept whole" : "files and folders"}) is kept in ${kept}`);
+      return kept;
+    }
+    // When the app is installed again: what was kept goes back into its folder, except what the new package
+    // ships itself (that is the new version's). Those copies go only when it was kept whole (its own old files);
+    // a file of the app's own that the package now ships too, or anything that could not be moved back, is set
+    // aside with the rest, never deleted.
+    function bringBack(slug, record, folder, shipped) {
+      const kept = keptDirOf(slug, record);
+      if (!fs.stat(kept)?.isDirectory) return;
+      const whole = fs.exists(`${kept}/${WHOLE}`);
+      let back = 0, old = 0, left = 0;
+      const move = (from, to, rel) => {
+        let entries = [];
+        try {
+          entries = fs.readDir(from);
+        } catch {
+          left++;
+          return;
+        }
+        for (const entry of entries) {
+          if (!rel && entry.name === WHOLE) continue;
+          const path = rel ? `${rel}/${entry.name}` : entry.name;
+          const source = `${from}/${entry.name}`, target = `${to}/${entry.name}`;
+          const there = fs.stat(target);
+          if (entry.isDirectory && there?.isDirectory) move(source, target, path);
+          else if (!entry.isDirectory && shipped.has(path)) old++;
+          else if (!there) {
+            try {
+              fs.mkdir(to, { recursive: true });
+              fs.rename(source, target);
+              back++;
+            } catch (error) {
+              log(`${source} not brought back: ${error.message}`);
+              left++;
+            }
+          } else left++;
+        }
+      };
+      move(kept, folder, "");
+      const aside = left || old && !whole ? `${kept}-${now()}` : null;
+      try {
+        if (aside) fs.rename(kept, aside);
+        else fs.removeTree(kept);
+      } catch (error) {
+        log(`${kept} not tidied: ${error.message}`);
+      }
+      log(`${slug}: ${back} files and folders it saved before it was removed are back in ${folder}${aside ? `; the rest (${left} that could not be moved back, ${old} the new version ships itself) is kept in ${aside}` : ""}`);
     }
     // The extractor's own bookkeeping files (.ps5-react-stage, .ps5-react-extraction) are not the app's.
     function dropMarkers(dir) {
@@ -447,11 +719,17 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
         return;
       }
       const role = roleOf(file);
-      const root = role === "payload" ? null : rootFor(file);
+      const root = role === "payload" ? null : rootFor(file, app);
       const work = role === "payload" ? `${payloadDir}/.incoming/${slug}` : `${root}/downloads/homebrew/${slug}`;
       const download = `${work}/${file.name}`;
       const unpacked = `${work}/unpacked`;
+      // Where an old entry mergeInto cannot put back goes: beside the staging, which is tidied after.
+      const keep = `${parentOf(work)}/kept/${slug}`;
+      // The files an update replaces, until it is in place: in the staging, so they go with it (one folder each
+      // install, so what an earlier attempt left there is never in the way).
+      const backup = `${work}/previous-${now()}`;
       log(`${app.id}: installing ${file.name} (${file.kind}) ${app.release.tag}`);
+      keepLeftovers(work, slug);
       await fetchTo(task, file, download, root ?? void 0);
       update(task, { phase: "installing", written: task.total ?? task.written });
       let record;
@@ -460,20 +738,25 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
         place(download, target);
         record = { paths: [target], root };
       } else if (file.kind === "app") {
-        await unpack(task, download, unpacked);
-        const folder = appFolder(unpacked, file);
+        const into = await unpack(task, download, unpacked);
+        const folder = appFolder(into, file);
         const title = titleOf(folder);
         const target = `${root}/homebrew/${title || baseName(folder)}`;
-        if (fs.exists(target)) await release(installed[app.id]?.titleId || title);
-        place(folder, target);
+        const files = listFiles(folder);
+        if (fs.exists(target)) {
+          await release(installed[app.id]?.titleId || title);
+          mergeInto(folder, target, keep, backup);
+        } else place(folder, target);
         dropMarkers(target);
-        openTree(target);
         record = { paths: [target], root, titleId: title, opened: true };
+        rememberShipped(slug, files, target);
+        bringBack(slug, record, target, new Set(files));
+        openTree(target);
         await addHelpers(task, app, slug, record);
       } else if (file.kind === "archive-image") {
-        await unpack(task, download, unpacked);
+        const into = await unpack(task, download, unpacked);
         const wanted = baseName(file.inner);
-        const image = findIn(unpacked, (name) => name === wanted) ?? findIn(unpacked, (name) => /\.(exfat|ffpkg|ffpfs|ffpfsc)$/i.test(name));
+        const image = findIn(into, (name) => name === wanted) ?? findIn(into, (name) => /\.(exfat|ffpkg|ffpfs|ffpfsc)$/i.test(name));
         if (!image) throw new Error("The archive holds no disk image.");
         const target = `${root}/homebrew/${baseName(image)}`;
         place(image, target);
@@ -482,23 +765,32 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
         const target = `${payloadDir}/${slug}/${file.name}`;
         place(download, target);
         record = { paths: [`${payloadDir}/${slug}`], run: target };
+        rememberShipped(slug, [file.name], record.paths[0]);
+        bringBack(slug, record, record.paths[0], /* @__PURE__ */ new Set([file.name]));
       } else if (file.kind === "archive-payload") {
-        await unpack(task, download, unpacked);
+        const into = await unpack(task, download, unpacked);
         const wanted = baseName(file.inner);
-        const elf = findIn(unpacked, (name) => name === wanted) ?? findIn(unpacked, (name) => /\.elf$/i.test(name));
+        const elf = findIn(into, (name) => name === wanted) ?? findIn(into, (name) => /\.elf$/i.test(name));
         if (!elf) throw new Error("The archive holds no payload.");
-        // The payload's own folder comes with it: its data files sit beside it.
+        // The payload's own folder comes with it: its data files sit beside it, and stay through an update.
         const folder = parentOf(elf);
         const target = `${payloadDir}/${slug}`;
-        place(folder === unpacked ? unpacked : folder, target);
+        const files = listFiles(folder);
+        if (fs.exists(target)) mergeInto(folder, target, keep, backup);
+        else place(folder, target);
         dropMarkers(target);
         record = { paths: [target], run: `${target}/${baseName(elf)}` };
+        rememberShipped(slug, files, target);
+        bringBack(slug, record, target, new Set(files));
       } else {
         if (!packages) throw new Error("This console cannot install packages from the app.");
         let pkg = download;
         if (file.kind === "archive-pkg") {
-          await unpack(task, download, unpacked);
-          pkg = findIn(unpacked, (name) => /\.f?pkg$/i.test(name));
+          const into = await unpack(task, download, unpacked);
+          // 0.5.2: the package the index names (`inner`), as for an image or a payload: an archive can hold the app's
+          // package beside another (a patch, a dependency). Any package only when that one is not there.
+          const wanted = baseName(file.inner);
+          pkg = findIn(into, (name) => name === wanted) ?? findIn(into, (name) => /\.f?pkg$/i.test(name));
           if (!pkg) throw new Error("The archive holds no package.");
         }
         update(task, { phase: "installing" });
@@ -524,11 +816,13 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
         update(task, { phase: "done", error: "" });
         tasks.delete(task.appId);
         emit();
+        onInstalled({ app: task.appId, ok: true });
       } catch (error) {
         const cancelled = error?.name === "AbortError" || task.cancelled;
         log(`${task.appId}: ${cancelled ? "cancelled" : `install failed: ${error?.message}`}`);
         if (cancelled) tasks.delete(task.appId);
         update(task, { phase: cancelled ? "done" : "failed", error: cancelled ? "" : String(error?.message || error) });
+        if (!cancelled) onInstalled({ app: task.appId, ok: false, error: String(error?.message || error) });
       } finally {
         running = null;
         void pumpQueue();
@@ -661,20 +955,36 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
       return null;
     }
     // Takes an app off the console: a payload's folder is deleted; an app's image or folder is moved out of
-    // homebrew/ (ShadowMount+ then drops it; its home-screen icon can be deleted) and deleted after.
-    function remove(id) {
+    // homebrew/ (ShadowMount+ then drops it; its home-screen icon can be deleted) and deleted after. 0.5.2: with
+    // `keep`, what it saved in its folder (savedData) is moved out first and kept for when it is installed again;
+    // the screens ask which. Resolves with where that went (or null) once it is done.
+    function remove(id, { keep = false } = {}) {
       const record = installed[id];
       if (!record) throw new Error("Jobee'sLair did not install this app.");
       if (shadow && record.kind === "app" && record.titleId) {
         // Let ShadowMount+ drop its mount of the folder first, then take the folder away.
-        void release(record.titleId).then(() => removeNow(id)).catch((error) => log(`${id}: not removed: ${error?.message}`));
-        return;
+        return release(record.titleId).then(() => removeNow(id, keep)).catch((error) => {
+          log(`${id}: not removed: ${error?.message}`);
+          throw error;
+        });
       }
-      removeNow(id);
+      try {
+        return Promise.resolve(removeNow(id, keep));
+      } catch (error) {
+        return Promise.reject(error);
+      }
     }
-    function removeNow(id) {
+    function removeNow(id, keep = false) {
       const record = installed[id];
-      if (!record) return;
+      if (!record) return null;
+      let kept = null;
+      if (keep) {
+        try {
+          kept = keepSaved(id);
+        } catch (error) {
+          throw new Error(`Could not keep what ${index?.byId.get(id)?.name ?? id} saved, so nothing was removed: ${error.message}`);
+        }
+      }
       for (const path of record.paths || []) {
         try {
           if (!fs.exists(path)) continue;
@@ -686,6 +996,8 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
             if (typeof fs.removeAsync === "function") fs.removeAsync(trash).catch((error) => log(`${trash} not deleted: ${error.message}`));
           }
         } catch (error) {
+          // The app stays, so what was kept goes back in with it.
+          if (kept) bringBack(slugOf(id), record, record.paths[0], /* @__PURE__ */ new Set());
           throw new Error(`Could not remove ${baseName(path)}: ${error.message}`);
         }
       }
@@ -696,10 +1008,17 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
           log(`${record.helperDir} not removed: ${error.message}`);
         }
       }
+      try {
+        if (fs.exists(shippedFile(slugOf(id)))) fs.remove(shippedFile(slugOf(id)));
+      } catch {
+      }
       delete installed[id];
       saveInstalled();
       scanFound();
       emit();
+      // 0.5.2: said when it worked too (only a failure was), so the log shows how a removal ended.
+      log(`${id}: removed ${(record.paths || []).join(", ") || "(no files)"}${kept ? `; what it saved waits in ${kept}` : ""}`);
+      return kept;
     }
     return {
       load,
@@ -718,6 +1037,7 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
       cancel,
       run,
       remove,
+      savedData,
       runHelper,
       helperReady,
       removeHelper,

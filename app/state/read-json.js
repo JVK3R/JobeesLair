@@ -28,6 +28,9 @@
   }
   var isStringList = (value) => Array.isArray(value) && value.every((item) => typeof item === "string");
   var isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  // 0.5.2: every file a savedList keeps is named here with its shape (tests/saved-files.test.mjs checks).
+  // update-prompt.json, a record since 0.5.1, was missing: read as a list, it was set aside as unreadable at
+  // every launch, and the update dialog forgot it had already offered a release.
   var SAVED_FILES = {
     "settings.json": isRecord,
     "wishlist.json": isStringList,
@@ -39,7 +42,10 @@
     "auto-update.json": isRecord,
     "link-health.json": isRecord,
     "debrid.json": isRecord,
-    "capture-hosts.json": isRecord
+    "capture-hosts.json": isRecord,
+    "feeds.json": isStringList,
+    "update-prompt.json": isRecord,
+    "online.json": isRecord
   };
 
 export { SAVED_FILES, isRecord, isStringList, readJSON };

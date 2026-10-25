@@ -1,0 +1,19 @@
+# Jobee'sLair online (0.5.2): stats, the live count, announcements and the dashboard. Deploy from this folder; the
+# steps are in README.md. The app's address for it is ONLINE_URL in app/state/online.js.
+name = "jobeeslair-online"
+main = "worker.js"
+compatibility_date = "2025-09-01"
+# Only api.jobees.org: a workers.dev address would be a second way in.
+workers_dev = false
+
+# jobees.org is on the same Cloudflare account, so the first deploy makes api.jobees.org (DNS and certificate).
+routes = [{ pattern = "api.jobees.org", custom_domain = true }]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jobeeslair-online"
+database_id = "422adee7-44f9-49a9-a8a3-9081cdc2a280"
+
+# Nightly: drop what's past its keeping time (worker.js scheduled).
+[triggers]
+crons = ["17 4 * * *"]

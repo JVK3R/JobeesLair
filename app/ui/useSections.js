@@ -1,12 +1,13 @@
 // ../pub-game-store/native/ui/useSections.js
 // reconstructed from the esbuild bundle in eboot.bin
 // MODIFIED (0.5.0 Pre Release 3): Settings is a section, the last one (after Files), not a screen over the page.
+// MODIFIED (0.5.2): Browse is a section L1 and R1 step to (ui/sections.js, where the order and the rules are).
 
 import { useRef, useState } from 'react';
-import { NO_FILTERS, activeCount } from '../state/catalog.js';
+import { NO_FILTERS } from '../state/catalog.js';
 import { useNavActions, useNavState } from '../state/nav.jsx';
 import { useQueryActive, useStoreActions, useStoreState } from '../state/store.jsx';
-import { HOMEBREW_ONLY } from '../edition.js';
+import { BROWSE_SORT, sectionOf, stepFrom } from './sections.js';
 
   var KEYS2 = {
     search: "nav:search",
@@ -20,8 +21,6 @@ import { HOMEBREW_ONLY } from '../edition.js';
     files: "nav:files",
     settings: "nav:settings"
   };
-  // 0.5.1: the homebrew-only edition steps between the Homebrew section and Settings.
-  var TABS = HOMEBREW_ONLY ? ["homebrew", "settings"] : ["search", "discover", "top", "new", "homebrew", "favorites", "downloads", "files", "settings"];
   function useShowLibrary() {
     const store = useStoreActions();
     const nav = useNavActions();
@@ -32,13 +31,6 @@ import { HOMEBREW_ONLY } from '../edition.js';
       nav.home(target);
     });
     return show;
-  }
-  function sectionOf({ filters, sort }, query) {
-    if (filters.wishlist) return "favorites";
-    if (sort === "rating") return "top";
-    if (sort === "newest") return "new";
-    if (activeCount(filters) > 0 || query) return "catalog";
-    return "discover";
   }
   function useSections() {
     const store = { ...useStoreState(), ...useStoreActions() };
@@ -55,6 +47,8 @@ import { HOMEBREW_ONLY } from '../edition.js';
       show,
       search: () => topName.current !== "search" && nav.push({ name: "search" }, "nav:search"),
       discover: () => show(NO_FILTERS, "relevance", "spotlight:cta"),
+      // 0.5.2: Browse, the whole catalog A to Z (its menu's "All games", and L1/R1).
+      catalog: () => show(NO_FILTERS, BROWSE_SORT),
       top: () => show(NO_FILTERS, "rating"),
       new: () => show(NO_FILTERS, "newest"),
       favorites: () => show({ ...NO_FILTERS, wishlist: true }, "relevance"),
@@ -65,9 +59,7 @@ import { HOMEBREW_ONLY } from '../edition.js';
       settings: () => topName.current !== "settings" && nav.push({ name: "settings" }, "nav:settings")
     }));
     const step = (forward) => {
-      const current = top.name === "search" ? "search" : underneath;
-      const at = current === "catalog" ? 1.5 : TABS.indexOf(current);
-      const next = TABS[forward ? Math.floor(at) + 1 : Math.ceil(at) - 1];
+      const next = stepFrom(top.name === "search" ? "search" : underneath, forward);
       if (!next) return;
       if (next === "downloads" || next === "files" || next === "homebrew" || next === "settings") {
         store.setQuery("");

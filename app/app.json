@@ -3,7 +3,7 @@
   "titleId": "PPSA99471",
   "contentId": "UP9000-PPSA99471_00-JOBEESLAIR000000",
   "name": "Jobee'sLair",
-  "version": "01.005.001",
+  "version": "01.005.002",
   "render": { "width": 1920, "height": 1080 },
   "surface": { "width": 1920, "height": 1080 },
   "refreshRate": 60,
@@ -23,6 +23,6 @@
   ],
   "filesystemAccess": "console",
   "networking": true,
-  "userAgent": "JobeesLair/0.5.1 (PS5)",
+  "userAgent": "JobeesLair/0.5.2 (PS5)",
   "timeoutSeconds": 0
 }

@@ -4,6 +4,7 @@
 import '../assets/Exo2.ttf';
 import { jsx, jsxs } from 'react/jsx-runtime';
 import { useLocale } from '../i18n/index.js';
+import { usePageGlide } from './AnnouncementBar.jsx';
 import { ButtonGlyph } from './ButtonHints.jsx';
 import { Cover } from './Cover.jsx';
 import { Icon } from './Icon.jsx';
@@ -20,13 +21,17 @@ import { Text, View, motion } from '@ps5-react/core';
   function Toast({ game, icon, status, title, action, detail: detail2, failed = false, duration, inPage = false }) {
     const { rtl } = useLocale();
     const side2 = rtl ? "left-8" : "right-8";
+    // Where pages start: under the announcements while they're up, so a toast never covers one; it glides with the
+    // pages when they come or go. One in a page moves with its page.
+    const glide = usePageGlide();
+    const y = inPage ? 0 : glide.y;
     return /* @__PURE__ */ (0, jsx)(
       motion.View,
       {
-        style: [{ position: "absolute", zIndex: 50, width: 600 }, rtl ? { left: 48 } : { right: 48 }, inPage ? { top: 18 } : { top: 128 }],
-        initial: { opacity: 0, x: rtl ? -40 : 40 },
-        animate: { opacity: 1, x: 0 },
-        transition: enter2,
+        style: [{ position: "absolute", zIndex: 50, width: 600 }, rtl ? { left: 48 } : { right: 48 }, inPage ? { top: 18 } : { top: 128 + glide.top }],
+        initial: { opacity: 0, x: rtl ? -40 : 40, y },
+        animate: { opacity: 1, x: 0, y },
+        transition: { ...enter2, y: glide.transition },
         exit: rtl ? leaveRtl : leave,
         children: /* @__PURE__ */ (0, jsxs)(View, { style: [
           { flexDirection: "row", alignItems: "center", gap: 24, overflow: "hidden", roundedClip: true, borderRadius: radius.lg, borderWidth: 1, backgroundColor: colors.surface, padding: 18 },

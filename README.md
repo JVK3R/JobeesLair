@@ -12,7 +12,7 @@
 
 <p align="center">
   <b>An open-source homebrew download manager for the PS5.</b><br>
-  Version 0.5.0 · Title ID <code>PPSA99471</code> · created by JVK3R<br>
+  Version 0.5.2 · Title ID <code>PPSA99471</code> · created by JVK3R<br>
   <i>Proudly created alongside AI by JVK3R</i>
 </p>
 

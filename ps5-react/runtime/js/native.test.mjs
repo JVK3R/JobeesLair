@@ -428,7 +428,8 @@ test('browser capture delivers only its result and cancellation rejects as Abort
   }};
   try {
     const capture = BrowserCapture.capture({suffix: '/Game.pkg'});
-    assert.deepEqual(calls, [['https://vikingfile.com/d/', '/Game.pkg', 180]]);
+    // The links already turned down (none) and whether it resumes a capture the gamer left (no) come after.
+    assert.deepEqual(calls, [['https://vikingfile.com/d/', '/Game.pkg', 180, [], false]]);
     const states = [];
     const off = capture.subscribe(snapshot => states.push(snapshot.state));
     snapshots = [{id: 1, state: 'capturing'}]; tick();

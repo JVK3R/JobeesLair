@@ -7,8 +7,10 @@ import { Archives, Downloads, FileSystem, Http, Packages, Payloads, Platform } f
 import { DATA_DIR } from './data-dir.js';
 import { freeBytes, refreshDrives, storageRoots } from './drives.js';
 import { createShadowClient } from './shadowmount.js';
-import { downloadQueue } from './downloads.js';
+import { downloadQueue, driveName } from './downloads.js';
 import { createHomebrew } from './homebrew.js';
+import { online } from './online.js';
+import { formatBytes } from './size.js';
 
   var PS5 = Platform.OS === "ps5";
   // Payloads live on the console's own /data, where loaders and the companion's helper can reach them.
@@ -35,8 +37,12 @@ import { createHomebrew } from './homebrew.js';
       payloadDir: PAYLOAD_DIR,
       roots: () => storageRoots(),
       freeBytes: (root) => freeBytes(root),
+      driveName: (root) => driveName(root),
+      sizeText: (bytes) => formatBytes(bytes),
       readBundled: () => FileSystem.readFile("/app0/data/homebrew.json"),
-      platform: Platform.OS
+      platform: Platform.OS,
+      // 0.5.2: which apps install and which fail, for the dashboard (state/online.js; only with stats on).
+      onInstalled: (result) => online().installed(result)
     });
     return store;
   }

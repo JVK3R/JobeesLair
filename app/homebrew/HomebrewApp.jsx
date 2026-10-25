@@ -30,6 +30,7 @@ import { SideSheet } from '../ui/SideSheet.jsx';
 import { colors, radius } from '../ui/colors.js';
 import { EASE_OUT } from '../ui/ease.js';
 import { HomebrewArt, gradientOf } from './HomebrewArt.jsx';
+import { RemoveSheet } from './RemoveSheet.jsx';
 import { hb, hbTint } from './palette.js';
 import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text, View, motion } from '@ps5-react/core';
 
@@ -64,7 +65,21 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
     const launches = ps5FakePackagesLaunch(deviceFacts().firmware);
     return launches === false ? t2("homebrew.does.packageOld") : t2("homebrew.does.package");
   }
-  function Actions({ app, status, onFiles, onMessage }) {
+  // Removes an app and says how it went, once it has: 0.5.2, with where what it saved was kept, if it was.
+  function removeApp(store, app, record, keep, t2, onMessage) {
+    let done;
+    try {
+      done = store.remove(app.id, { keep });
+    } catch (error) {
+      onMessage({ bad: true, text: error.message });
+      return;
+    }
+    void Promise.resolve(done).then(
+      (kept) => onMessage({ text: kept ? t2("homebrew.removedKept", { name: app.name, path: kept }) : t2(record.run ? "homebrew.removedPayload" : "homebrew.removedApp", { name: app.name }) }),
+      (error) => onMessage({ bad: true, text: error.message })
+    );
+  }
+  function Actions({ app, status, onFiles, onMessage, onRemove }) {
     const t2 = useT();
     const store = homebrew();
     const task = status.task;
@@ -148,13 +163,15 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
         }
       } }, "helper-install"));
     }
+    // 0.5.2: an app that saved things in its own folder asks first whether to keep them (RemoveSheet).
     if (!task && status.record) buttons.push(jsx(Button2, { focusKey: "hb:remove", variant: "outline", size: "lg", icon: "trash", label: t2("homebrew.remove"), onPress: () => {
+      let saved = null;
       try {
-        store.remove(app.id);
-        onMessage({ text: t2(status.record.run ? "homebrew.removedPayload" : "homebrew.removedApp", { name: app.name }) });
-      } catch (error) {
-        onMessage({ bad: true, text: error.message });
+        saved = store.savedData(app.id);
+      } catch {
       }
+      if (saved) onRemove(saved);
+      else removeApp(store, app, status.record, false, t2, onMessage);
     } }, "remove"));
     if (Platform.OS === "ps5") buttons.push(jsx(Button2, { focusKey: "hb:github", variant: "outline", size: "lg", icon: "external", label: t2("homebrew.github"), onPress: () => {
       try {
@@ -169,7 +186,7 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
       !task && hasHelper ? jsx(Text, { style: { fontFamily: "Exo2", fontSize: 21, lineHeight: 30, color: ready?.ok ? "#86efac" : "#fbbf24", width: 1100 }, children: ready?.ok === false && ready.reason === "notMounted" ? t2("homebrew.helperNotMounted", { name: app.name }) : status.record.helperRunAt ? t2("homebrew.helperLast", { when: when(t2, status.record.helperRunAt), name: app.name }) : t2("homebrew.helperNever", { name: app.name }) }) : null
     ] });
   }
-  function Hero({ app, status, onFiles, message, onMessage }) {
+  function Hero({ app, status, onFiles, message, onMessage, onRemove }) {
     const t2 = useT();
     const store = homebrew();
     const category = store.index.categories.find((c) => c.id === app.category);
@@ -200,7 +217,7 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
           jsx(Text, { style: { fontFamily: "Exo2", fontSize: 60, fontWeight: 700, lineHeight: 70, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail" }, children: app.name }),
           jsx(Text, { style: { fontFamily: "Exo2", fontSize: 23, lineHeight: 32, color: colors.muted, numberOfLines: 1 }, children: t2("homebrew.by", { author: app.author, repo: app.repo }) }),
           jsx(View, { style: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 6 }, children: tags }),
-          jsx(View, { style: { marginTop: 18 }, children: jsx(Actions, { app, status, onFiles, onMessage }) }),
+          jsx(View, { style: { marginTop: 18 }, children: jsx(Actions, { app, status, onFiles, onMessage, onRemove }) }),
           message ? jsx(Text, { style: { fontFamily: "Exo2", fontSize: 21, lineHeight: 30, color: message.bad ? "#fca5a5" : "#86efac", width: 1100 }, children: message.text }) : status.failed ? jsx(Text, { style: { fontFamily: "Exo2", fontSize: 21, lineHeight: 30, color: "#fca5a5", width: 1100 }, children: t2("homebrew.failed", { error: status.failed }) }) : null
         ] })
       ] })
@@ -255,6 +272,8 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
     const status = useHomebrewStatus(id);
     const { focusLater } = useNavActions();
     const [sheet, setSheet] = useState(false);
+    // 0.5.2: what the app saved, while "Remove {name}?" asks whether to keep it.
+    const [removing, setRemoving] = useState(null);
     const [viewing, setViewing] = useState(null);
     const [message, setMessage] = useState(null);
     useEffect(() => {
@@ -269,7 +288,7 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
       return true;
     }, children: jsxs(View, { style: { position: "relative", flex: 1 }, children: [
       jsxs(ScrollView, { style: { flex: 1 }, children: [
-        jsx(Hero, { app, status, message, onMessage: setMessage, onFiles: () => setSheet(true) }),
+        jsx(Hero, { app, status, message, onMessage: setMessage, onFiles: () => setSheet(true), onRemove: setRemoving }),
         jsx(View, { style: { paddingHorizontal: 48, paddingTop: 36, paddingBottom: 96 }, children: jsxs(View, { style: { flexDirection: "row", gap: 84 }, children: [
           jsxs(View, { style: { width: 1308, gap: 72 }, children: [
             shots.length ? jsx(MediaGallery, { shots, nextDown: "hb:about", onOpen: setViewing }) : null,
@@ -296,7 +315,16 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
           setMessage({ bad: true, text: error.message });
         }
         focusLater("hb:install");
-      } }, "files") : null })
+      } }, "files") : null }),
+      jsx(AnimatePresence, { children: removing ? jsx(RemoveSheet, { name: app.name, saved: removing, onClose: () => {
+        setRemoving(null);
+        focusLater("hb:remove");
+      }, onChoose: (keep) => {
+        const record = status.record;
+        setRemoving(null);
+        if (record) removeApp(homebrew(), app, record, keep, t2, setMessage);
+        focusLater("hb:install");
+      } }, "remove") : null })
     ] }) });
   }
 

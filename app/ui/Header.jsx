@@ -155,7 +155,8 @@ import { hb } from '../homebrew/palette.js';
                 label: t2("nav.allGames"),
                 checked: section === "catalog" && !filters.genre.length,
                 autoFocus: !onlyGenre,
-                onSelect: () => on.show(NO_FILTERS, "relevance")
+                // 0.5.2: Browse itself, the whole catalog A to Z (it was Discover's order, so Discover lit up).
+                onSelect: () => on.catalog()
               }
             ),
             /* @__PURE__ */ (0, jsx)(MenuDivider, {}),

@@ -25,14 +25,20 @@ for (const p of ['/data', '/data/homebrew', '/data/homebrew/backports', '/data/d
 file('/data/homebrew/FTP Game PPSA05555.exfat', 12 * GB);
 dir('/data/homebrew/backports/PPSA07777');
 file('/data/downloads/images/Old.exfat.part', 3 * GB);
+// 0.5.2: three announcements up, as online.json has them from the last launch (state/online.js).
+const ONLINE = JSON.stringify({ notes: [
+  { id: 3, text: 'Do not update ShadowMount yet', level: 'warning', until: null },
+  { id: 2, text: 'Fix it is in 0.5.2', level: 'info', until: null },
+  { id: 1, text: '0.5.2 is out. Update from Settings, About.', level: 'info', until: null }
+] });
 const fs = {
-  exists: (p) => nodes.has(p),
+  exists: (p) => nodes.has(p) || p.endsWith('/online.json'),
   stat: (p) => nodes.has(p) ? { name: p.slice(p.lastIndexOf('/') + 1), isDirectory: !!nodes.get(p).dir, isFile: !nodes.get(p).dir, size: nodes.get(p).size ?? 0, modified: now - 40 * 864e5, device: '1', inode: '2' } : null,
   readDir: (p) => {
     if (!nodes.get(p)?.dir) throw new Error(`ENOENT ${p}`);
     return [...nodes.keys()].filter((k) => k !== p && k.slice(0, k.lastIndexOf('/')) === p).map(fs.stat);
   },
-  readFile: () => { throw new Error('ENOENT'); },
+  readFile: (p) => { if (p.endsWith('/online.json')) return ONLINE; throw new Error('ENOENT'); },
   writeFile() {}, mkdir() {}, rename() {}, remove() {},
   removeAsync: async () => {},
   diskUsage: () => ({ total: 667 * GB, free: 40 * GB }),
@@ -98,6 +104,15 @@ assert.ok(library.some((text) => /Moving to USB drive 1 · 45/.test(text)), 'a m
 assert.ok(library.some((text) => /Move to USB drive 1 stopped/.test(text)), 'a stopped move says so');
 assert.ok(library.some((text) => /2 hours played · Last played (today|yesterday)/.test(text)), 'play time on the tile');
 assert.ok(library.some((text) => /ShadowMount can't find its file/.test(text)), "the health check's finding");
+assert.ok(library.includes('Fix it'), "0.5.2: a game that won't start offers Fix it on ✕");
+
+const { DiagnosisSheet } = await load('app/game/DiagnosisSheet.jsx');
+const why = await screen("Why won't it start? (a Homebrew app, by its title ID)", { type: DiagnosisSheet, props: { title: 'PS5X360', titleId: 'PPSA50011', folders: ['/data/homebrew/PPSA50011'], root: '/data', onClose() {} } });
+assert.ok(why.some((text) => /^Reading ShadowMount's logs/.test(text)), why.join('|'));
+const { RemoveSheet } = await load('app/homebrew/RemoveSheet.jsx');
+const ask = await screen('Remove an app that saved things (0.5.2)', { type: RemoveSheet, props: { name: 'PS5X360', saved: { whole: false, keptAt: '/data/homebrew-saves/brinootk__ps5x360', paths: ['saves'] }, onClose() {}, onChoose() {} } });
+assert.ok(ask.includes('Remove PS5X360?') && ask.includes('Keep what it saved') && ask.includes('Delete everything'), ask.join('|'));
+assert.ok(ask.some((text) => text.includes('/data/homebrew-saves/brinootk__ps5x360')), 'it says where they will be');
 
 const { MakeRoomSheet } = await load('app/library/MakeRoomSheet.jsx');
 const sheet = await screen('Make Room (library)', { type: MakeRoomSheet, props: { onClose() {} } });
@@ -124,6 +139,10 @@ const settings = await screen('Settings (About)', { type: SettingsScreen, props:
 await screen('Settings (Downloads)', { type: SettingsScreen, props: { onBack() {}, start: 'downloads' } });
 assert.ok(settings.includes('Support development') && settings.includes('Optional. Every feature stays free either way.'), settings.join('|'));
 assert.ok(!settings.some((text) => /buymeacoffee/.test(text)), 'the QR code and address show only once the row is opened');
+assert.ok(settings.includes("From Jobee'sLair: Fix it is in 0.5.2"), 'every announcement up, whole, in About');
+const { AnnouncementBar } = await load('app/ui/AnnouncementBar.jsx');
+const bar = await screen('Announcements (0.5.2)', { type: AnnouncementBar, props: {} });
+assert.deepEqual(bar, ["FROM JOBEE'SLAIR", 'Do not update ShadowMount yet'], 'the first up, warnings first, under its label');
 const { SearchScreen } = await load('app/search/index.jsx');
 const search = await screen('Search', { type: SearchScreen, props: { onBack() {} } });
 assert.ok(search.includes('13.60 Ready') && search.includes('.exfat Image') && search.includes('Filters'), search.join('|'));

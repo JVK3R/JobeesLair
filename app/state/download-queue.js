@@ -13,6 +13,8 @@ import { INCOMPLETE_PART, STALE_PARTIAL, cause } from '../downloads/errors.js';
 import { t } from '../i18n/core.js';
 import { archivePassword } from './archive-password.js';
 import { diagnoseLaunch, launchOutcomes } from './launch-diagnosis.js';
+import { fakelibState } from './fakelib.js';
+import { consoleFirmware, newerFirmware, titleRequirement } from './firmware.js';
 import { reportLink } from './link-health.js';
 import { BrowserRequired, RESOLVED_KINDS, archiveRefusal, cancellation, createSourceResolver, sourceKind, webURL } from './download-sources.js';
 import { captureAnchor } from './browser-links.js';
@@ -70,8 +72,18 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       return false;
     }
   }
+  // 0.5.2: the launches Fix it can do something about: no game process (the console refused its eboot.bin or a
+  // module), or one that failed right after starting. ShadowMount failing to prepare a title is not one of them.
+  var FIXABLE = /* @__PURE__ */ new Set(["notStarted", "crashed"]);
+  // 0.5.2: how many downloads Downloads (and the phone) list at once, and how many the queue keeps in all. A finished
+  // one is still the library's: its tile, Make Room, a delete that takes its backport and notes along. The 33rd
+  // download used to drop every finished one, and their games turned into loose files in the library; now they only
+  // leave Downloads, as ✕ does, and past MAX_JOBS one is let go: one whose files are gone, else the oldest.
+  var MAX_SHOWN = 32, MAX_JOBS = 160;
+  // Finished with nothing left for the gamer to do: these may leave Downloads, or the queue, to make room.
+  var SETTLED = ["installed", "file-downloaded"];
   function restore(saved) {
-    return saved.jobs.slice(0, 32).filter((job2) => {
+    return saved.jobs.slice(-MAX_JOBS).filter((job2) => {
       const valid = job2?.release?.id && job2.root && job2.artifact?.destination;
       if (!valid) console.log(`[download-queue] dropped an invalid queue entry ${job2?.id ?? ""}`);
       return valid;
@@ -197,9 +209,12 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     // part's download options. A link that expired by the time its part comes is refused before a byte is
     // written and the part asks for the browser as before (the captured-link rule in execute).
     const aheads = /* @__PURE__ */ new Map();
+    // 0.5.2: a part sent through TorBox or AllDebrid (state/debrid.js marks its link `debrid`) is fetched by the service,
+    // never through the browser. Its link still names Vikingfile and the catalog's requiresBrowser, and the browser
+    // opened for the next part while one downloaded, its captured link then taken instead of the service's.
     const needsBrowser = (source2) => {
       try {
-        if (!source2 || RESOLVED_KINDS.has(sourceKind(source2))) return false;
+        if (!source2 || source2.debrid || RESOLVED_KINDS.has(sourceKind(source2))) return false;
         return source2.requiresBrowser === true || sourceKind(source2) === "vikingfile" || Boolean(vikingLinkPage(source2));
       } catch {
         return false;
@@ -296,7 +311,8 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     const { transferProblem, checkTransfer, verifyImages, verifyGameFolder, keepExtras, placeBackport, orderImages, changedPayload } = createPayloadChecks({
       fs,
       firmware: () => firmware(),
-      storageIdentity: (job2) => storageIdentity(job2)
+      storageIdentity: (job2) => storageIdentity(job2),
+      openFiles: (folder) => openGameFiles(folder)
     });
     // Moving a game to another drive (state/queue-moves.js), on the same terms: the queue's own parts are
     // reached when called.
@@ -364,27 +380,32 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     // died loading its own fakelib the same way ([rtld] self_load_shared_object: mount flag / attribute error).
     // The whole tree is opened, as homebrew.js does for apps: a game's thousands of files cost a moment once.
     // Games already installed by an earlier build are opened once when the queue loads (`opened` remembers).
+    // 0.5.2: and backports the same way (ShadowMount lays their eboot.bin and libraries over the game), which
+    // were never opened. Returns how many files and folders it opened.
     function openGameFiles(folder) {
-      if (typeof fs.chmod !== "function") return;
-      let entries = [];
+      if (typeof fs.chmod !== "function") return 0;
+      let entries = [], opened = 0;
       try {
         entries = fs.readDir(folder);
       } catch {
       }
       for (const entry of entries) {
         const path = `${folder}/${entry.name}`;
-        if (entry.isDirectory) openGameFiles(path);
+        if (entry.isDirectory) opened += openGameFiles(path);
         else {
           try {
             fs.chmod(path, 511);
+            opened++;
           } catch {
           }
         }
       }
       try {
         fs.chmod(folder, 511);
+        opened++;
       } catch {
       }
+      return opened;
     }
     // Only folder games: an image's destination is a file (PPSA02530.ffpfsc), and asking for a path under one
     // throws "Not a directory", which must never stop the queue from loading.
@@ -396,10 +417,20 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         return false;
       }
     };
+    const isFolder = (path) => {
+      try {
+        const info = fs.stat(path);
+        return Boolean(info) && Boolean(info.isDirectory ?? !info.isFile);
+      } catch {
+        return false;
+      }
+    };
     for (const job2 of jobs) {
       try {
         const folder = job2.artifact?.destination;
-        if (job2.opened || job2.artifact?.nextAction !== "shadowmount" || !folder || !installedFolder(folder)) continue;
+        if (job2.opened || !folder) continue;
+        const backport = job2.artifact.nextAction === "backport" && job2.state === "installed" && isFolder(folder);
+        if (!backport && (job2.artifact.nextAction !== "shadowmount" || !installedFolder(folder))) continue;
         openGameFiles(folder);
         job2.opened = true;
       } catch (error2) {
@@ -410,9 +441,22 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     // kept beside the queue so it outlives the log's rotation. A finished job's snapshot carries its title's.
     const launchFile = `${directory}/launches.json`;
     let launches = readJSON(fs, launchFile, null, (value) => value?.version === 1 && value.titles && typeof value.titles === "object", (message) => console.log(`[download-queue] ${message}`))?.titles ?? {};
+    // 0.5.2: what Fix it did for each title ({ TITLE: { round, mark, opened, fakelib, at } }, `mark` the launch it
+    // answered), beside the launches: a Homebrew app or a game copied by hand has no job to keep it in.
+    const fixFile = `${directory}/fixes.json`;
+    let fixes = readJSON(fs, fixFile, null, (value) => value?.version === 1 && value.titles && typeof value.titles === "object", (message) => console.log(`[download-queue] ${message}`))?.titles ?? {};
+    function saveFixes() {
+      try {
+        fs.mkdir(directory, { recursive: true });
+        fs.writeFile(`${fixFile}.tmp`, JSON.stringify({ version: 1, titles: fixes }), { sync: true });
+        fs.rename(`${fixFile}.tmp`, fixFile);
+      } catch (error2) {
+        console.log(`[download-queue] what Fix it did is not saved: ${error2.message}`);
+      }
+    }
     const titleOf = (job2) => job2.installedTitleId ?? job2.consoleTitleId ?? job2.titleId;
     const launchOf = (job2) => job2.artifact?.nextAction === "shadowmount" && ["installed", "attention"].includes(job2.state) && launches[titleOf(job2)]?.outcome ? launches[titleOf(job2)] : null;
-    const snapshot = () => jobs.map((job2) => ({ ...job2, launch: launchOf(job2) }));
+    const snapshot = () => jobs.map((job2) => ({ ...job2, launch: launchOf(job2), fixIt: fixes[titleOf(job2)] ?? null }));
     const emit2 = () => {
       const busy = captures.size > 0 || jobs.some((job2) => BUSY.includes(job2.state));
       if (busy !== awake2) {
@@ -1689,7 +1733,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     }
     // Takes what ShadowMount's log says about launches into the history; true when something changed.
     function learnLaunches(outcomes) {
-      let learned = false;
+      let learned = false, fixed = false;
       for (const [title, { outcome, verdict, mark = null }] of Object.entries(outcomes)) {
         const known = launches[title];
         if (known?.outcome === outcome && known.verdict === verdict && (known.mark ?? null) === mark) continue;
@@ -1698,7 +1742,13 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         launches = { ...launches, [title]: { outcome, verdict, mark, at: Date.now() } };
         learned = true;
         console.log(`[download-queue] last launch of ${title}: ${outcome} (${verdict})`);
+        // 0.5.2: a game Fix it worked on started: what it changed stays, its rounds start over.
+        if (outcome === "played" && fixes[title]) {
+          fixes = Object.fromEntries(Object.entries(fixes).filter(([key]) => key !== title));
+          fixed = true;
+        }
       }
+      if (fixed) saveFixes();
       if (learned) {
         saveLaunches();
         emit2();
@@ -1799,8 +1849,21 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         if (staged !== artifact2.destination && fs.exists(staged)) throw new Error("Destination already exists. Choose another release or inspect the existing file.");
         const partial = [artifact2.destination, staged].map((path) => `${path}.part`).find((path) => fs.exists(path));
         const orphan = Boolean(partial);
-        if (jobs.length === 32) jobs = jobs.filter((job2) => !COMPLETE.includes(job2.state));
-        if (jobs.length === 32) throw new Error("Queue has 32 unfinished downloads. Finish or remove one first.");
+        // Room for it, worked out here and made only once it is added (below): finished ones leave Downloads, and
+        // past MAX_JOBS one of them leaves the queue.
+        const shown = jobs.filter((job2) => !job2.cleared);
+        const hide = shown.length >= MAX_SHOWN ? shown.filter((job2) => SETTLED.includes(job2.state)) : [];
+        if (shown.length - hide.length >= MAX_SHOWN) throw new Error("Queue has 32 unfinished downloads. Finish or remove one first.");
+        const gone = (job2) => {
+          try {
+            return Boolean(fs.stat(job2.root)?.isDirectory) && !fs.exists(job2.artifact.destination);
+          } catch {
+            return false;
+          }
+        };
+        const spare = jobs.length >= MAX_JOBS ? jobs.filter((job2) => SETTLED.includes(job2.state) && !job2.moving && !moves.has(job2) && !deletions.has(job2)) : [];
+        const drop = spare.find(gone) ?? spare[0] ?? null;
+        if (jobs.length >= MAX_JOBS && !drop) throw new Error("Queue has 32 unfinished downloads. Finish or remove one first.");
         if (release.sizeBytes) {
           const pending2 = holding(root2);
           const held = orphan ? Math.min(fs.stat(partial)?.size || 0, release.sizeBytes) : 0;
@@ -1809,6 +1872,11 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
           const shortfall = spaceShortfall(root2, need, free, pending2);
           // `shortfall` on the error says how much more the drive needs, for Make Room to free it.
           if (shortfall) throw Object.assign(new Error(shortfall), { shortfall: { root: root2, need: need + MARGIN2, free: Math.max(0, free - pending2.reduce((sum, job2) => sum + stillNeeded(job2), 0)) } });
+        }
+        for (const job2 of hide) job2.cleared = true;
+        if (drop) {
+          console.log(`[download-queue] ${drop.id}: let go to make room (the queue keeps ${MAX_JOBS})${gone(drop) ? "; its files were already gone" : ""}`);
+          jobs = jobs.filter((job2) => job2 !== drop);
         }
         jobs.push({
           id,
@@ -2110,13 +2178,16 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
        */
       async diagnose(id) {
         const job2 = find(id);
-        const title = job2.installedTitleId ?? job2.consoleTitleId ?? job2.titleId;
+        return queueApi.diagnoseTitle(titleOf(job2), job2.id);
+      },
+      /** The same for any title ShadowMount has (0.5.2): a Homebrew app, a game copied over by hand. */
+      async diagnoseTitle(title, label = title) {
         const read = (route2, capability, capabilities) => capabilities.includes(capability) ? shadowRequest2(route2, { max_bytes: 131072 }).then((reply) => String(reply.content ?? ""), (error2) => {
           console.log(`[download-queue] ${route2} not read: ${error2.message}`);
           return null;
         }) : Promise.resolve(null);
         // The gamer is waiting on the answer: a download in progress is paused for it (quietNetwork).
-        const { version: version3, debug, kernel } = await quietNetwork(`see why ${job2.id}`, async () => {
+        const { version: version3, debug, kernel } = await quietNetwork(`see why ${label}`, async () => {
           const { version: version4, capabilities } = await shadowMountInfo();
           const [debug2, kernel2] = await Promise.all([read("debug-log", "read_debug_log", capabilities), read("kernel-log", "read_kernel_log", capabilities)]);
           return { version: version4, debug: debug2, kernel: kernel2 };
@@ -2129,8 +2200,96 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
           }
           learnLaunches(launchOutcomes(debug));
         }
-        console.log(`[download-queue] diagnosis ${job2.id}: ${result.verdict.key}, ${result.launches} launches in ShadowMount's log\n${result.lines.join("\n")}`);
+        console.log(`[download-queue] diagnosis ${label}: ${result.verdict.key}, ${result.launches} launches in ShadowMount's log\n${result.lines.join("\n")}`);
         return result;
+      },
+      /**
+       * 0.5.2: where "Fix it" stands for a title, from the launches learned so far (no request), so a screen can
+       * say it before anything is pressed: "notLaunched" (no launch of it yet), "fine" (it started last time),
+       * "waiting" (Fix it changed something, and it was not started since), "needs" (its last launch did not
+       * start and Fix it has not tried), "retry" (fakelibs Fix it turned off did not help: they go back on for
+       * one more try), "none" (nothing Fix it can change: ShadowMount could not get it ready, or both fixes
+       * were tried).
+       */
+      fixState(title) {
+        const last = launches[title]?.outcome ? launches[title] : null;
+        const fix = fixes[title] ?? null;
+        // Asked again before another launch: what it found then still holds.
+        if (fix && (last?.mark ?? null) === (fix.mark ?? null)) return fix.nothing ? "none" : "waiting";
+        if (!last) return "notLaunched";
+        if (last.outcome === "played") return "fine";
+        if (!FIXABLE.has(last.verdict)) return "none";
+        if (!fix) return "needs";
+        return fix.fakelib === "off" && fix.round < 2 && !fix.nothing ? "retry" : "none";
+      },
+      /** A title's last launch and what Fix it did (0.5.2), for a game or app no download put on the console. */
+      titleLaunch(title) {
+        return { launch: launches[title]?.outcome ? launches[title] : null, fixIt: fixes[title] ?? null };
+      },
+      /**
+       * 0.5.2: "Fix it", for a game or app that won't start: the two fixes the app had only by hand, in one
+       * press; the gamer then starts it from the home screen to try. It reads ShadowMount's logs first and does
+       * only what fixState says it needs. The first try opens its files and its backport's to every user (what
+       * made extracted games start in 0.5.1), and turns its own fakelibs off when its last launch loaded them
+       * and this console is at least what it asks for (on a console that new they can crash it, CE-107098-5; on
+       * an older one they are what lets it run). After a launch that still failed, fakelibs Fix it turned off go
+       * back on, for one more try with the files kept open. Resolves with { step, opened, fakelib, verdict },
+       * `step` the state it found ("notLaunched", "fine", "waiting", "none") or what it did ("applied",
+       * "restored").
+       */
+      async fixIt(id) {
+        const job2 = find(id);
+        const destination = job2.artifact?.destination;
+        return queueApi.fixTitle({ title: titleOf(job2), folders: destination && installedFolder(destination) ? [destination] : [], root: job2.root, label: job2.id });
+      },
+      /** The same for any title: `folders` its own folders on the console (an image has none), `root` its drive. */
+      async fixTitle({ title, folders = [], root = null, label = title }) {
+        const result = await queueApi.diagnoseTitle(title, label);
+        const verdict = result.verdict;
+        const state = queueApi.fixState(title);
+        const fix = fixes[title] ?? null;
+        const mark = launches[title]?.mark ?? null;
+        const record = (next) => {
+          fixes = { ...fixes, [title]: next };
+          saveFixes();
+          emit2();
+        };
+        if (state !== "needs" && state !== "retry") return { step: state, opened: fix?.opened ?? 0, fakelib: fix?.fakelib ?? null, verdict };
+        const fakelib = (mode) => quietNetwork(`fakelib ${mode} for ${title}`, () => shadowRequest2("games/fakelib", { title_id: title, mode }));
+        if (state === "retry") {
+          await fakelib("default");
+          console.log(`[download-queue] fix it ${label}: turning fakelibs off did not help; back on for ${title}`);
+          record({ ...fix, round: 2, mark, fakelib: "restored", at: Date.now() });
+          return { step: "restored", opened: fix.opened ?? 0, fakelib: "restored", verdict };
+        }
+        // Its own folders, and the title's backport: on its drive, or wherever a download placed it.
+        const open = new Set(folders.filter((folder) => isFolder(folder)));
+        for (const path of [root && `${root}/homebrew/backports/${title}`, ...jobs.filter((other) => other.role === "backport" && titleOf(other) === title).map((other) => other.backportPath)]) {
+          if (path && isFolder(path)) open.add(path);
+        }
+        let opened = 0;
+        for (const folder of open) opened += openGameFiles(folder);
+        // Its fakelibs off: only when ShadowMount can and they are on, it brought its own (its last launch
+        // loaded them, or its folder or backport holds some), and this console is not older than it asks for.
+        let fakelibOff = false;
+        const current = await quietNetwork(`fakelib of ${title}`, () => shadowRequest2("games/info", { title_id: title })).then((reply) => fakelibState(reply, title), (error2) => {
+          console.log(`[download-queue] fix it ${label}: fakelib not read: ${error2.message}`);
+          return null;
+        });
+        const own = result.fakelib || [...open].some((folder) => isFolder(`${folder}/fakelib`));
+        const required = titleRequirement(fs, title, jobs), here = consoleFirmware(firmware());
+        const older = Boolean(required && here && newerFirmware(required, here));
+        if (current?.canToggle && current.mode !== "disabled" && own && !older) {
+          await fakelib("disabled");
+          fakelibOff = true;
+        }
+        console.log(`[download-queue] fix it ${label}: ${opened} files and folders opened in ${[...open].join(", ") || "nothing (an image)"}; fakelibs ${fakelibOff ? "off" : current ? `left ${current.mode}${own ? "" : " (none of its own)"}${older ? ` (it asks for newer firmware than ${firmware()})` : ""}` : "not known"}`);
+        if (!opened && !fakelibOff) {
+          record({ round: 2, mark, opened: 0, fakelib: null, nothing: true, at: Date.now() });
+          return { step: "none", verdict };
+        }
+        record({ round: 1, mark, opened, fakelib: fakelibOff ? "off" : null, at: Date.now() });
+        return { step: "applied", opened, fakelib: fakelibOff ? "off" : null, verdict };
       },
       /**
        * 0.5.1: a download left at "extracted" (its game folder was not found then: 0.5.1 Pre Release 1 and

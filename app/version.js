@@ -3,12 +3,12 @@
 import { EDITION, EDITIONS } from './edition.js';
 
 
-  // Jobee'sLair 0.5.1. VERSION is what the update check compares with release tags (v0.5.1),
+  // Jobee'sLair 0.5.2. VERSION is what the update check compares with release tags (v0.5.2),
   // so it keeps the tag's form; VERSION_LABEL is how the screens write it. The console's package version
   // (app.json) stays in its 01.xxx.xxx form, without the pre-release part (contentVersionOf in
   // state/updater.js).
-  var VERSION = "0.5.1";
-  var VERSION_LABEL = "0.5.1";
+  var VERSION = "0.5.2";
+  var VERSION_LABEL = "0.5.2";
   var CREATOR = "JVK3R";
   // Its own ID (0.4.0 and earlier shared Overdrive's, PPSA99058, and the console keeps one app per title ID).
   // state/title-migration.js carries over what it can from the earlier version. 0.5.1: the edition's
