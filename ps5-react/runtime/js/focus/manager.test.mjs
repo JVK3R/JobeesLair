@@ -293,6 +293,7 @@ test('Cross presses for a while, then calls onPress', () => {
   const outer = t.scope(t.focus.root, {onBack: () => { presses.push('outer'); return true; }});
   const inner = t.scope(outer, {});
   t.node('button', 0, 0, inner, {onPress: () => presses.push('press'), autoFocus: true});
+  t.runTimers(); // its reveal, once laid out (focused as it mounted)
   t.focus.press();
   assert.equal(t.focus.focused.pressed, true);
   assert.equal([...t.timers.values()][0].ms, 120);
@@ -469,6 +470,35 @@ test('each frame reveals with the nearest scrollAnchor ancestor that it contains
   t.focus.setRect(card, {x: 0, y: 650, width: 100, height: 100});
   t.focus.focus('card');
   assert.deepEqual(revealed, [['rail', undefined], ['outer', 600]]);
+});
+
+// Jobee'sLair 0.5.3: the Downloads page opened on its first card's button, below the fold and out of view.
+test('an element focused before its first layout is revealed once it is laid out, at once', () => {
+  const t = setup();
+  const revealed = [];
+  const page = {parent: null, x: 0, y: 0, props: {}, reveal: (rect, anchor, options) => revealed.push([rect.y, options.instant, anchor, options.first])};
+  // Its section's anchor is not aligned: the least movement leaves a first screen that shows the card as it is.
+  const section = {parent: null, frame: page, rect: {x: 0, y: 700, width: 1000, height: 400}};
+  const card = t.focus.createNode(t.focus.root, page, {focusKey: 'card', autoFocus: true}, section);
+  t.focus.register(card);
+  assert.equal(t.key(), 'card', 'autoFocus took it as it mounted');
+  assert.deepEqual(revealed, [], 'nothing to reveal without a rectangle');
+  t.focus.setRect(card, {x: 0, y: 900, width: 100, height: 100});
+  assert.deepEqual(revealed, [], 'not before the layout pass is through');
+  t.runTimers();
+  assert.deepEqual(revealed, [[900, true, null, false]]);
+  // Only the first layout: a later one (the card grew) reveals nothing by itself.
+  t.focus.setRect(card, {x: 0, y: 900, width: 100, height: 140});
+  t.runTimers();
+  assert.equal(revealed.length, 1);
+  // Nor an element focus left before its layout pass was through.
+  const late = t.focus.createNode(t.focus.root, page, {focusKey: 'late'});
+  t.focus.register(late);
+  t.focus.focus('late');
+  t.focus.setRect(late, {x: 0, y: 1200, width: 100, height: 100});
+  t.focus.focus('card');
+  t.runTimers();
+  assert.deepEqual(revealed.slice(1).map(([y, instant]) => [y, instant]), [[900, false]], 'the card, focused again; not late');
 });
 
 // Jobee'sLair 0.5.0 Pre Release 3: a page's top-most focusable element scrolls it back to its very top.

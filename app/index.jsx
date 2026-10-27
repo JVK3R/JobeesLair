@@ -48,6 +48,7 @@ import { Header } from './ui/Header.jsx';
 import { Legend } from './ui/Legend.jsx';
 import { Splash } from './ui/Splash.jsx';
 import { Reveal } from './ui/Reveal.jsx';
+import { laterReady } from './ui/later.js';
 import { Disclaimer } from './ui/Disclaimer.jsx';
 import { UpdateDialog } from './ui/UpdateDialog.jsx';
 import { ScreenSaver } from './ui/ScreenSaver.jsx';
@@ -114,9 +115,6 @@ import { useInterfaceSounds } from './ui/sounds.js';
       return () => clearTimeout(id);
     }, []);
     (0, useEffect)(() => HOMEBREW_ONLY ? void 0 : startCompanionIfEnabled(), []);
-    // MODIFIED (0.5.0 Pre Release 4): the helper that clears this app's sandbox once it closes, so
-    // ShadowMount+ can let go of the title (state/sandbox-sweeper.js).
-    (0, useEffect)(() => startSandboxSweeper(), []);
     // The drives and their space are read once at launch, on the probe worker, so the first screen that
     // wants them finds them in the cache.
     (0, useEffect)(() => {
@@ -177,6 +175,10 @@ import { useInterfaceSounds } from './ui/sounds.js';
       // What the title-ID migration did as the app loaded, now that the debug log is open.
       for (const line of migrationLog) console.log(line);
     }, []);
+    // MODIFIED (0.5.0 Pre Release 4): the helper that clears this app's sandbox once it closes, so
+    // ShadowMount+ can let go of the title (state/sandbox-sweeper.js). 0.5.3: from here, as the app starts,
+    // not from the store: a launch closed before the store had been up 8 s was never cleared.
+    (0, useEffect)(() => startSandboxSweeper(), []);
     (0, useEffect)(() => startInstaller(), []);
     // The saved download speed limit, handed to the engine before any download starts.
     (0, useEffect)(() => applySpeedLimit(), []);
@@ -185,6 +187,10 @@ import { useInterfaceSounds } from './ui/sounds.js';
       const id = setTimeout(() => setCurtain(false), CURTAIN_MS);
       return () => clearTimeout(id);
     }, [booted]);
+    // 0.5.3: once the reveal is over, the store's parts below its first screenful are built (ui/later.js).
+    (0, useEffect)(() => {
+      if (booted && !curtain) laterReady();
+    }, [booted, curtain]);
     // The intro reports itself (about 2.5s); this only covers an animation callback that never
     // arrives, where a stuck intro forever is worse than a store without it.
     (0, useEffect)(() => {

@@ -20,7 +20,6 @@ import { Text, View, motion } from '@ps5-react/core';
   var leaveRtl = { ...leave, x: -24 };
   function Toast({ game, icon, status, title, action, detail: detail2, failed = false, duration, inPage = false }) {
     const { rtl } = useLocale();
-    const side2 = rtl ? "left-8" : "right-8";
     // Where pages start: under the announcements while they're up, so a toast never covers one; it glides with the
     // pages when they come or go. One in a page moves with its page.
     const glide = usePageGlide();

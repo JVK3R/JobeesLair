@@ -1,5 +1,6 @@
 // Quick preview: the Options button on any game card opens this glass card over the page (cover, facts,
 // summary) without leaving it; View game goes on to the game's page, Back closes it where it was.
+// 0.5.3: Back from that game's page comes back to the card it was opened from (focus went wherever it could).
 
 import '../assets/Exo2.ttf';
 import { jsx, jsxs } from 'react/jsx-runtime';
@@ -15,9 +16,12 @@ import { colors, radius } from './colors.js';
 import { AnimatePresence, FocusScope, Text, View, motion } from '@ps5-react/core';
 
   var showing = null;
+  // The card's focus key, for Back from the game's page.
+  var openedFrom = null;
   var listeners = /* @__PURE__ */ new Set();
-  function openPreview(game) {
+  function openPreview(game, from = null) {
     showing = game;
+    openedFrom = game ? from : null;
     for (const listener of listeners) listener(game);
   }
   var closePreview = () => openPreview(null);
@@ -53,8 +57,9 @@ import { AnimatePresence, FocusScope, Text, View, motion } from '@ps5-react/core
         /* @__PURE__ */ (0, jsx)(View, { style: { flex: 1 } }),
         /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", gap: 18 }, children: [
           /* @__PURE__ */ (0, jsx)(Button2, { variant: "primary", size: "lg", autoFocus: true, label: t2("browse.viewGame"), onPress: () => {
+            const from = openedFrom;
             closePreview();
-            openGame(game.id);
+            openGame(game.id, from ?? void 0);
           } }),
           /* @__PURE__ */ (0, jsx)(Button2, { variant: "outline", size: "lg", icon: "heart", iconFill: wished ? colors.fg : void 0, label: wished ? t2("browse.favorited") : t2("browse.addToFavorites"), onPress: () => toggleWish(game.id) }),
           /* @__PURE__ */ (0, jsx)(Button2, { variant: "ghost", size: "lg", label: t2("hints.close"), onPress: closePreview })

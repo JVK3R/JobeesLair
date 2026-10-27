@@ -87,8 +87,12 @@ export const FileSystem = {
   removeTree: path => host().fs.removeTree(path),
   /** Removes as `removeTree` does, on a worker thread, in the order asked. Resolves once the path is
    * gone, or if it never existed; rejects with an Error naming the path and the system error.
-   * @param {string} path @returns {Promise<void>} */
-  removeAsync: async path => { await networkTask(host().fs.removeAsync(path), 'fs.removeAsync', path, 'removals').done; },
+   * `background` (ABI v23): a clean-up nobody waits on, on a second worker beside the first, so a long
+   * one never holds up the others.
+   * @param {string} path @param {{background?: boolean}} [options] @returns {Promise<void>} */
+  removeAsync: async (path, {background = false} = {}) => {
+    await networkTask(host().fs.removeAsync(path, background === true), 'fs.removeAsync', path, 'removals').done;
+  },
   /** Copies a file, or a directory with everything in it, on a worker thread, one copy at a time in the
    * order asked. The copy is written as `<to>.partial`, read back and matched against its source, then
    * renamed to `to` (which must not exist): `to` never names a partial copy. A copy that stops (cancelled,

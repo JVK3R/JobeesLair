@@ -3,7 +3,7 @@
 // Additional attribution term: see LICENSE-ATTRIBUTION.
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {anchorOffset, catchUpSpeed, findClosest, findNearest, findWrap, revealOffset, scrollStep} from './geometry.js';
+import {anchorOffset, catchUpSpeed, findClosest, findNearest, findWrap, revealOffset, scrollStep, topOffset} from './geometry.js';
 
 const rect = (x, y, width = 100, height = 100) => ({x, y, width, height});
 const grid = () => {
@@ -123,6 +123,12 @@ test('an anchor aligns its start past the margin, scrolls to 0 near the top, and
   assert.equal(anchorOffset(0, 1300, 50, 1200, 300, 1000, 10), 1000);
   // An anchor taller than the viewport: the item far below its start moves the least instead.
   assert.equal(anchorOffset(0, 700, 50, 100, 300, 1000, 10), revealOffset(0, 700, 50, 300, 1000, 10));
+  // Jobee'sLair 0.5.3: unless the anchor is the content's top. Coming back up to an item the least movement would
+  // leave at the viewport's start (640), the view goes as near the top as still shows it, from either side.
+  assert.equal(revealOffset(900, 650, 100, 300, 1000, 10), 640);
+  assert.equal(anchorOffset(900, 650, 100, 0, 300, 1000, 10), 650 + 100 + 10 - 300);
+  assert.equal(anchorOffset(0, 650, 100, 0, 300, 1000, 10), 650 + 100 + 10 - 300);
+  assert.equal(topOffset(150, 100, 300, 1000, 10), 0, 'what fits on the first screen shows from the top');
 });
 
 test('a scroll far behind its target is allowed faster than the cap, near it the cap holds', () => {

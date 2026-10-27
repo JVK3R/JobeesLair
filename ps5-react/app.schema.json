@@ -119,7 +119,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 128,
-      "default": "PS5React/0.1",
+      "default": "PS5React/0.2",
       "description": "User-Agent sent with every native HTTP request: printable ASCII, 1..128 characters."
     },
     "resources": {

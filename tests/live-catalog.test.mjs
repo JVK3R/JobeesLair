@@ -63,6 +63,19 @@ test('the live catalog parses whole, within the console limits, with every multi
   for (const [record, volumes] of sets) assert.deepEqual(volumes, volumes.map((_, index) => `part ${index + 1}`), record);
 });
 
+// 0.5.3: 26 bundled games had no cover ("cover": null) and showed only their name where the picture goes (7 Days to
+// Die, Alien: Rogue Incursion...). The live catalog's own games take theirs from the PlayStation Store (artOf).
+test('every game has a picture: the bundled ones, and the ones only the live catalog lists', async () => {
+  const { games } = await import('../app/data/catalog.js');
+  assert.deepEqual(games.filter((game) => !game.art?.cover).map((game) => `${game.id} ${game.title}`), []);
+  for (const game of games) {
+    for (const url of [game.art.cover, ...game.art.coverFallbacks ?? []]) assert.match(url, /^https:\/\/[^\s"]+$/, game.id);
+    assert.doesNotMatch(game.art.cover, /\.webp(\?|$)/i, `${game.id}: the console can't draw WebP`);
+  }
+  const live = JSON.parse(readFileSync(new URL('../catalog/live.json', import.meta.url), 'utf8')).games.filter((game) => game.art);
+  assert.deepEqual(live.filter((game) => !game.art.cover).map((game) => game.id), []);
+});
+
 test('the app reads the live catalog without the player adding it, and keeps a place for it', () => {
   const source = readFileSync(new URL('../app/state/feeds.js', import.meta.url), 'utf8');
   assert.match(source, /LIVE_FEED = "https:\/\/raw\.githubusercontent\.com\/JVK3R\/JobeesLair\/main\/catalog\/live\.json"/);

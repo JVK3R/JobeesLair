@@ -30,7 +30,7 @@ inside **QuickJS** through **Embedded React**. The software renderer draws the
 interface into a framebuffer; **OpenGL presents that framebuffer** on screen.
 The application runs in its own native host, without a browser or Sony RNPS hooks.
 
-**Status: experimental v0.1.0.** The original proof of concept and a specific
+**Status: experimental v0.2.0.** The original proof of concept and a specific
 System Explorer filesystem integration were user-confirmed on firmware 13.60
 with kstuff and ShadowMount. Those results apply to the exact artifacts recorded
 in [Hardware evidence](docs/HARDWARE.md). New apps, networking and other native

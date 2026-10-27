@@ -5,15 +5,15 @@
 // MODIFIED (0.5.0 Pre Release 2): the top is the page's scroll anchor, so going back up shows it whole (it
 // stopped at the buttons before), and it grows with its content instead of cutting wrapped buttons off; a
 // "Homebrew › category" trail and the section's own color (palette.js).
+// MODIFIED (0.5.3): the facts' names in the player's language (they were always English).
 
 import '../assets/Exo2.ttf';
 import '../assets/JetBrainsMono-Regular.ttf';
-import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
+import { jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useState } from 'react';
 import { MediaGallery } from '../game/MediaGallery.jsx';
 import { ShotViewer } from '../game/ShotViewer.jsx';
-import { useT } from '../i18n/index.js';
-import en from '../i18n/locales/en.json';
+import { LATIN_IN_RTL, latin, useLocale, useT } from '../i18n/index.js';
 import { formatDate3 } from '../state/catalog.js';
 import { isoDate } from '../state/clock.js';
 import { deviceFacts } from '../state/device.js';
@@ -39,7 +39,6 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
   var TEXT = { fontFamily: "Exo2", fontSize: 23, lineHeight: 36, color: colors.fg };
   var HEADING = { fontFamily: "Exo2", fontSize: 30, fontWeight: 600, color: colors.fg, lineHeight: 42, letterSpacing: 0.4, marginBottom: 18 };
   var MONO = { fontFamily: "JetBrainsMono-Regular", fontSize: 18, lineHeight: 26, color: colors.muted };
-  var label = (key) => en[key];
   var daysSince = (ms) => Math.max(0, Math.floor((Date.now() - ms) / 864e5));
   function when(t2, ms) {
     if (!ms) return "—";
@@ -130,7 +129,7 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
     const buttons = [];
     if (task) {
       const percent = task.total ? Math.min(100, Math.floor(task.written / task.total * 100)) : null;
-      const text = task.phase === "waiting" ? t2("homebrew.phase.waiting") : task.phase === "downloading" ? t2("homebrew.phase.downloading", { percent: percent ?? 0 }) : task.phase === "extracting" ? t2("homebrew.phase.extracting") : t2("homebrew.phase.installing");
+      const text = task.phase === "waiting" ? t2(task.waitFor === "unpack" ? "homebrew.phase.waitingUnpack" : "homebrew.phase.waiting") : task.phase === "downloading" ? t2("homebrew.phase.downloading", { percent: percent ?? 0 }) : task.phase === "extracting" ? t2("homebrew.phase.extracting") : t2("homebrew.phase.installing");
       buttons.push(jsx(Button2, { focusKey: "hb:install", variant: "primary", tint: hbTint(), size: "lg", label: text, icon: "download", onPress: () => {} }, "main"));
       buttons.push(jsx(Button2, { focusKey: "hb:cancel", variant: "outline", size: "lg", label: t2("homebrew.cancel"), icon: "x", onPress: () => store.cancel(app.id) }, "cancel"));
     } else if (status.update) {
@@ -188,6 +187,7 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
   }
   function Hero({ app, status, onFiles, message, onMessage, onRemove }) {
     const t2 = useT();
+    const { rtl } = useLocale();
     const store = homebrew();
     const category = store.index.categories.find((c) => c.id === app.category);
     const categoryKey = `homebrew.category.${app.category}`;
@@ -214,7 +214,7 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
             jsx(Icon, { name: "chevronRight", size: 12, color: colors.subtle }),
             jsx(Text, { style: { fontFamily: "Exo2", fontSize: 19, fontWeight: 700, letterSpacing: 2.4, lineHeight: 26, color: hb().glow }, children: categoryName.toUpperCase() })
           ] }),
-          jsx(Text, { style: { fontFamily: "Exo2", fontSize: 60, fontWeight: 700, lineHeight: 70, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail" }, children: app.name }),
+          jsx(Text, { style: { fontFamily: "Exo2", fontSize: 60, fontWeight: 700, lineHeight: 70, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail" }, children: latin(rtl, app.name) }),
           jsx(Text, { style: { fontFamily: "Exo2", fontSize: 23, lineHeight: 32, color: colors.muted, numberOfLines: 1 }, children: t2("homebrew.by", { author: app.author, repo: app.repo }) }),
           jsx(View, { style: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 6 }, children: tags }),
           jsx(View, { style: { marginTop: 18 }, children: jsx(Actions, { app, status, onFiles, onMessage, onRemove }) }),
@@ -227,14 +227,14 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
   function Facts({ app, status }) {
     const t2 = useT();
     const rows = [
-      [label("homebrew.facts.repository"), app.repo],
-      [label("homebrew.facts.license"), app.license || t2("homebrew.noLicense")],
-      [label("homebrew.facts.stars"), String(app.stars)],
-      [label("homebrew.facts.release"), app.release.title || app.release.tag],
-      [label("homebrew.facts.released"), when(t2, app.release.date)],
-      [label("homebrew.facts.downloads"), String(app.release.downloads)]
+      [t2("homebrew.facts.repository"), app.repo],
+      [t2("homebrew.facts.license"), app.license || t2("homebrew.noLicense")],
+      [t2("homebrew.facts.stars"), String(app.stars)],
+      [t2("homebrew.facts.release"), app.release.title || app.release.tag],
+      [t2("homebrew.facts.released"), when(t2, app.release.date)],
+      [t2("homebrew.facts.downloads"), String(app.release.downloads)]
     ];
-    if (status.record) rows.push([label("homebrew.facts.installedTo"), (status.record.paths?.[0] || "").replace(/^\/data\//, "/data/")]);
+    if (status.record) rows.push([t2("homebrew.facts.installedTo"), status.record.paths?.[0] || ""]);
     return jsxs(View, { style: { width: 432, gap: 18 }, children: [
       jsx(Text, { style: HEADING, children: t2("homebrew.facts") }),
       ...rows.map(([name, value]) => jsxs(View, { style: { gap: 2 }, children: [
@@ -249,13 +249,16 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
     ] });
   }
   function Paragraphs({ title, text, focusKey }) {
+    // 0.5.3: an app's README and release notes are its maker's words (English, mostly): left to right even in a
+    // right-to-left language, as a game's About is, or their punctuation lands at the wrong end of each line.
+    const { rtl } = useLocale();
     if (!text) return null;
     const paragraphs = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean).slice(0, 8);
     // A focusable block, so the page scrolls to it and back with the d-pad.
     return jsxs(View, { scrollAnchor: true, focusKey, onPress: () => {}, style: { width: 1308, borderRadius: radius.lg, padding: 6 }, children: [
       jsx(FocusRing, { round: "lg", color: hb().hi }),
       jsx(Text, { style: HEADING, children: title }),
-      ...paragraphs.map((p, i) => jsx(Text, { style: [TEXT, { marginBottom: 14, color: i === 0 ? colors.fg : colors.muted }], children: p }, i))
+      ...paragraphs.map((p, i) => jsx(Text, { style: [TEXT, { marginBottom: 14, color: i === 0 ? colors.fg : colors.muted }, rtl ? LATIN_IN_RTL : null], children: p }, i))
     ] });
   }
   function FilesSheet({ app, status, onClose, onPick }) {

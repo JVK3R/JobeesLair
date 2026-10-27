@@ -46,7 +46,7 @@ import { Text, View, motion, transitions, useIsFocused } from '@ps5-react/core';
     const { toggleWish } = useStoreActions();
     return (action) => {
       if (action === "options" && focusedCard?.game) {
-        openPreview(focusedCard.game);
+        openPreview(focusedCard.game, focusedCard.key);
         return true;
       }
       const game = action === "square" && (focusedCard?.game ?? fallback);

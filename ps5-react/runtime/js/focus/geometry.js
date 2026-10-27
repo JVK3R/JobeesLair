@@ -151,7 +151,19 @@ export function revealOffset(offset, start, size, viewport, max, margin) {
 export function anchorOffset(offset, start, size, anchor, viewport, max, margin) {
   const aligned = Math.min(Math.max(anchor - margin, 0), max);
   if (start >= aligned && start + size <= aligned + viewport) return aligned;
+  // MODIFIED (Jobee'sLair 0.5.3): an anchor at the content's top: as near the top as still shows the item. The
+  // least movement left a page's head out of reach once focus came back up to it (the Downloads page).
+  if (aligned === 0) return topOffset(start, size, viewport, max, margin);
   return revealOffset(offset, start, size, viewport, max, margin);
+}
+
+/**
+ * The offset nearest the content's top that still shows the item, `margin` above the viewport's end: 0 when it
+ * fits on the first screen. @param {number} start @param {number} size @param {number} viewport
+ * @param {number} max @param {number} margin
+ */
+export function topOffset(start, size, viewport, max, margin) {
+  return start + size <= viewport - margin ? 0 : Math.min(Math.max(start + size + margin - viewport, 0), max);
 }
 
 /**

@@ -8,7 +8,7 @@ No proprietary Sony modules are redistributed.
 | --- | --- |
 | Embedded React | C engine, QuickJS bridge, reconciler, software compositor. Apache-2.0; revision `cf5dfe4fae966fe21a265acc3dd3b054d245f981`. |
 | ps5-homebrew-ui | EGL, controller, system, InputTracker, audio mixer and output, heap, CRT, shims, native tools. GPL-3.0-or-later; revision `4bd942579dd981b3df9c740438489ca6a614ddc0`. |
-| ProsperoStore elevation client | Optional cooperative filesystem-access client and pinned helper build. GPL-3.0-or-later; revision `22dca63607cf5f1f95006eda6ffb802607bed699`. |
+| ProsperoStore elevation client | Optional cooperative filesystem-access client and pinned helper build. GPL-3.0-or-later; revision `335d8c43f916020205f445b76b66106ee50d2eeb`. |
 | PacBrew archive ports | Same hash-pinned v0.40.2 distribution: libarchive 3.7.4 (BSD), liblzma 5.4.6 (primarily public domain), bzip2 (bzip2 license), plus zlib/zstd/OpenSSL. Exact notice sources and hashes are in `licenses/archives-SOURCES.json`. |
 | PacBrew networking ports | Optional SHA-256-pinned v0.40.2 archive: curl 8.18.0 (curl license), OpenSSL 3.5.2 (Apache-2.0), zlib, zstd and libpsl; individual notices and source links follow the pinned ProsperoStore `third_party/PACBREW_LICENSES.json`. Native-title `compat.c` and `netdb.c` reuse that pinned reference under GPL-3.0-or-later. |
 | Lapy helper | Optional exact-title one-shot helper: mpereiraesaa/PS5-Lapy-JB-Daemon `54a095c0f19161825e845daa760a03b446e654fa`, MIT; protocol LGPL-2.1-or-later, ps5log GPL-3.0-or-later. The helper uses the app SDK v0.42 with `patches/lapy-sdk-042-attributes.patch`; source revision and ps5log hash are pinned in the lock file. |
@@ -27,6 +27,12 @@ No proprietary Sony modules are redistributed.
 | PS5 video decoder interface | `native/ps5/video_decoder.cpp` is new GPL-3.0-or-later code against the `libSceVideodec2` interface as ProsperoLight and EVO Player (both GPL-3.0) established it; no Sony code or headers. The import stub is generated from function names at build time. Builds copy `licenses/video-decoder-NOTICE.txt` to `notices/`. |
 | HDMI audio passthrough | `native/shared/iec61937.hpp` is ported from [SlopFin](https://github.com/BeLikeBrett/SlopFin)'s `src/iec61937.hpp` at commit `6e22b23e7ececf1af24cb2850536411f91ebb9d6` (Copyright (C) 2026 Brett, GPL-3.0-or-later), an independent implementation of the IEC 61937 layout FFmpeg's spdif muxer writes; `native/ps5/bitstream_output.cpp` is new GPL-3.0-or-later code following SlopFin's findings on the `sceAudioOutEx` output calls and modes. No Sony code or headers. Video apps' builds copy `licenses/audio-passthrough-NOTICE.txt` to `notices/`. |
 | Inter / LLVM / payload SDK | Inter: SIL OFL. LLVM: Apache-2.0 with exceptions. The public SDK contains separately licensed components. |
+
+Builds fetch the GitHub-hosted sources above, and the UnRAR archive, from unchanged mirrors under
+[JVK3R](https://github.com/JVK3R): `embedded-react`, `ps5-homebrew-ui`, `ps5-opengl`, `ProsperoStore`,
+`PS5-Lapy-JB-Daemon`, `ps5-agc-gears` and `unrar-source`, at the revisions and SHA-256 hashes the lock file
+pins. Several originals have disappeared, so a build no longer depends on any one account or site staying
+up. The links below are the original projects.
 
 Sources: [Embedded React](https://github.com/TheMasterCoder007/embedded-react),
 [ps5-homebrew-ui](https://github.com/blackbearreloaded/ps5-homebrew-ui),
@@ -130,9 +136,9 @@ The Inter font and bundled third-party license texts retain their own terms.
 `LICENSE`, `LICENSE-ATTRIBUTION`, `NOTICE`, `licenses/`, and generated
 `dist/<TITLE_ID>/notices/` preserve credits and licensing information.
 
-## Initial public release
+## Source releases
 
-Version 0.1.0 is a **source release**. It does not distribute prebuilt PS5
+Versions 0.1.0 and 0.2.0 are **source releases**. They do not distribute prebuilt PS5
 executables or SDK libraries. The source archive and pinned build instructions
 are available from the repository and GitHub release.
 

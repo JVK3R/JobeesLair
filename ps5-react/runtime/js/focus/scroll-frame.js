@@ -6,7 +6,7 @@
 // tests can drive it with a stand-in NativeUI.
 import {onFrame} from '../frame.js';
 import {deferImageFetches} from '../native.js';
-import {anchorOffset, catchUpSpeed, revealOffset, scrollStep} from './geometry.js';
+import {anchorOffset, catchUpSpeed, revealOffset, scrollStep, topOffset} from './geometry.js';
 
 // 32 logical px of a 1280-wide layout, in screen px like the layout rectangles.
 const MARGIN = 32 / 1280;
@@ -40,7 +40,8 @@ export function createFrame(parent) {
      *   on a vertical frame's y axis; the x axis and horizontal frames always move the least
      * @param {{instant?: boolean, first?: boolean}} [options] `instant` moves there now instead of easing (a
      *   jump far down a list, whose rows on the way could not all mount); `first`: nothing focusable is above
-     *   it, so the content's top is shown when that keeps it in view (MODIFIED, Jobee'sLair 0.5.0 Pre Release 3)
+     *   it, so the content's top is shown when that keeps it in view (MODIFIED, Jobee'sLair 0.5.0 Pre Release 3),
+     *   else as much of it as does (0.5.3)
      */
     reveal(rect, anchor, {instant = false, first = false} = {}) {
       const {viewport, handle} = frame;
@@ -48,9 +49,10 @@ export function createFrame(parent) {
       const [fromX, fromY, maxX, maxY] = NativeUI.scrollTo(handle, NaN, NaN);
       const margin = Math.round(screen.width * MARGIN);
       const x = revealOffset(frame.x, rect.x - viewport.x, rect.width, viewport.width, maxX, margin);
-      // Content offsets (rect is pre-scroll): the first focusable fits on the first screen, so show from 0.
-      const fitsAtTop = first && !frame.props.horizontal && rect.y - viewport.y + rect.height <= viewport.height - margin;
-      const y = fitsAtTop ? 0 : anchor && !frame.props.horizontal
+      // Content offsets (rect is pre-scroll): the first focusable shows from 0 when it fits on the first screen,
+      // else from as near the top as still shows it (the least movement kept what is above it out of reach).
+      const y = first && !frame.props.horizontal ? topOffset(rect.y - viewport.y, rect.height, viewport.height, maxY, margin)
+        : anchor && !frame.props.horizontal
         ? anchorOffset(frame.y, rect.y - viewport.y, rect.height, anchor.y - viewport.y, viewport.height, maxY, margin)
         : revealOffset(frame.y, rect.y - viewport.y, rect.height, viewport.height, maxY, margin);
       if (instant) {

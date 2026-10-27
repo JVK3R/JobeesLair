@@ -1666,12 +1666,12 @@ test('a set of images unpacked into one folder moves image by image, and the emp
   assert.deepEqual(state.manual, [`${usb}/Game.exfat`, `${usb}/Game-Update-1.05.exfat`]);
 });
 
-test('versions: 0.2.0 is newer than every 0.1.1 beta and 0.1.1, and the app now reports 0.5.2', async () => {
+test('versions: 0.2.0 is newer than every 0.1.1 beta and 0.1.1, and the app now reports 0.5.3', async () => {
   assert.equal(newer('v0.2.0', '0.1.1-beta.4'), true);
   assert.equal(newer('v0.2.0', '0.1.1'), true);
   assert.equal(newer('0.1.1-beta.4', '0.2.0'), false);
   const { VERSION, VERSION_LABEL } = await load('app/version.js');
-  assert.deepEqual([VERSION, VERSION_LABEL], ['0.5.2', '0.5.2']);
+  assert.deepEqual([VERSION, VERSION_LABEL], ['0.5.3', '0.5.3']);
 });
 
 
@@ -1690,13 +1690,16 @@ const releaseJson = (overrides = {}) => ({
   ...overrides,
 });
 
-test('versions: 0.5.0 is newer than 0.4.1 and every 0.5.0 pre-release, and older than 0.5.1; 0.5.2 is newer than 0.5.1 and its Pre Release 1', () => {
-  assert.equal(VERSION, '0.5.2');
-  assert.equal(newer(VERSION, '0.5.1'), true, 'it is newer than 0.5.1');
-  assert.equal(newer('v0.5.1', VERSION), false, 'so 0.5.1 is not offered to it');
-  assert.equal(newer('v0.5.2', '0.5.2-pre.1'), true, 'it is offered to its pre-release testers');
-  assert.equal(newer('v0.5.2', VERSION), false, 'and not to itself');
-  assert.equal(contentVersionOf(VERSION), '01.005.002');
+test('versions: 0.5.0 is newer than 0.4.1 and every 0.5.0 pre-release, and older than 0.5.1; 0.5.3 is newer than 0.5.2', () => {
+  assert.equal(VERSION, '0.5.3');
+  assert.equal(newer(VERSION, '0.5.2'), true, 'it is newer than 0.5.2');
+  assert.equal(newer('v0.5.2', VERSION), false, 'so 0.5.2 is not offered to it');
+  assert.equal(newer('v0.5.3', '0.5.3-pre.1'), true, '0.5.3 is offered to its testers');
+  assert.equal(newer('v0.5.3', VERSION), false, 'and not to itself');
+  assert.equal(newer('v0.5.4', VERSION), true, 'the next release will be offered');
+  assert.equal(contentVersionOf(VERSION), '01.005.003');
+  assert.equal(newer('v0.5.2', '0.5.2-pre.1'), true, '0.5.2 was offered to its pre-release testers');
+  assert.equal(newer('0.5.2', '0.5.1'), true, 'and to 0.5.1');
   assert.equal(newer(VERSION, '0.5.0'), true, 'it is newer than 0.5.0');
   assert.equal(newer('v0.5.1', '0.5.1-pre.2'), true, '0.5.1 was offered to its pre-release testers');
   assert.equal(contentVersionOf('0.5.1'), '01.005.001');
@@ -1859,6 +1862,38 @@ function installWorld({ param: paramFields = {}, eboot = 2000, lendable = () => 
   return world;
 }
 const STAGED = `/mnt/usb0/${STAGING}/0.5.1`;
+
+test('0.5.3 install: what a check cut off earlier left (the extractor\'s staging) is cleared before update.zip is unpacked again', async () => {
+  const world = installWorld();
+  // The extractor refuses staging recorded for another download of update.zip ("Staging belongs to another extraction").
+  world.fs.file(`${STAGED}/update.extracting/${TITLE_ID}/eboot.bin`, 10);
+  world.fs.file(`${STAGED}/update.extracting-1.discard/x`, 1);
+  const extract = world.archives.extract;
+  world.archives.extract = (options) => world.fs.exists(`${options.destination}.extracting`)
+    ? task(() => { throw new Error(`Archives.extract ${options.destination}: Staging belongs to another extraction; files preserved.`); })
+    : extract(options);
+  world.updater.download(world.release);
+  const state = await world.until((s) => ['ready', 'failed'].includes(s.phase));
+  assert.equal(state.phase, 'ready', state.error);
+  assert.ok(!world.fs.exists(`${STAGED}/update.extracting`) && !world.fs.exists(`${STAGED}/update.extracting-1.discard`));
+});
+
+test('0.5.3 install: update.zip waits while a game download is being extracted (one archive at a time), then is checked', async () => {
+  const world = installWorld();
+  const extract = world.archives.extract;
+  let refused = 0;
+  world.archives.extract = (options) => {
+    if (refused < 3) {
+      refused++;
+      throw new Error('archives.extract: An archive task is already running; poll its completion first.');
+    }
+    return extract(options);
+  };
+  world.updater.download(world.release);
+  const state = await world.until((s) => ['ready', 'failed'].includes(s.phase));
+  assert.equal(state.phase, 'ready', state.error);
+  assert.equal(refused, 3);
+});
 
 test('install: both files download into staging on the installed image\'s drive, checked against their SHA-256; update.zip is unpacked, checked and removed', async () => {
   const world = installWorld();
@@ -2070,23 +2105,38 @@ const sampleFeed = (count) => ({
   })),
 });
 
-test('feeds: the paced check gives exactly what the one-shot check gives, a frame at a time', async () => {
+// A clock that moves 1 ms each time it is read, for the paced steps' 6 ms of work between frames.
+async function withSteppingClock(run) {
+  const realNow = Date.now;
+  let clock = 0;
+  Date.now = () => clock++;
+  try {
+    return await run();
+  } finally {
+    Date.now = realNow;
+  }
+}
+
+test('feeds: the paced check gives exactly what the one-shot check gives, a frame after each 6 ms of it', async () => {
   const document = sampleFeed(1600);
   const once = feedFormat.parseFeed(document, 'https://example.com/feed.json');
   let pauses = 0;
-  const paced = await feedFormat.parseFeedAsync(document, 'https://example.com/feed.json', async () => { pauses++; });
+  const paced = await withSteppingClock(() => feedFormat.parseFeedAsync(document, 'https://example.com/feed.json', async () => { pauses++; }));
   assert.deepEqual(paced, once);
   assert.equal(once.games.length, 1500, 'the 1500-game cap holds');
-  assert.equal(pauses, Math.floor(1500 / 40), 'one frame per 40 of the 1500 games checked');
+  // Steps of 4 games, one clock read each: a frame after every 6 of them.
+  assert.equal(pauses, Math.floor(1500 / 4 / 6));
+  // On the real clock a fast check needs few frames or none, and gives the same.
+  assert.deepEqual(await feedFormat.parseFeedAsync(document, 'https://example.com/feed.json', async () => {}), once);
   await assert.rejects(feedFormat.parseFeedAsync({ version: 2 }, 'https://example.com/feed.json', async () => {}), /Not a catalog feed/);
 });
 
-test('feeds: the paced hash is the same key, in 32 KiB slices', async () => {
+test('feeds: the paced hash is the same key, a frame after each 6 ms of it', async () => {
   const text = JSON.stringify(feedFormat.feedDocument(feedFormat.parseFeed(sampleFeed(1500), 'https://example.com/feed.json')));
   let pauses = 0;
-  const key = await feedFormat.stableKeyAsync(text, async () => { pauses++; });
+  const key = await withSteppingClock(() => feedFormat.stableKeyAsync(text, async () => { pauses++; }));
   assert.equal(key, feedFormat.stableKey(text));
-  assert.equal(pauses, Math.floor(text.length / 32768));
+  assert.ok(pauses > 0 && pauses < text.length / 4096, `${pauses} frames for ${Math.ceil(text.length / 4096)} slices`);
   // The hash before it came in steps (0.2.0): cache file names and release ids must stay the same.
   function before(value) {
     let first = 2166136261, second = 5381;
@@ -2107,6 +2157,43 @@ test("feeds: a refresh writes the cache whole, readable as before, without strin
   const text = JSON.stringify({ version: 1, games: [] });
   const written = `${JSON.stringify(cache).slice(0, -1)},"document":${text}}`;
   assert.deepEqual(JSON.parse(written), { ...cache, document: JSON.parse(text) });
+});
+
+test('feeds: a copy the server tags with the ETag the cache has is not read, checked, hashed or written again', async () => {
+  const core = await import('@ps5-react/core');
+  const feeds = await load('app/state/feeds.js');
+  const kept = { ...core.FileSystem, request: core.Http.request };
+  const files = new Map();
+  const caches = () => [...files].filter(([file]) => file.includes('/feeds/'));
+  core.FileSystem.writeFile = (file, text) => files.set(file, text);
+  core.FileSystem.rename = (from, to) => { files.set(to, files.get(from)); files.delete(from); };
+  core.FileSystem.mkdir = () => {};
+  const body = JSON.stringify(sampleFeed(30));
+  let reads = 0, etag = '"v1"';
+  core.Http.request = async () => ({ ok: true, status: 200, headers: { etag }, text: async () => { reads++; return body; } });
+  try {
+    await feeds.refreshFeeds();
+    assert.equal(reads, 1);
+    assert.equal(caches().length, 1);
+    assert.equal(JSON.parse(caches()[0][1]).etag, '"v1"', 'the cache keeps the ETag');
+    files.clear();
+    await feeds.refreshFeeds();
+    assert.equal(reads, 1, 'the same copy is not read again');
+    assert.equal(caches().length, 0, 'nor written');
+    assert.equal(feeds.feedsSnapshot([feeds.LIVE_FEED])[0].state, 'ok');
+    etag = '"v2"';
+    await feeds.refreshFeeds();
+    assert.equal(reads, 2, 'a new copy is read');
+    assert.equal(JSON.parse(caches()[0][1]).etag, '"v2"');
+    // A weak ETag does not name one exact copy: every refresh reads it.
+    etag = 'W/"v2"';
+    await feeds.refreshFeeds();
+    await feeds.refreshFeeds();
+    assert.equal(reads, 4);
+  } finally {
+    Object.assign(core.FileSystem, { writeFile: kept.writeFile, rename: kept.rename, mkdir: kept.mkdir });
+    core.Http.request = kept.request;
+  }
 });
 
 test('settings: the companion card reads the server once a second for all its viewers and draws only on a change', () => {
@@ -2802,14 +2889,27 @@ test('screen saver: its slides are full-screen links to popular games\' own stor
   assert.match(source, /if \(tight\) return;\s*const next = slides/, 'no prefetch when tight');
 });
 
-test('what\'s new: shown until seen once for 0.5.2, and it says the stats are on and where they turn off', async () => {
+test('0.5.3: right-to-left, the bottom bar\'s section name moves to the right (the hints mirror to the left) and Homebrew\'s English text stays left to right', () => {
+  const legend = readFileSync(path.join(repo, 'app/ui/Legend.jsx'), 'utf8');
+  assert.match(legend, /position: "absolute", \.\.\.rtl \? \{ right: 48 \} : \{ left: 48 \}/);
+  const page = readFileSync(path.join(repo, 'app/homebrew/HomebrewApp.jsx'), 'utf8');
+  assert.match(page, /rtl \? LATIN_IN_RTL : null\], children: p \}/, 'README and release notes');
+  assert.match(page, /children: latin\(rtl, app\.name\)/);
+  const screen = readFileSync(path.join(repo, 'app/homebrew/HomebrewScreen.jsx'), 'utf8');
+  assert.match(screen, /rtl \? LATIN_IN_RTL : null\], children: app\.description/);
+});
+
+test('what\'s new: shown until seen once for 0.5.3; a player who never saw 0.5.2\'s still learns the stats are on and where they turn off', async () => {
   const { WHATS_NEW } = await load('app/state/whats-new.js');
-  assert.equal(WHATS_NEW, '0.5.2');
-  assert.match(en['whatsNew.title'], /0\.5\.2/);
+  assert.equal(WHATS_NEW, '0.5.3');
+  assert.match(en['whatsNew.title'], /0\.5\.3/);
   const source = readFileSync(path.join(repo, 'app/ui/WhatsNew.jsx'), 'utf8');
   const shown = [...source.matchAll(/title: "(whatsNew\.\w+)", detail: "(whatsNew\.\w+)"/g)].flatMap((match) => [match[1], match[2]]);
-  assert.deepEqual(shown, ['whatsNew.online', 'whatsNew.onlineDetail', 'whatsNew.fixIt', 'whatsNew.fixItDetail', 'whatsNew.saves', 'whatsNew.savesDetail', 'whatsNew.backports', 'whatsNew.backportsDetail']);
+  assert.deepEqual(shown, ['whatsNew.packages', 'whatsNew.packagesDetail', 'whatsNew.hbSearch', 'whatsNew.hbSearchDetail', 'whatsNew.topGames', 'whatsNew.topGamesDetail', 'whatsNew.reopen', 'whatsNew.reopenDetail', 'whatsNew.online', 'whatsNew.onlineDetail']);
   for (const key of [...shown, 'whatsNew.done', 'whatsNew.openHomebrew', 'saver.wake', 'settings.screenSaver', 'downloads.aheadReady']) assert.ok(en[key], key);
+  // 0.5.2's online card takes the last place for a player who did not see 0.5.2's panel (from 0.5.1, or a new install).
+  assert.match(source, /itemsFor = \(seen\) => seen === "0\.5\.2" \? ITEMS : \[\.\.\.ITEMS\.slice\(0, 3\), ONLINE\]/);
+  assert.match(source, /useState\(\(\) => itemsFor\(lastWhatsNewSeen\(\)\)\)/);
   assert.match(en['whatsNew.onlineDetail'], /anonymous stats/);
   assert.match(en['whatsNew.onlineDetail'], /Settings → About/);
 });

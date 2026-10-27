@@ -10,7 +10,7 @@
 #include "app_config.hpp" // the desktop preview's, generated from the same app.json
 #endif
 #ifndef PS5_REACT_USER_AGENT
-#define PS5_REACT_USER_AGENT "PS5React/0.1"  // app.json's userAgent; test hosts build without one
+#define PS5_REACT_USER_AGENT "PS5React/0.2"  // app.json's userAgent; test hosts build without one
 #endif
 #if !defined(PROSPERO) || PS5_REACT_NETWORKING
 #include <curl/curl.h>

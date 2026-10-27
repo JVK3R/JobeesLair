@@ -53,8 +53,9 @@ bool handle(Job& job, const std::string& line) {
   } else if (line == "ok") { s.state = "completed"; s.written = s.total; s.status = "playable"; return true; }
   else if (line.starts_with("fail ")) {
     s.state = job.cancelled ? "cancelled" : "failed";
-    s.error = "Packages.install " + job.path + ": " + (line.size() > 14 ? line.substr(14) : std::string("refused")) +
-              " (0x" + line.substr(5, 8) + ")";
+    // MODIFIED (Jobee'sLair 0.5.3): the reason and the code alone. The JavaScript task names the call and the
+    // package before them, so the message carried both twice.
+    s.error = (line.size() > 14 ? line.substr(14) : std::string("refused")) + " (0x" + line.substr(5, 8) + ")";
     return true;
   }
   return false;
@@ -63,7 +64,8 @@ bool handle(Job& job, const std::string& line) {
 void run(std::shared_ptr<Job> job) {
   std::string error;
   const int socket = submit(*job, error);
-  if (socket < 0) { finish(*job, "failed", error); return; }
+  // The loader's reason without the call it names first ("Packages.install: "), which the task adds again.
+  if (socket < 0) { finish(*job, "failed", error.starts_with("Packages.install: ") ? error.substr(18) : error); return; }
   job->socket = socket;
   std::string line;
   char buffer[1024];
@@ -78,7 +80,7 @@ void run(std::shared_ptr<Job> job) {
     }
   }
   if (job->socket.exchange(-1) >= 0) payload_loader::close(socket);
-  if (!ended) finish(*job, "failed", "Packages.install " + job->path + ": the installer stopped answering; check the console's Downloads");
+  if (!ended) finish(*job, "failed", "the installer stopped answering; check the console's Downloads");
 }
 }
 

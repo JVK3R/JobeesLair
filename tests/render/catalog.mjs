@@ -93,3 +93,48 @@ assert.equal(at(NO_FILTERS, 'newest'), 'new');
 assert.equal(at({ ...NO_FILTERS, wishlist: true }, BROWSE_SORT), 'favorites');
 for (const name of TABS) if (name !== 'search') assert.ok(stepFrom(stepFrom(name, false) ?? name, true) === name || stepFrom(name, false) === null, `${name} is reached back from its neighbour`);
 console.log(`OK: L1 and R1 step through ${TABS.join(' > ')}`);
+
+// The Discover carousel (0.5.3, app/browse/featured.js): top games, a new few each launch. It picked from the games
+// with a logo that Archive.org serves, 7 of 1,845, and showed the same five every launch.
+const { SLIDES, TOP_POOL, featured, pickFeatured, studioOf } = await import(pathToFileURL(path.join(repo, 'app/browse/featured.js')).href);
+const { ratingScore } = await import(pathToFileURL(path.join(repo, 'app/state/catalog.js')).href);
+const seeded = (seed) => () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+const launches = Array.from({ length: 40 }, (_, launch) => pickFeatured(undefined, seeded(launch + 1)));
+for (const picks of launches) {
+  assert.equal(picks.length, SLIDES);
+  assert.equal(new Set(picks).size, SLIDES, 'no game twice');
+  assert.ok(picks.every((game) => game.art.hero && game.art.logo), 'each has a banner and a logo');
+  assert.ok(picks.every((game) => ratingScore(game) >= 4.3), 'each is well rated');
+  assert.equal(new Set(picks.map(studioOf)).size, SLIDES, 'one game a studio');
+  assert.equal(oneEach(picks).length, SLIDES, 'one edition a game');
+}
+const shownOnce = new Set(launches.flat());
+assert.ok(shownOnce.size >= TOP_POOL - 4, `many top games over 40 launches (${shownOnce.size})`);
+assert.ok(new Set(launches.map((picks) => picks.map((game) => game.id).sort().join())).size >= 30, 'a different five most launches');
+const mostRated = [...shownOnce].sort((a, b) => b.ratingCount - a.ratingCount)[0];
+assert.ok(mostRated.ratingCount > 100000, `the top of the pool is a big game (${mostRated.title})`);
+assert.equal(studioOf({ developer: 'CAPCOM Co., Ltd.' }), studioOf({ developer: 'Capcom' }));
+// The Featured lane under it leaves the carousel's games out, every edition of them.
+globalThis.screen ??= { width: 1920, height: 1080 };
+const { FIRST_FEATURED } = await import(pathToFileURL(path.join(repo, 'app/browse/Lanes.jsx')).href);
+assert.ok(FIRST_FEATURED && !featured.some((game) => FIRST_FEATURED === `lane:featured:${game.id}`), 'the Featured lane starts with another game');
+console.log(`OK: the carousel shows ${SLIDES} of the top games, ${shownOnce.size} different ones over 40 launches; this launch: ${featured.map((game) => game.title).join(', ')}`);
+
+// Discover's rows (0.5.3): each shows games the rows above it do not. Featured, Ready for 13.60 and Popular now all opened
+// with the same eight Archive.org games; Popular now is now the most played on PlayStation (most rated on its store).
+const { FEATURED, READY, TOP } = await import(pathToFileURL(path.join(repo, 'app/browse/Lanes.jsx')).href);
+const { POPULAR } = await import(pathToFileURL(path.join(repo, 'app/browse/PopularRail.jsx')).href);
+const { editionsOf } = await import(pathToFileURL(path.join(repo, 'app/state/catalog.js')).href);
+const work = (game) => editionsOf(game).map((edition) => edition.id).sort().join();
+const rows = { carousel: featured, featured: FEATURED, ready: READY, popular: POPULAR };
+const where = new Map();
+for (const [name, list] of Object.entries(rows)) {
+  assert.ok(list.length >= 5, `${name} has games`);
+  for (const game of list) {
+    assert.ok(!where.has(work(game)), `${game.title} is in ${where.get(work(game))} and ${name}`);
+    where.set(work(game), name);
+  }
+}
+assert.ok(POPULAR.every((game, i) => i === 0 || POPULAR[i - 1].ratingCount >= game.ratingCount), 'Popular now: the most rated first');
+assert.ok(!POPULAR.some((game) => TOP.includes(game)), 'not the Top rated row\'s either');
+console.log(`OK: Discover's rows share no game; Popular now opens with ${POPULAR.slice(0, 3).map((game) => game.title).join(', ')}`);

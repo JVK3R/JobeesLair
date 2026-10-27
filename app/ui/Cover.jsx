@@ -3,9 +3,10 @@
 
 import '../assets/Exo2.ttf';
 import { jsx } from 'react/jsx-runtime';
-import { useEffect, useState } from 'react';
-import { Image, Text, View } from '@ps5-react/core';
+import { useEffect, useRef, useState } from 'react';
+import { Image, Text, View, motion } from '@ps5-react/core';
 import { colors } from './colors.js';
+import { EASE_OUT } from './ease.js';
 
   var SKELETON = { backgroundColor: colors.surface2 };
   var tinted = /* @__PURE__ */ new Map();
@@ -34,28 +35,47 @@ import { colors } from './colors.js';
     height: "100%",
     borderRadius: Object.assign({}, ...[style].flat(Infinity).filter(Boolean)).borderRadius
   });
+  // 0.5.3: art that keeps the card waiting fades in over its tint instead of replacing it in one frame. Art that
+  // arrives within ARRIVE_MS (from a cache) is drawn at once, as before, so a page opened again looks as it was.
+  var ARRIVE_MS = 90;
+  var FADE_IN = { type: "tween", duration: 0.2, ease: EASE_OUT };
+  var AT_ONCE = { type: "tween", duration: 0 };
   function Cover({ game, style, label = true }) {
     const [failed, setFailed] = (0, useState)([]);
     const [loaded, setLoaded] = (0, useState)(null);
+    const since = (0, useRef)(Date.now());
+    const late = (0, useRef)(false);
     const copies = [game.art.cover, ...game.art.coverFallbacks || []].filter((url) => url && !failed.includes(url));
     const uri = copies[0];
     const last = copies.length < 2;
+    (0, useEffect)(() => {
+      since.current = Date.now();
+    }, [uri]);
     (0, useEffect)(() => {
       if (!uri || loaded === uri || last) return void 0;
       return watchStall(() => setFailed((previous) => [...previous, uri]));
     }, [uri, loaded, last]);
     if (uri) {
-      return /* @__PURE__ */ (0, jsx)(View, { style: loaded === uri ? style : [skeleton(game.art.tint), style], children: /* @__PURE__ */ (0, jsx)(
-        Image,
-        {
-          source: { uri },
-          resizeMode: "cover",
-          style: fill(style),
-          onLoad: () => setLoaded(uri),
-          onError: () => setFailed((previous) => [...previous, uri])
-        },
-        uri
-      ) });
+      const shown = loaded === uri;
+      return /* @__PURE__ */ (0, jsx)(View, { style: [skeleton(game.art.tint), style], children: /* @__PURE__ */ (0, jsx)(motion.View, {
+        initial: { opacity: 0 },
+        animate: { opacity: shown ? 1 : 0 },
+        transition: shown && late.current ? FADE_IN : AT_ONCE,
+        style: fill(style),
+        children: /* @__PURE__ */ (0, jsx)(
+          Image,
+          {
+            source: { uri },
+            resizeMode: "cover",
+            style: fill(style),
+            onLoad: () => {
+              late.current = Date.now() - since.current > ARRIVE_MS;
+              setLoaded(uri);
+            },
+            onError: () => setFailed((previous) => [...previous, uri])
+          }
+        )
+      }, uri) });
     }
     return /* @__PURE__ */ (0, jsx)(View, { style: [{ overflow: "hidden" }, style], children: /* @__PURE__ */ (0, jsx)(View, { style: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface2, padding: 12 }, children: label && /* @__PURE__ */ (0, jsx)(Text, { style: { width: "100%", textAlign: "center", fontFamily: "Exo2", fontSize: 21, color: colors.muted, numberOfLines: 3, ellipsizeMode: "tail", lineHeight: 30 }, children: game.title }) }) });
   }

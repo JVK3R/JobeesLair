@@ -50,11 +50,12 @@ test('the first focusable element scrolls back to the top when it fits on the fi
   frame.reveal({x: 0, y: 300, width: 100, height: 100}, null, {first: true});
   assert.equal(targets.at(-1).y, 0, 'scrolled all the way up');
   settle();
-  // One past the first screen stays where minimal movement puts it.
+  // One past the first screen shows as much above it as still shows it (0.5.3: the least movement, from further
+  // down, put it at the top and kept the content above it out of reach): its end 32 px above the viewport's.
   frame.reveal({x: 0, y: 4000, width: 100, height: 100}, null);
   settle();
   frame.reveal({x: 0, y: 1500, width: 100, height: 100}, null, {first: true});
-  assert.notEqual(targets.at(-1).y, 0);
+  assert.equal(targets.at(-1).y, 1500 + 100 + 32 - 720);
 });
 
 test('onScrollTarget reports where the scroll settled when shrinking content clamps it', () => {

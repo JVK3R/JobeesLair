@@ -9,6 +9,7 @@ import { EmptyState } from './EmptyState.jsx';
 import { SortSelect } from './SortSelect.jsx';
 import { SPAN_MAX, fitBytes } from '../i18n/fit.js';
 import { useLocale, useT } from '../i18n/index.js';
+import { games } from '../data/catalog.js';
 import { activeCount, filterGames, oneEach, sortGames } from '../state/catalog.js';
 import { useNavActions } from '../state/nav.jsx';
 import { useStore } from '../state/store.jsx';
@@ -42,6 +43,18 @@ import { colors, radius } from '../ui/colors.js';
       fetched.add(game.id);
       Image.prefetch(game.art.cover, coverBox).catch(() => fetched.delete(game.id));
     }
+  }
+  // 0.5.3: the grid's games for a pool and a sort, kept. L1/R1 and the menus switch sorts over the same games,
+  // and sorting the whole catalog, then keeping one card a game, took the console tens of milliseconds a switch.
+  // With no filter and no search the pool is the catalog itself, the same array every time.
+  var grids = /* @__PURE__ */ new WeakMap();
+  function gridOf(pool, sort, everyCopy) {
+    let bySort = grids.get(pool);
+    if (!bySort) grids.set(pool, bySort = /* @__PURE__ */ new Map());
+    const key = `${sort}${everyCopy ? ":every" : ""}`;
+    let list = bySort.get(key);
+    if (!list) bySort.set(key, list = everyCopy ? sortGames(pool, sort) : oneEach(sortGames(pool, sort)));
+    return list;
   }
   var sameGrid = (a, b) => a.signature === b.signature && a.enter === b.enter && a.games.length === b.games.length && a.games.every((game, i) => game === b.games[i]);
   var Grid = (0, memo)(function Grid2({ games: games2, enter: enter3 }) {
@@ -108,7 +121,7 @@ import { colors, radius } from '../ui/colors.js';
     const results = (0, useMemo)(
       // 0.5.1: a game once, unless a platform is picked (then that platform's edition is the one wanted) or a
       // search is typed (search lists every copy).
-      () => filters.platform?.length || query.trim() ? sortGames(filterGames(store), store.sort) : oneEach(sortGames(filterGames(store), store.sort)),
+      () => gridOf(activeCount(filters) === 0 && !query.trim() ? games : filterGames(store), store.sort, Boolean(filters.platform?.length || query.trim())),
       [filters, query, store.wishlist, store.sort]
     );
     const settled = (0, useRef)(false);

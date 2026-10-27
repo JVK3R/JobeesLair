@@ -2,6 +2,7 @@
 // reconstructed from the esbuild bundle in eboot.bin
 // MODIFIED (0.5.0 Pre Release 3): Settings is a section, the last one (after Files), not a screen over the page.
 // MODIFIED (0.5.2): Browse is a section L1 and R1 step to (ui/sections.js, where the order and the rules are).
+// MODIFIED (0.5.3): Search from the Homebrew section opens on its Homebrew side.
 
 import { useRef, useState } from 'react';
 import { NO_FILTERS } from '../state/catalog.js';
@@ -45,7 +46,8 @@ import { BROWSE_SORT, sectionOf, stepFrom } from './sections.js';
     topName.current = top.name;
     const [on] = (0, useState)(() => ({
       show,
-      search: () => topName.current !== "search" && nav.push({ name: "search" }, "nav:search"),
+      // 0.5.3: from the Homebrew section (or one of its apps), on its Homebrew side; the Games tab is beside it.
+      search: () => topName.current !== "search" && nav.push(topName.current === "homebrew" || topName.current === "homebrew-app" ? { name: "search", side: "homebrew" } : { name: "search" }, "nav:search"),
       discover: () => show(NO_FILTERS, "relevance", "spotlight:cta"),
       // 0.5.2: Browse, the whole catalog A to Z (its menu's "All games", and L1/R1).
       catalog: () => show(NO_FILTERS, BROWSE_SORT),

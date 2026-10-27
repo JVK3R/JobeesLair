@@ -71,6 +71,7 @@ def desktop(app, test=False, target="ps5-react-preview", resolution=None):
         run(["python3", ROOT / "tools/test_removals.py"], log=ROOT / ".build/removal-test.log")
         run(["python3", ROOT / "tools/test_copies.py"], log=ROOT / ".build/copy-test.log")
         run(["python3", ROOT / "tools/test_updater.py"], log=ROOT / ".build/updater-test.log")
+        run(["python3", ROOT / "tools/test_pkg_installer.py"], log=ROOT / ".build/pkg-installer-test.log")
         run(["python3", ROOT / "tools/test_network.py"], log=ROOT / ".build/network-test.log")
         run(["python3", ROOT / "tools/test_images.py"], log=ROOT / ".build/image-test.log")
         run(["python3", ROOT / "tools/test_text.py"], log=ROOT / ".build/text-test.log")
@@ -82,7 +83,7 @@ def desktop(app, test=False, target="ps5-react-preview", resolution=None):
 
 
 def doctor():
-    print("PS5 React 0.1 — macOS developer environment")
+    print("PS5 React 0.2 — macOS developer environment")
     missing = []
     for command in ("python3", "node", "npm", "cmake", "git", "clang++"):
         path = shutil.which(command)

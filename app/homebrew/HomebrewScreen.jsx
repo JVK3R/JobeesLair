@@ -9,27 +9,30 @@
 // MODIFIED (0.5.0 Pre Release 2): the section's own color (palette.js) and header; each row fills the width,
 // so it scrolls sideways (it grew as wide as its tiles before, and could not); a row ends on a "See all" tile;
 // grids sort with Square (most popular, newest release, A–Z); Triangle goes back to the top.
+// MODIFIED (0.5.3): a "Search homebrew" field at the top (Up from the spotlight) and the row's Search chip open the
+// search page on homebrew alone (search/index.jsx); the panel this section had of its own is gone. Back from an
+// app's page comes back to the grid, the sort and the tile it was opened from: the section was mounted anew and
+// came back on everything, at the top.
 
 import '../assets/Exo2.ttf';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
-import { memo, useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { GameRail } from '../browse/GameRail.jsx';
-import { Keyboard } from '../search/Keyboard.jsx';
-import { useT } from '../i18n/index.js';
-import { searchApps } from '../state/homebrew-index.js';
+import { LATIN_IN_RTL, latin, useLocale, useT } from '../i18n/index.js';
 import { homebrew, useHomebrew } from '../state/homebrew-store.js';
-import { useNavActions } from '../state/nav.jsx';
+import { useNavActions, useNavState } from '../state/nav.jsx';
 import { Button2 } from '../ui/Button.jsx';
 import { ButtonGlyph } from '../ui/ButtonHints.jsx';
 import { FocusRing } from '../ui/FocusRing.jsx';
 import { Icon } from '../ui/Icon.jsx';
+import { HINT, useHints } from '../ui/Legend.jsx';
 import { colors, radius } from '../ui/colors.js';
 import { EASE_OUT } from '../ui/ease.js';
 import { logical } from '../ui/scale.js';
 import { HomebrewArt, gradientOf } from './HomebrewArt.jsx';
 import { HomebrewTile, TILE, TILE_HEIGHT } from './HomebrewTile.jsx';
 import { hb, hbTint } from './palette.js';
-import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFocused } from '@ps5-react/core';
+import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useFocusActions, useIsFocused } from '@ps5-react/core';
 
   var SPOT_HEIGHT = 400;
   // One row: its title (42 tall, 24 under it) over a row of tiles (GameRail).
@@ -39,6 +42,27 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFo
   var RAIL_LIMIT = 14;
   var COLUMNS = 7, COLUMN_GAP = 28, ROW_GAP = 36;
   var SORTS = ["popular", "newest", "name"];
+  // 0.5.3: what the section showed when an app's page (or the search) was opened from it, for Back to bring back.
+  var view = { filter: "all", sort: "popular" };
+  // The rows have nothing to sort: Square is the grids' alone.
+  var RAIL_HINTS = [HINT.select, HINT.toTop, HINT.menu, HINT.sections];
+  // Back to a tile (`key`) of a list's item (`index`) not mounted yet: a tile far down a grid, or in a row further
+  // down, which a focus request by key cannot reach. The list is asked to scroll to the item (VirtualList
+  // focusIndex mounts its row), then the tile is focused once it is there.
+  function useFocusIndex(list, index, key) {
+    const { focus } = useFocusActions();
+    useEffect(() => {
+      if (index < 0 || !key) return void 0;
+      let tries = 0, id = 0, asked = false;
+      const attempt = () => {
+        if (focus(key) || ++tries > 30) return;
+        if (!asked) asked = Boolean(list.current?.focusIndex?.(index));
+        id = setTimeout(attempt, 50);
+      };
+      id = setTimeout(attempt, 0);
+      return () => clearTimeout(id);
+    }, []);
+  }
   var rise = { initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0 }, transition: { type: "tween", duration: 0.45, ease: EASE_OUT } };
   // The categories' names: the index's English one unless this language has its own.
   function useCategoryName() {
@@ -58,7 +82,18 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFo
   function Stat({ text, tone }) {
     return jsx(View, { style: { height: 48, justifyContent: "center", borderRadius: radius.pill, backgroundColor: tone ? hb().soft : colors.surface2, paddingHorizontal: 20 }, children: jsx(Text, { style: { fontFamily: "Exo2", fontSize: 20, fontWeight: 600, lineHeight: 28, color: tone ?? colors.fg }, children: text }) });
   }
-  function SectionHeader({ counts }) {
+  // 0.5.3: the search field, at the header's right: it opens the search page on homebrew alone.
+  function SearchFace() {
+    const t2 = useT();
+    const focused = useIsFocused();
+    const tone = hb();
+    return jsxs(Fragment, { children: [
+      jsx(FocusRing, { round: "full", color: tone.hi }),
+      jsx(Icon, { name: "search", size: 18, color: focused ? tone.hi : colors.muted }),
+      jsx(Text, { style: { flex: 1, fontFamily: "Exo2", fontSize: 21, lineHeight: 30, color: focused ? colors.fg : colors.subtle, numberOfLines: 1, ellipsizeMode: "tail" }, children: t2("homebrew.searchPlaceholder") })
+    ] });
+  }
+  function SectionHeader({ counts, onSearch }) {
     const t2 = useT();
     const tone = hb();
     return jsxs(View, { scrollAnchor: true, style: { marginTop: 18, flexDirection: "row", alignItems: "center", gap: 24 }, children: [
@@ -72,6 +107,7 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFo
           jsx(Text, { style: { fontFamily: "Exo2", fontSize: 19, lineHeight: 28, color: tone.glow }, children: t2("homebrew.listBy") })
         ] })
       ] }),
+      jsx(View, { focusKey: "hb:search", onPress: onSearch, style: (state) => ({ position: "relative", width: 420, height: 60, flexDirection: "row", alignItems: "center", gap: 14, borderRadius: radius.pill, borderWidth: 2, borderColor: state.focused ? tone.hi : colors.line, backgroundColor: state.focused ? colors.surface2 : colors.surface, paddingHorizontal: 24 }), children: jsx(SearchFace, {}) }),
       jsxs(View, { style: { flexDirection: "row", gap: 12 }, children: [
         jsx(Stat, { text: t2("homebrew.appCount", { count: counts.all }) }),
         counts.installed ? jsx(Stat, { text: `${counts.installed} ${t2("homebrew.filter.installed")}` }) : null,
@@ -80,8 +116,9 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFo
     ] });
   }
   // ---- Spotlight -------------------------------------------------------------------------------------
-  function Spotlight({ apps, onOpen }) {
+  function Spotlight({ apps, onOpen, autoFocus }) {
     const t2 = useT();
+    const { rtl } = useLocale();
     const categoryName = useCategoryName();
     const index = homebrew().index;
     const tone = hb();
@@ -101,11 +138,12 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFo
         jsx(HomebrewArt, { app, size: 240, round: radius.xl }),
         jsxs(View, { style: { flex: 1, gap: 10 }, children: [
           jsx(Text, { style: { fontFamily: "Exo2", fontSize: 19, fontWeight: 700, letterSpacing: 2.4, lineHeight: 26, color: tone.glow }, children: `${t2("homebrew.spotlight").toUpperCase()} · ${(category ? categoryName(category) : "").toUpperCase()}` }),
-          jsx(Text, { style: { fontFamily: "Exo2", fontSize: 54, fontWeight: 700, lineHeight: 64, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail" }, children: app.name }),
+          // 0.5.3: an app's English name and description keep their punctuation where it goes in a right-to-left language.
+          jsx(Text, { style: { fontFamily: "Exo2", fontSize: 54, fontWeight: 700, lineHeight: 64, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail" }, children: latin(rtl, app.name) }),
           jsx(Text, { style: { fontFamily: "Exo2", fontSize: 22, lineHeight: 30, color: colors.muted, numberOfLines: 1 }, children: t2("homebrew.byline", { author: app.author, stars: formatCount(app.stars), version: app.release.tag }) }),
-          app.description ? jsx(Text, { style: { fontFamily: "Exo2", fontSize: 22, lineHeight: 32, color: colors.fg, numberOfLines: 2, ellipsizeMode: "tail" }, children: app.description }) : null,
+          app.description ? jsx(Text, { style: [{ fontFamily: "Exo2", fontSize: 22, lineHeight: 32, color: colors.fg, numberOfLines: 2, ellipsizeMode: "tail" }, rtl ? LATIN_IN_RTL : null], children: app.description }) : null,
           jsxs(View, { style: { marginTop: 12, flexDirection: "row", gap: 18 }, children: [
-            jsx(Button2, { focusKey: "hb:spot", variant: "primary", tint: hbTint(), label: t2("homebrew.open"), icon: "arrowRight", onPress: () => onOpen(app, "hb:spot") }),
+            jsx(Button2, { focusKey: "hb:spot", autoFocus, variant: "primary", tint: hbTint(), label: t2("homebrew.open"), icon: "arrowRight", onPress: () => onOpen(app, "hb:spot") }),
             apps.length > 1 ? jsx(Button2, { focusKey: "hb:spot:next", variant: "outline", tint: hbTint(), size: "icon", icon: "chevronRight", onPress: () => setAt((n) => (n + 1) % apps.length) }) : null
           ] })
         ] })
@@ -165,11 +203,14 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFo
       more ? jsx(SeeAllTile, { focusKey: `hb:${name}:more`, count: apps.length, onPress: onSeeAll }, "more") : null
     ] });
   }
-  function Grid({ apps, onOpen, columns = COLUMNS, name = "grid" }) {
+  function Grid({ apps, onOpen, columns = COLUMNS, name = "grid", focusId = null }) {
     const t2 = useT();
+    const list = useRef(null);
+    useFocusIndex(list, focusId ? apps.findIndex((app) => app.id === focusId) : -1, focusId ? `hb:${name}:${focusId}` : null);
     if (!apps.length) return jsx(Text, { style: { marginTop: 48, fontFamily: "Exo2", fontSize: 24, color: colors.muted }, children: t2("homebrew.empty") });
     // VirtualList lengths are logical px of the 1280-wide layout.
     return jsx(VirtualList, {
+      ref: list,
       style: { marginTop: 12 },
       data: apps,
       numColumns: columns,
@@ -184,9 +225,10 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFo
       }
     });
   }
-  var Rails = memo(function Rails2({ lists, onOpen, onFilter }) {
+  var Rails = memo(function Rails2({ lists, onOpen, onFilter, focusTile = null }) {
     const t2 = useT();
     const categoryName = useCategoryName();
+    const list = useRef(null);
     const rails = [
       { name: "updates", title: t2("homebrew.rail.updates"), apps: lists.updates, all: "updates" },
       { name: "installed", title: t2("homebrew.rail.installed"), apps: lists.installed, all: "installed" },
@@ -194,7 +236,9 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFo
       { name: "fresh", title: t2("homebrew.rail.fresh"), apps: lists.fresh, all: "all:newest" },
       ...lists.categories.map(({ category, apps }) => ({ name: category.id, title: categoryName(category), apps, all: category.id }))
     ].filter((rail) => rail.apps.length);
+    useFocusIndex(list, focusTile ? rails.findIndex((rail) => focusTile.startsWith(`hb:${rail.name}:`)) : -1, focusTile);
     return jsx(VirtualList, {
+      ref: list,
       data: rails,
       itemHeight: logical(RAIL_HEIGHT),
       rowGap: logical(RAIL_GAP),
@@ -227,44 +271,26 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFo
       jsx(Text, { style: { fontFamily: "Exo2", fontSize: 19, lineHeight: 28, color: colors.subtle }, children: t2("homebrew.creditsList") })
     ] });
   }
-  // ---- Search ------------------------------------------------------------------------------------------
-  function SearchPanel({ onClose, onOpen }) {
-    const t2 = useT();
-    const [query, setQuery] = useState("");
-    const { apps } = homebrew().index;
-    const tone = hb();
-    const results = useMemo(() => query.trim() ? searchApps(apps, query) : [...apps].sort(byStars).slice(0, 24), [query, apps]);
-    const onAction = (action) => {
-      if (action === "l2") setQuery("");
-      else return false;
-      return true;
-    };
-    return jsx(FocusScope, { trap: true, autoFocus: true, onBack: () => {
-      onClose();
-      return true;
-    }, onAction, children: jsxs(View, { style: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, flexDirection: "row", gap: 60, backgroundColor: colors.canvas, paddingHorizontal: 48, paddingTop: 36 }, children: [
-      jsxs(View, { style: { gap: 30 }, children: [
-        jsxs(View, { style: { width: 564, height: 84, flexDirection: "row", alignItems: "center", gap: 18, borderRadius: radius.md, borderWidth: 2, borderColor: tone.accent, backgroundColor: tone.soft, paddingHorizontal: 30 }, children: [
-          jsx(Icon, { name: "package", size: 20, color: tone.hi }),
-          jsx(Text, { style: { fontFamily: "Exo2", fontSize: 27, lineHeight: 36, color: query ? colors.fg : colors.subtle, writingDirection: "ltr" }, children: query || t2("homebrew.searchPlaceholder") })
-        ] }),
-        jsx(Keyboard, { onChange: setQuery, onSubmit: () => {} })
-      ] }),
-      jsxs(View, { style: { flex: 1 }, children: [
-        jsx(Text, { style: { marginBottom: 6, fontFamily: "Exo2", fontSize: 30, fontWeight: 600, lineHeight: 42, color: colors.fg }, children: query.trim() ? t2("homebrew.results", { count: results.length }) : t2("homebrew.rail.popular") }),
-        jsx(FocusScope, { focusKey: "search-results", children: jsx(ScrollView, { style: { flex: 1 }, children: jsx(Grid, { apps: results, onOpen, columns: 4, name: "search" }, query) }) })
-      ] })
-    ] }) });
-  }
   // ---- The section -------------------------------------------------------------------------------------
   function HomebrewScreen({ onBack, onOpenApp }) {
     const t2 = useT();
     const store = useHomebrew();
     const categoryName = useCategoryName();
-    const { focusLater } = useNavActions();
-    const [filter, setFilter] = useState("all");
-    const [sort, setSort] = useState("popular");
-    const [searching, setSearching] = useState(false);
+    const { focusLater, push } = useNavActions();
+    const { top } = useNavState();
+    // Back from an app's page or the search: the section as it was left (its entry has the key focus left from).
+    const [back] = useState(() => top.from ?? null);
+    const [filter, setFilterNow] = useState(() => back ? view.filter : "all");
+    const [sort, setSortNow] = useState(() => back ? view.sort : "popular");
+    const setFilter = (next) => {
+      view.filter = next;
+      setFilterNow(next);
+    };
+    const setSort = (next) => setSortNow((now) => view.sort = typeof next === "function" ? next(now) : next);
+    useEffect(() => {
+      if (!back) view = { filter: "all", sort: "popular" };
+    }, []);
+    useHints(filter === "all" ? RAIL_HINTS : null);
     const index = store.index;
     const lists = useMemo(() => {
       const apps = index.apps;
@@ -286,6 +312,8 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFo
       return out;
     }, [lists]);
     const onOpen = (app, from) => onOpenApp(app.id, from);
+    // The search page on homebrew alone; Back comes back to what opened it.
+    const openSearch = (from) => push({ name: "search", side: "homebrew", only: "homebrew" }, from);
     // "all:newest", "all:popular": every app in a grid, sorted so (the popular and fresh rows' "See all").
     const choose = (next) => {
       const [name, order] = next.split(":");
@@ -299,6 +327,17 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFo
       const category = index.categories.find((c) => c.id === filter);
       return category ? categoryName(category) : "";
     })();
+    // The tile Back returns to, in the grid or the row it was opened from (hb:<grid or row>:<app id>): on the first
+    // showing only, so a grid shown again later (another chip, then this one) does not take focus from its chip.
+    const restore = useRef(back);
+    useEffect(() => {
+      restore.current = null;
+    }, []);
+    const [grid, tile] = (() => {
+      const match = restore.current && /^hb:([^:]+):(.+)$/.exec(restore.current);
+      if (!match || match[1] === "chip" || match[1] === "spot") return [null, null];
+      return filter === "all" ? [null, restore.current] : match[1] === filter ? [match[2], null] : [null, null];
+    })();
     // The sort pill keeps focus, so the newly sorted grid shows from its top.
     const cycleSort = () => {
       setSort((now) => SORTS[(SORTS.indexOf(now) + 1) % SORTS.length]);
@@ -310,8 +349,7 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFo
       else return false;
       return true;
     };
-    const back = () => {
-      if (searching) return false;
+    const goBack = () => {
       if (filter !== "all") {
         choose("all");
         return true;
@@ -320,22 +358,16 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useIsFo
       return true;
     };
     if (!index.apps.length) return jsx(View, { style: { flex: 1, alignItems: "center", justifyContent: "center" }, children: jsx(Text, { style: { fontFamily: "Exo2", fontSize: 26, color: colors.muted }, children: t2("homebrew.noIndex") }) });
-    return jsx(FocusScope, { trap: true, autoFocus: true, onBack: back, onAction, children: jsxs(View, { style: { flex: 1 }, children: [
-      jsxs(ScrollView, { style: { flex: 1, gap: 42, paddingHorizontal: 48, paddingBottom: 48 }, children: [
-        jsx(SectionHeader, { counts }),
-        filter === "all" ? jsx(Spotlight, { apps: lists.spotlight, onOpen }) : null,
-        jsx(Filters, { filter: filter === "every" ? "all" : filter, onFilter: choose, onSearch: () => setSearching(true), counts }),
-        shown ? jsxs(Fragment, { children: [
-          jsx(GridHeader, { title: gridTitle, count: shown.length, sort, onSort: cycleSort }),
-          jsx(Grid, { apps: shown, onOpen, name: filter }, `${filter}:${sort}`)
-        ] }) : jsx(Rails, { lists, onOpen, onFilter: choose }),
-        jsx(Credits, {})
-      ] }),
-      searching ? jsx(SearchPanel, { onOpen, onClose: () => {
-        setSearching(false);
-        focusLater("hb:chip:search");
-      } }) : null
-    ] }) });
+    return jsx(FocusScope, { trap: true, autoFocus: true, onBack: goBack, onAction, children: jsx(View, { style: { flex: 1 }, children: jsxs(ScrollView, { style: { flex: 1, gap: 42, paddingHorizontal: 48, paddingBottom: 48 }, children: [
+      jsx(SectionHeader, { counts, onSearch: () => openSearch("hb:search") }),
+      filter === "all" ? jsx(Spotlight, { apps: lists.spotlight, onOpen, autoFocus: !back }) : null,
+      jsx(Filters, { filter: filter === "every" ? "all" : filter, onFilter: choose, onSearch: () => openSearch("hb:chip:search"), counts }),
+      shown ? jsxs(Fragment, { children: [
+        jsx(GridHeader, { title: gridTitle, count: shown.length, sort, onSort: cycleSort }),
+        jsx(Grid, { apps: shown, onOpen, name: filter, focusId: grid }, `${filter}:${sort}`)
+      ] }) : jsx(Rails, { lists, onOpen, onFilter: choose, focusTile: tile }),
+      jsx(Credits, {})
+    ] }) }) });
   }
 
 export { Grid as HomebrewGrid, HomebrewScreen };

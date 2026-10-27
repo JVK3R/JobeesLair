@@ -21,6 +21,8 @@
 // The state lives in auto-update.json (phase, version, where), so a restart resumes a download or keeps a
 // ready update. Phases: idle, waiting (for the network), downloading, checking, ready, armed, failed.
 
+import { extractInTurn } from './archive-turn.js';
+import { stagingOf } from './extraction-staging.js';
 import { contentVersionOf, newer } from './updater.js';
 import { IMAGE_NAME as IMAGE } from '../version.js';
 
@@ -34,7 +36,6 @@ import { IMAGE_NAME as IMAGE } from '../version.js';
   var UNPACKED = 3;
   var RETRY_MS = 15e3;
   var TRIES = 4;
-  var ACTIVE = ["waiting", "downloading", "checking"];
   function stopped() {
     return Object.assign(new Error("The update was cancelled."), { name: "AbortError" });
   }
@@ -235,9 +236,13 @@ import { IMAGE_NAME as IMAGE } from '../version.js';
     async function checkZip(current, staging, release) {
       publish({ phase: "checking", file: "zip" });
       const unpacked = `${staging}/update`;
-      // What an earlier, cut-off check left.
-      await removeQuietly(unpacked);
-      const task = archives.extract({ sources: [`${staging}/update.zip`], destination: unpacked, maxBytes: Math.max(release.assets.zip.size * UNPACKED, 64 * 1024 ** 2) });
+      // What an earlier, cut-off check left. 0.5.3: the extractor's staging too (extraction-staging.js), which
+      // refuses an update.zip downloaded again ("Staging belongs to another extraction").
+      await Promise.all([unpacked, ...stagingOf(unpacked)].map(removeQuietly));
+      // After a game download's extraction, when one is under way: one archive at a time (archive-turn.js).
+      const task = await extractInTurn(archives, { sources: [`${staging}/update.zip`], destination: unpacked, maxBytes: Math.max(release.assets.zip.size * UNPACKED, 64 * 1024 ** 2) }, { stopped: () => current.cancelled, pause: wait }).catch((error) => {
+        throw current.cancelled ? stopped() : error;
+      });
       current.task = task;
       try {
         await task.done;

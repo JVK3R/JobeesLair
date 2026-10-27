@@ -147,4 +147,22 @@ const { SearchScreen } = await load('app/search/index.jsx');
 const search = await screen('Search', { type: SearchScreen, props: { onBack() {} } });
 assert.ok(search.includes('13.60 Ready') && search.includes('.exfat Image') && search.includes('Filters'), search.join('|'));
 assert.ok(search.includes('Space'), 'the keyboard is up when the page opens');
+// 0.5.3: X on a carousel thumbnail opens its game; it only showed its slide, and the game was a trip back to View
+// game away.
+const { HeroThumbs } = await load('app/browse/HeroThumbs.jsx');
+const focusable = [];
+const collect = (node) => {
+  if (node == null || typeof node !== 'object') return;
+  if (Array.isArray(node)) return node.forEach(collect);
+  const { type, props = {} } = node;
+  if (typeof type === 'function') return collect(type(props));
+  if (props.focusKey) focusable.push(props);
+  collect(props.children);
+};
+const selected = [], opened = [];
+const slides = { active: 0, left: 7000, paused: false, select: (index) => selected.push(index), focus() {}, blur() {} };
+collect({ type: HeroThumbs, props: { games: picks.slice(0, 5), slides, open: (index) => opened.push(index), nextFocusDown: 'lane:featured:x' } });
+assert.deepEqual(focusable.map((props) => props.focusKey), ['spotlight:0', 'spotlight:1', 'spotlight:2', 'spotlight:3', 'spotlight:4']);
+focusable[2].onPress();
+assert.deepEqual({ selected, opened }, { selected: [2], opened: [2] }, 'X shows the slide and opens its game');
 console.log(`\nOK: ${rendered} components rendered without an exception`);

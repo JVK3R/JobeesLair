@@ -14,10 +14,14 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#ifndef PKG_INSTALLER_HOST_TEST
 #include <ps5/kernel.h>
 
 int sceUserServiceInitialize(void*);
 int sceKernelLoadStartModule(const char*, size_t, const void*, unsigned, void*, int*);
+#else
+#include <stdlib.h>
+#endif
 
 // The ABI as the console reads it. Sony reads eight bytes past icon_url: anything but zero there makes
 // it treat the package as a patch and refuse it (0x80B2116F on 13.60), so the whole block is zeroed.
@@ -41,6 +45,7 @@ static int (*initialize)(void);
 static int (*install)(MetaInfo*, PkgInfo*, PlayGoInfo*);
 static int (*install_status)(const char*, InstallStatus*);
 
+#ifndef PKG_INSTALLER_HOST_TEST
 static int load(void) {
   const int handle = sceKernelLoadStartModule("/system/common/lib/libSceAppInstUtil.sprx", 0, NULL, 0, NULL, NULL);
   if (handle < 0) return handle;
@@ -49,6 +54,45 @@ static int load(void) {
   install_status = (int (*)(const char*, InstallStatus*))kernel_dynlib_dlsym(getpid(), (uint32_t)handle, "sceAppInstUtilGetInstallStatus");
   return initialize && install && install_status ? 0 : -1;
 }
+
+static int open_package(const char* path) { return open(path, O_RDONLY); }
+#else
+// tools/test_pkg_installer.py runs this on the desktop: packages are read under $PKG_TEST_ROOT, and the install
+// service is a stand-in. It writes what it was handed to $PKG_TEST_ROOT/install.txt, answers $PKG_TEST_INSTALL
+// (a code, 0 when unset) with $PKG_TEST_CONTENT_ID as the content ID it reports, then calls the package playable.
+static int sceUserServiceInitialize(void* unused) { (void)unused; return 0; }
+static int test_initialize(void) { return 0; }
+static int test_install(MetaInfo* meta, PkgInfo* info, PlayGoInfo* unused) {
+  (void)unused;
+  char path[2048];
+  snprintf(path, sizeof path, "%s/install.txt", getenv("PKG_TEST_ROOT"));
+  FILE* file = fopen(path, "w");
+  if (file) {
+    fprintf(file, "uri=%s\ncontent_id=%s\nname=%s\n", meta->uri, meta->content_id, meta->content_name);
+    fclose(file);
+  }
+  const char* reported = getenv("PKG_TEST_CONTENT_ID");
+  if (reported) snprintf(info->content_id, sizeof info->content_id, "%s", reported);
+  const char* code = getenv("PKG_TEST_INSTALL");
+  return code ? (int)strtoul(code, NULL, 16) : 0;
+}
+static int test_install_status(const char* content_id, InstallStatus* status) {
+  (void)content_id;
+  snprintf(status->status, sizeof status->status, "playable");
+  status->downloaded = status->total = 100;
+  return 0;
+}
+static int load(void) {
+  initialize = test_initialize; install = test_install; install_status = test_install_status;
+  return 0;
+}
+
+static int open_package(const char* path) {
+  char local[2048];
+  snprintf(local, sizeof local, "%s%s", getenv("PKG_TEST_ROOT"), path);
+  return open(local, O_RDONLY);
+}
+#endif
 
 // Ten KiB of PlayGo state, kept off the payload's stack.
 static PlayGoInfo playgo;
@@ -95,12 +139,21 @@ int main(void) {
   if (!allowed(path)) return fail(0, "The package path is not allowed.");
 
   // A PKG starts with \x7FCNT and names its content ID at 0x40.
+  // MODIFIED (Jobee'sLair 0.5.3): a PS5 package starts with \x7FFIH instead and carries a CNT header of the same
+  // kind further in, at the offset it keeps at 0x58 (little-endian); its content ID is read from there.
   char header[0x40 + 36 + 1] = {0};
-  const int file = open(path, O_RDONLY);
+  const int file = open_package(path);
   if (file < 0) return fail(0, "The package could not be opened.");
-  const ssize_t got = read(file, header, sizeof header - 1);
+  ssize_t got = read(file, header, sizeof header - 1);
+  const int ps5 = got == (ssize_t)sizeof header - 1 && !memcmp(header, "\x7F" "FIH", 4);
+  if (ps5) {
+    uint64_t offset = 0;
+    for (int i = 7; i >= 0; --i) offset = offset << 8 | (unsigned char)header[0x58 + i];
+    memset(header, 0, sizeof header);
+    got = offset >= sizeof header && offset < ((uint64_t)1 << 40) ? pread(file, header, sizeof header - 1, (off_t)offset) : -1;
+  }
   close(file);
-  if (got != (ssize_t)sizeof header - 1 || memcmp(header, "\x7F" "CNT", 4)) return fail(0, "The file is not a PKG.");
+  if (got != (ssize_t)sizeof header - 1 || memcmp(header, "\x7F" "CNT", 4)) return fail(0, "The file is not a PS4 or PS5 package.");
   char content_id[37];
   memcpy(content_id, header + 0x40, 36);
   content_id[36] = 0;
@@ -116,7 +169,9 @@ int main(void) {
   snprintf(uri, sizeof uri, strncmp(path, "/data/", 6) ? "%s" : "/user%s", path);
   MetaInfo meta;
   memset(&meta, 0, sizeof meta);
-  meta.uri = uri; meta.ex_uri = ""; meta.playgo_scenario_id = ""; meta.content_id = content_id;
+  // A PS5 package goes in with no content ID, as ezRemote's installer (ps5-ezremote-dpi) hands them over; its
+  // own ID is only for following the install.
+  meta.uri = uri; meta.ex_uri = ""; meta.playgo_scenario_id = ""; meta.content_id = ps5 ? "" : content_id;
   meta.content_name = name; meta.icon_url = "";
   PkgInfo info;
   memset(&info, 0, sizeof info);

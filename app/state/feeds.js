@@ -57,7 +57,7 @@ import { FileSystem, Http } from '@ps5-react/core';
     indexes.set(url, games.map(({ game: game2 }) => [game2.id, game2.direct ? 1 : 0]));
     indexVersion++;
   };
-  var summary = (cache) => ({ name: cache.name, games: cache.games, fetchedAt: cache.fetchedAt, from: cache.from ?? cache.url, mirrors: Array.isArray(cache.mirrors) ? cache.mirrors : [] });
+  var summary = (cache) => ({ name: cache.name, games: cache.games, fetchedAt: cache.fetchedAt, from: cache.from ?? cache.url, mirrors: Array.isArray(cache.mirrors) ? cache.mirrors : [], hash: cache.hash, etag: typeof cache.etag === "string" ? cache.etag : null });
   // Every listed feed's cached games, validated again: { game, page, releases } as parseFeed gives them.
   // The store ratings the feeds carry (0.5.1), [stars, count] by title ID; the live catalog's first, as it is listed first.
   var feedRatings = {};
@@ -136,10 +136,19 @@ import { FileSystem, Http } from '@ps5-react/core';
   // One address: the parsed feed, or an error saying why not (so the next address gets its turn). It is
   // parsed as the feed's own address (`url`), so a copy from a mirror has the same release ids and
   // downloads started from either keep their identity.
+  // A strong ETag names exactly one copy of a file; a weak one (W/) does not.
+  var strongTag = (tag) => typeof tag === "string" && tag !== "" && !tag.startsWith("W/") ? tag : null;
   async function fetchFrom(source, url) {
     // No custom headers: with them the transport will not follow a redirect (raw file hosts redirect).
     const response = await Http.request(source, { maxBytes: MAX_BYTES });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    // 0.5.3: the copy the cache holds already, as the server's ETag says: it is not read, checked, hashed or
+    // written again. Reading the live catalog (2 MiB at most) and building its copies held the console for
+    // over a second after every launch, and its heap filled until a collection stopped the screen; the live
+    // catalog changes every few hours, so most launches fetch the same copy.
+    const etag = strongTag(response.headers?.etag);
+    const known = meta.get(url);
+    if (etag && known?.etag === etag && known.from === source) return { unchanged: true };
     let document2;
     try {
       document2 = JSON.parse(await response.text());
@@ -149,6 +158,7 @@ import { FileSystem, Http } from '@ps5-react/core';
     const feed = await parseFeedAsync(document2, url, nextFrame);
     document2 = null; // the raw document can go before the normalized copy is built
     if (!feed.games.length) throw new Error("No usable games in this feed.");
+    feed.etag = etag;
     return feed;
   }
   async function fetchFeed(url) {
@@ -170,11 +180,22 @@ import { FileSystem, Http } from '@ps5-react/core';
       if (!feed) throw new Error(failures.length > 1 ? `${failures[0]} (${failures.length - 1} mirror${failures.length > 2 ? "s" : ""} also failed)` : failures[0]);
       // Removed while it downloaded: nothing is cached for it, and it leaves no status behind.
       if (!listed(url)) return;
-      const normalized = feedDocument(feed);
-      const text = JSON.stringify(normalized);
+      // The cache's copy: only when it was fetched changes (kept until the next launch; the file keeps the time
+      // its copy was written).
+      if (feed.unchanged) {
+        const known = meta.get(url);
+        meta.set(url, { ...known, fetchedAt: isoStamp(Date.now()) });
+        setStatus(url, { state: "ok", changed: loaded.get(url) !== known.hash });
+        console.log(`feeds: ${url}${from === url ? "" : ` (via ${hostOf(from)})`}: unchanged, ${known.games} games`);
+        return;
+      }
+      // 0.5.3: the normalized copy is held only while its text is made, not through the hash's many frames: the
+      // interpreter frees it as soon as nothing holds it, and the console's heap is tight while a feed refreshes.
+      const text = JSON.stringify(feedDocument(feed));
+      await nextFrame();
       const hash = await stableKeyAsync(text, nextFrame);
       if (!listed(url)) return;
-      const cache = { url, from, hash, fetchedAt: isoStamp(Date.now()), name: feed.name, games: feed.games.length, skipped: feed.skipped, mirrors: feed.mirrors };
+      const cache = { url, from, hash, etag: feed.etag, fetchedAt: isoStamp(Date.now()), name: feed.name, games: feed.games.length, skipped: feed.skipped, mirrors: feed.mirrors };
       FileSystem.mkdir(DIR, { recursive: true });
       // The document goes in as the text already made for the hash: one stringify of the feed, not two.
       FileSystem.writeFile(`${cacheFile(url)}.tmp`, `${JSON.stringify(cache).slice(0, -1)},"document":${text}}`);

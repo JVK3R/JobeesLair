@@ -1,6 +1,6 @@
 {
   "embeddedReact": {
-    "url": "https://github.com/TheMasterCoder007/embedded-react.git",
+    "url": "https://github.com/JVK3R/embedded-react.git",
     "revision": "cf5dfe4fae966fe21a265acc3dd3b054d245f981",
     "patches": [
       "patches/embeddedReact-flex-wrap-auto-height.patch",
@@ -85,18 +85,18 @@
     "sha256": "ce2669c51272b70bc0aafe9a4e6223e5c7720edaebb40201db191634aa503f5e"
   },
   "filesystemHelperClient": {
-    "url": "https://github.com/blackbearreloaded/ProsperoStore.git",
+    "url": "https://github.com/JVK3R/ProsperoStore.git",
     "revision": "335d8c43f916020205f445b76b66106ee50d2eeb"
   },
   "filesystemHelper": {
-    "url": "https://github.com/mpereiraesaa/PS5-Lapy-JB-Daemon.git",
+    "url": "https://github.com/JVK3R/PS5-Lapy-JB-Daemon.git",
     "revision": "54a095c0f19161825e845daa760a03b446e654fa",
     "patches": [
       "patches/lapy-sdk-042-attributes.patch"
     ]
   },
   "filesystemHelperLogging": {
-    "url": "https://raw.githubusercontent.com/mpereiraesaa/ps5-agc-gears/1ae1f9182abd2770c131b97419034fb85173c2dc/native/ps5log/ps5log.h",
+    "url": "https://raw.githubusercontent.com/JVK3R/ps5-agc-gears/1ae1f9182abd2770c131b97419034fb85173c2dc/native/ps5log/ps5log.h",
     "sha256": "394af67d0f8b60b3335deb53396e52855ea2daa50ca914a456ea7663f48900c6"
   },
   "networkPorts": {
@@ -138,7 +138,7 @@
   },
   "unrarSource": {
     "version": "7.2.1",
-    "url": "https://www.rarlab.com/rar/unrarsrc-7.2.1.tar.gz",
+    "url": "https://github.com/JVK3R/unrar-source/releases/download/v7.2.1/unrarsrc-7.2.1.tar.gz",
     "sha256": "3fe3b4d710da45521625353dc2e023dad48c010f02a93302756e1061a8f3ae8e",
     "patches": [
       "patches/unrar-worker.patch"

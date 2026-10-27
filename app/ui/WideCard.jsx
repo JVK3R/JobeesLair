@@ -52,6 +52,7 @@ import { Image, Text, View, motion, useIsFocused } from '@ps5-react/core';
   function WideCard({ game, focusKey, onPress, rowEnd, ...rest2 }) {
     const card = (0, useRef)({}).current;
     card.game = game;
+    card.key = focusKey;
     (0, useEffect)(() => () => {
       blurCard(card);
       unlight(focusKey);

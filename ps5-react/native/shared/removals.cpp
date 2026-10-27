@@ -16,13 +16,15 @@
 
 namespace removals {
 namespace {
-struct Job { Snapshot snapshot; std::string path; };
+struct Job { Snapshot snapshot; std::string path; bool background = false; };
 std::mutex guard;
 std::condition_variable wake;
 std::vector<Job> jobs;
 std::uint32_t next_id = 1;
-WorkerThread worker;
-bool started = false;
+// One worker for the removals somebody waits on, one for the background's (clean-ups), each in its own order: a
+// long clean-up (a homebrew app's 19,462 files took minutes on a PS5) held up a cancelled download's behind it.
+WorkerThread workers[2];
+bool started[2] = {};
 std::atomic<bool> stopping{false};
 
 bool terminal(const std::string& state) { return state == "completed" || state == "failed" || state == "cancelled"; }
@@ -46,11 +48,13 @@ Job* find(std::uint32_t id) {
   return job == jobs.end() ? nullptr : &*job;
 }
 
-void run() {
-  name_thread("fs-remove");
+void run(bool background) {
+  name_thread(background ? "fs-remove-bg" : "fs-remove");
   std::unique_lock lock(guard);
   for (;;) {
-    const auto queued = [] { return std::find_if(jobs.begin(), jobs.end(), [](const Job& job) { return job.snapshot.state == "queued"; }); };
+    const auto queued = [background] {
+      return std::find_if(jobs.begin(), jobs.end(), [background](const Job& job) { return job.background == background && job.snapshot.state == "queued"; });
+    };
     wake.wait(lock, [&] { return stopping || queued() != jobs.end(); });
     if (stopping) return;
     const auto job = queued();
@@ -70,16 +74,19 @@ void run() {
 
 bool remove_tree(const std::string& path, bool missing_ok) { return tree(path, missing_ok, 0); }
 
-std::uint32_t start(std::string path, std::string& error) {
+std::uint32_t start(std::string path, std::string& error, bool background) {
   std::lock_guard lock(guard);
-  if (!started && !(started = worker.start(run, 256 * 1024))) {
+  const int lane = background ? 1 : 0;
+  if (!started[lane] && !(started[lane] = workers[lane].start([background] { run(background); }, 256 * 1024))) {
     error = "Cannot start the removal thread.";
     return 0;
   }
   Job& job = jobs.emplace_back();
   job.snapshot.id = next_id++;
   job.path = std::move(path);
-  wake.notify_one();
+  job.background = background;
+  // Both workers wait on `wake`, and each takes only its own lane's jobs.
+  wake.notify_all();
   return job.snapshot.id;
 }
 
@@ -94,10 +101,10 @@ std::vector<Snapshot> poll() {
 void stop() {
   { std::lock_guard lock(guard); stopping = true; }
   wake.notify_all();
-  worker.join();
+  for (auto& worker : workers) worker.join();
   std::lock_guard lock(guard);
   for (auto& job : jobs) if (!terminal(job.snapshot.state)) { job.snapshot.state = "cancelled"; job.snapshot.error = std::strerror(ECANCELED); }
-  started = false;
+  started[0] = started[1] = false;
   stopping = false;
 }
 }

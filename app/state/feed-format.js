@@ -20,14 +20,22 @@ import { isMagnetLink, sourceKind, webURL } from './download-sources.js';
   // gives the screen its frames in between.
   function* hashSteps(value, slice) {
     let first = 2166136261, second = 5381;
-    for (let index = 0; index < value.length; index++) {
-      first = Math.imul(first ^ value.charCodeAt(index), 16777619);
-      second = Math.imul(second, 33) ^ value.charCodeAt(index);
-      if ((index + 1) % slice === 0) yield;
+    for (let start = 0; start < value.length; start += slice) {
+      const end = Math.min(start + slice, value.length);
+      for (let index = start; index < end; index++) {
+        const code = value.charCodeAt(index);
+        first = Math.imul(first ^ code, 16777619);
+        second = Math.imul(second, 33) ^ code;
+      }
+      if (end < value.length) yield;
     }
     return `${(first >>> 0).toString(16)}${(second >>> 0).toString(16)}`;
   }
-  // Runs steps to the end at once, or (with `pause`) awaits `pause()` at each step.
+  // Runs steps to the end at once, or (with `pause`) gives the screen a frame, awaiting `pause()`, whenever
+  // they have run for FRAME_WORK_MS. 0.5.3: it paused at every step, and a step (32 KiB hashed, 40 games
+  // checked) took the console 20 ms and more: the screen dropped a frame at each of them for over a second
+  // after every launch, as the live catalog refreshed.
+  var FRAME_WORK_MS = 6;
   function finish(steps) {
     for (; ; ) {
       const step = steps.next();
@@ -35,13 +43,16 @@ import { isMagnetLink, sourceKind, webURL } from './download-sources.js';
     }
   }
   async function finishPaced(steps, pause) {
-    for (; ; ) {
+    for (let since = Date.now(); ; ) {
       const step = steps.next();
       if (step.done) return step.value;
-      await pause();
+      if (Date.now() - since >= FRAME_WORK_MS) {
+        await pause();
+        since = Date.now();
+      }
     }
   }
-  var HASH_SLICE = 32 * 1024;
+  var HASH_SLICE = 4 * 1024;
   var stableKey = (value) => finish(hashSteps(value, Infinity));
   var stableKeyAsync = (value, pause) => finishPaced(hashSteps(value, HASH_SLICE), pause);
   var text = (value, max = 200) => typeof value === "string" ? value.replace(/[\x00-\x1f\x7f]+/g, " ").trim().slice(0, max) : "";
@@ -278,7 +289,7 @@ import { isMagnetLink, sourceKind, webURL } from './download-sources.js';
     }
     return out;
   }
-  var PARSE_BATCH = 40;
+  var PARSE_BATCH = 4;
   var parseFeed = (document2, url) => finish(feedSteps(document2, url, Infinity));
   // The same, with the screen's frames in between: a refresh while the store or Settings is open.
   var parseFeedAsync = (document2, url, pause) => finishPaced(feedSteps(document2, url, PARSE_BATCH), pause);

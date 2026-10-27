@@ -1,6 +1,7 @@
 // The hero's slide picker: a strip of banner thumbnails over the hero's lower right (where the old side
 // list stood beside it). Focusing one holds the timer at once and, once focus rests there (useSlides
-// SETTLE_MS), shows its slide; the shown one carries the timer's progress and an ice-blue edge.
+// SETTLE_MS), shows its slide; the shown one carries the timer's progress and an ice-blue edge. 0.5.3: X opens
+// the thumbnail's game (it only showed its slide, and the game was a trip back to View game away).
 
 import { jsx, jsxs } from 'react/jsx-runtime';
 import { memo, useMemo } from 'react';
@@ -35,7 +36,7 @@ import { Image, View, motion, useIsFocused } from '@ps5-react/core';
       progress ? /* @__PURE__ */ (0, jsx)(Progress, { left: progress.left, paused: progress.paused }) : null
     ] });
   }
-  var Thumb = (0, memo)(function Thumb2({ game, index, count, active, progress, select, focus, blur, nextFocusDown }) {
+  var Thumb = (0, memo)(function Thumb2({ game, index, count, active, progress, select, focus, blur, open, nextFocusDown }) {
     const { rtl } = useLocale();
     return /* @__PURE__ */ (0, jsxs)(View, {
       focusKey: `spotlight:${index}`,
@@ -52,7 +53,10 @@ import { Image, View, motion, useIsFocused } from '@ps5-react/core';
         blur();
         unlight(`spotlight:${index}`);
       },
-      onPress: () => select(index),
+      onPress: () => {
+        select(index);
+        open(index);
+      },
       style: { position: "relative", borderRadius: radius.sm },
       children: [
         /* @__PURE__ */ (0, jsx)(FocusRing, { round: "md" }),
@@ -60,7 +64,7 @@ import { Image, View, motion, useIsFocused } from '@ps5-react/core';
       ]
     });
   });
-  function HeroThumbs({ games: games2, slides, nextFocusDown }) {
+  function HeroThumbs({ games: games2, slides, open, nextFocusDown }) {
     const { active, left, paused, select, focus, blur } = slides;
     const progress = (0, useMemo)(() => ({ left, paused }), [left, paused]);
     return /* @__PURE__ */ (0, jsx)(View, { style: { flexDirection: "row", gap: 14 }, children: games2.map(
@@ -75,6 +79,7 @@ import { Image, View, motion, useIsFocused } from '@ps5-react/core';
           select,
           focus,
           blur,
+          open,
           nextFocusDown
         },
         game.id

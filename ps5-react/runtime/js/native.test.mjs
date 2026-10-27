@@ -64,21 +64,24 @@ test('removeAsync resolves once the worker removed the path and rejects with the
   let tick;
   let snapshots = [];
   const started = [];
+  const lanes = [];
   const originalInterval = globalThis.setInterval;
   const originalClear = globalThis.clearInterval;
   globalThis.setInterval = callback => { tick = callback; return 1; };
   globalThis.clearInterval = () => {};
   globalThis.__ps5ReactNative = {
-    fs: {removeAsync: path => {
+    fs: {removeAsync: (path, background) => {
       if (path.includes('..')) throw new Error(`fs.removeAsync ${path}: Path is not allowed`);
+      lanes.push(background);
       return started.push(path);
     }},
     removals: {poll: () => snapshots},
   };
   try {
     const removed = FileSystem.removeAsync('/download0/game');
-    const refused = FileSystem.removeAsync('/download0/locked');
+    const refused = FileSystem.removeAsync('/download0/locked', {background: true});
     assert.deepEqual(started, ['/download0/game', '/download0/locked']);
+    assert.deepEqual(lanes, [false, true], 'a background removal asks for the second worker');
     snapshots = [{id: 1, state: 'removing', error: ''}, {id: 2, state: 'queued', error: ''}];
     tick();
     snapshots = [{id: 1, state: 'completed', error: ''}, {id: 2, state: 'failed', error: 'Permission denied'}];

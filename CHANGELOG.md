@@ -4,6 +4,82 @@ What changed in each version of Jobee'sLair. Each release on
 [GitHub](https://github.com/JVK3R/JobeesLair/releases) carries the full notes, the files and their
 SHA-256 checksums.
 
+## 0.5.3 (2026-10-26)
+
+- **PS5 packages install.** Homebrew apps that ship as a PS5 package (PS5Library, ezRemote Client's package,
+  Spectrum Library's) failed every time with "The file is not a PKG": the installer only knew PS4 packages.
+  It installs both now. Whether a PS5 package's app starts afterward is up to the jailbreak's fpkg support.
+- **Spectrum Library installs again.** Its newest release held only a 4-byte file reading "soon", and Install
+  downloaded that. Jobee'sLair now passes over a release like that for the one before it (1.4.8), and refuses
+  a file that small with a plain message instead of downloading it.
+- **A failed Homebrew install says so.** After an install failed, the app's page kept saying "Installing" with
+  a Cancel that did nothing, and its tile said Installing too, until Jobee'sLair was restarted. The page now
+  says why it failed and offers Try again, and the tile says Failed.
+- **Homebrew installs that were cut off install again.** Closing Jobee'sLair while an app was unpacking (RPCS3
+  and RetroArch take a while) made every later try fail with "Staging belongs to another extraction". What
+  the cut-off unpack left is now cleared before the next one starts. Jobee'sLair's own updates get the same
+  fix.
+- **Homebrew installs wait for a game to extract.** Installing a Homebrew app while a game download was being
+  extracted failed with "An archive task is already running": the console extracts one archive at a time. The
+  install now waits its turn and says so, and Jobee'sLair's own updates wait the same way.
+- **Switching to an app's other file.** Installing an app's package after its payload (Spectrum Library has
+  both) left the payload on the console, where Remove couldn't find it. It's deleted once the package is in.
+- **Cancelling a download doesn't wait on a clean-up.** Right after Jobee'sLair opened, a cancelled download
+  could sit on "Removing" for minutes: the console deletes one thing at a time, and the leftovers of a removed
+  Homebrew app (RetroArch's 19,462 files) were being deleted first. Clean-ups now run beside your own deletes,
+  never in front of them.
+- **Downloads scrolls back to the top.** With an announcement up, the Downloads page opened with the first
+  download's buttons below the screen, and once you moved down to a second download it never scrolled back to
+  the top. The first download now shows whole, and Up from it reaches Clear finished and Cancel all, now beside
+  the library band, and the top of the page.
+- **Removed apps are really gone.** Closing Jobee'sLair right after removing a Homebrew app (or right after an
+  update replaced an old image) could leave its files behind for good, taking up space. Whatever is left over
+  is now deleted the next time Jobee'sLair opens.
+- **Missing game pictures.** 26 games showed only their name where the picture goes (7 Days to Die, Alien:
+  Rogue Incursion, Remnant 2, CODE VEIN II, NBA 2K21 to 2K23, Madden NFL 22 and 23...). They have their
+  PlayStation Store art now, and Sonic Unleashed Recompiled's picture, whose link had died, comes from another
+  copy.
+- **PS5Library installs whole.** Install gave you only its agent payload; it installs the PS5Library app now,
+  with the agent beside it: press Run helper after each console restart, as its author says.
+- **Install errors in plain words.** A failed package install no longer shows the file's path twice and cuts
+  off the error code; it says what went wrong (not a package, no ELF loader on port 9021, or the console's own
+  code). The online stats get the same reason, without the path.
+- **ShadowMount lets go of Jobee'sLair.** Closing Jobee'sLair and opening it again within a few seconds could
+  leave ShadowMount+ holding its image ("Device busy" to every unmount, and updates that never applied) until
+  ShadowMount was restarted. The console leaves Jobee'sLair's sandbox folder behind when it closes, and
+  ShadowMount+ waits for that folder before it lets go; Jobee'sLair's clean-up now removes it within a second
+  of the close instead of three, keeps going if the app is opened again, and clears at launch what a crash or
+  an earlier close left. It also starts as the app opens, not once the store has been up for 8 seconds, so
+  closing it on the intro or the startup notice is covered too.
+- **The Discover carousel shows top games.** It showed the same five games every launch: it only took games
+  from Archive.org, and just 7 had the art for it. It now shows five of the most popular, best rated games, a
+  different five each launch and one per studio, and the Featured row under it no longer repeats them. Cross
+  on a thumbnail opens that game.
+- **Discover shows more games.** Featured, Ready for 13.60 and Popular now all opened with the same eight
+  games. Each row now shows games the rows above it don't, and Popular now is the most played games on
+  PlayStation (Rocket League, GTA V, Red Dead Redemption 2...).
+- **Search the Homebrew section.** A "Search homebrew" field sits at the top of the Homebrew section (press Up
+  from the spotlight). It searches the Homebrew apps alone, by name, maker or category, in your language too.
+  The top menu's Search opens on Homebrew while you're in that section.
+- **Back keeps your place.** Back from a Homebrew app's page goes back to the grid, the sort and the app you
+  opened, not the top of the section. Back from a search result goes back to your results, with their side
+  (Games or Homebrew) and filters, instead of an empty Games search with the keyboard up. A game opened from
+  Quick Preview goes back to its card.
+- **Homebrew updates keep your build.** Updating an app whose files are named after their version (EVO Player,
+  PS5MC, Lineup) could swap in another of its builds (EVO Player's plain build for the "-pro" one) and left
+  the old image next to the new one, two copies of one app for ShadowMount. An update now installs the
+  build you have and removes the old image.
+- **Smoother.** Pressing Continue at the start no longer freezes the screen: the rows further down Discover
+  are built once the reveal is over. The catalog check at launch is skipped when nothing changed (most
+  launches) and no longer stutters when something did, L1/R1 switch sections faster, and covers that arrive
+  late fade in.
+- **Smaller fixes.** A game page's Back link names where it goes (it said "Library" from every store section,
+  and "game.back.files" from the Library). A game's and a Homebrew app's details (platform, publisher, release
+  date and so on) are in your language; a game's were always in English. The empty Downloads page no longer
+  covers its stats while an announcement is up. In Arabic and Urdu, the section's name at the bottom of the
+  screen no longer sits on top of the button hints, and a Homebrew app's English description keeps its
+  punctuation at the right end.
+
 ## 0.5.2 (2026-10-25)
 
 - **Jobee'sLair online.** The bottom bar shows how many people are on Jobee'sLair right now, and announcements

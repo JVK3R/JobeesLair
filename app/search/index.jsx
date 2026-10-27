@@ -7,9 +7,13 @@
 // search (R2) or press Circle, so the results get the whole screen.
 // The page searches with the store's filters (state/store.jsx); it starts with none and hands back the ones the
 // store had when it closes. Square favorites the focused game, L2 clears the query.
+// MODIFIED (0.5.3): opened from the Homebrew section, it searches homebrew only (no Games tab, no game chips), and
+// from the top menu while in that section it opens on Homebrew. Back from a result's page brings the page back
+// as it was left: its side, its chips, the keyboard down. It came back on Games with the chips cleared and the
+// keyboard up, so a homebrew search's results were gone.
 
 import '../assets/Exo2.ttf';
-import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
+import { jsx, jsxs } from 'react/jsx-runtime';
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { GameGrid } from '../browse/Catalog.jsx';
 import { FilterDrawer } from '../browse/FilterDrawer.jsx';
@@ -24,16 +28,22 @@ import { hb } from '../homebrew/palette.js';
 import { FACETS, NO_FILTERS, activeCount, filterGames, optionLabel, sortGames } from '../state/catalog.js';
 import { searchApps } from '../state/homebrew-index.js';
 import { homebrew } from '../state/homebrew-store.js';
-import { useNavActions } from '../state/nav.jsx';
+import { useNavActions, useNavState } from '../state/nav.jsx';
 import { useStore, useStoreActions } from '../state/store.jsx';
 import { ButtonGlyph } from '../ui/ButtonHints.jsx';
 import { FocusRing } from '../ui/FocusRing.jsx';
 import { useFavoriteAction } from '../ui/GameCard.jsx';
 import { Icon } from '../ui/Icon.jsx';
+import { HINT, useHints } from '../ui/Legend.jsx';
 import { colors, radius } from '../ui/colors.js';
 import { FocusScope, ScrollView, Text, View, motion } from '@ps5-react/core';
 
   var SETTLE_MS = 150;
+  // 0.5.3: the page as it was left for a result's page ({side, before, only}), for when Back brings it back (a page
+  // is mounted anew each time it is shown). Null once the page is closed.
+  var kept = null;
+  // Homebrew results: nothing to favorite (Square was the games' Favorite).
+  var APP_HINTS = [HINT.select, HINT.clear, HINT.back, HINT.sections];
   var READY_GREEN = "#4ade80";
   var FORMAT = FACETS.find((facet) => facet.key === "format");
   var blink = { duration: 0.5, ease: "easeInOut", repeat: Infinity, repeatType: "reverse" };
@@ -138,8 +148,8 @@ import { FocusScope, ScrollView, Text, View, motion } from '@ps5-react/core';
     const list = useMemo(() => {
       const passing = filterGames({ filters, query: "", wishlist });
       if (!trimmed) return sortGames(passing, sort);
-      const kept = new Set(passing);
-      return sortGames(searchGames(trimmed).filter((game) => kept.has(game)), sort);
+      const passed = new Set(passing);
+      return sortGames(searchGames(trimmed).filter((game) => passed.has(game)), sort);
     }, [trimmed, filters, wishlist, sort]);
     const title = trimmed ? t2("search.resultsFor", { query: trimmed }) : filters.wishlist ? t2("catalog.favorites") : t2("catalog.library");
     const signature = JSON.stringify([trimmed, filters, sort]);
@@ -153,9 +163,15 @@ import { FocusScope, ScrollView, Text, View, motion } from '@ps5-react/core';
     const { push } = useNavActions();
     const trimmed = query.trim();
     const list = useMemo(() => {
-      const apps = homebrew().index.apps;
-      return trimmed ? searchApps(apps, trimmed) : [...apps].sort((a, b) => b.stars - a.stars);
-    }, [trimmed]);
+      const { apps, categories } = homebrew().index;
+      // A category's name in the player's language as well as the index's English one.
+      const categoryLabel = (app) => {
+        const key = `homebrew.category.${app.category}`;
+        const translated = t2(key);
+        return translated === key ? categories.find((category) => category.id === app.category)?.name ?? "" : translated;
+      };
+      return trimmed ? searchApps(apps, trimmed, categoryLabel) : [...apps].sort((a, b) => b.stars - a.stars);
+    }, [trimmed, t2]);
     const title = trimmed ? t2("search.resultsFor", { query: trimmed }) : t2("homebrew.rail.popular");
     return jsxs(View, { scrollAnchor: true, style: { gap: 4 }, children: [
       jsx(Heading, { title, count: t2("homebrew.results", { count: list.length }) }),
@@ -174,16 +190,21 @@ import { FocusScope, ScrollView, Text, View, motion } from '@ps5-react/core';
     const filters = store.filters ?? NO_FILTERS;
     const query = store.query ?? "";
     const settled = useSettled(query);
-    const [side, setSide] = useState("games");
-    const [typing, setTyping] = useState(true);
+    const { top } = useNavState();
+    // Back from a result's page (its entry has the result's key in `from`): as it was left. Else a new search, on the
+    // side the opener asked for (`side`), homebrew only when `only`.
+    const [returning] = useState(() => Boolean(top.from) && kept !== null);
+    const [view] = useState(() => returning ? kept : kept = { side: top.side === "homebrew" ? "homebrew" : "games", before: store.filters ?? NO_FILTERS, only: top.only === "homebrew" });
+    const [side, setSide] = useState(view.only ? "homebrew" : view.side);
+    const [typing, setTyping] = useState(!returning);
     const [drawer, setDrawer] = useState(false);
     const onFavorite = useFavoriteAction();
-    // The store's filters as they were: searching starts from none, and closing hands these back.
-    const before = useRef(store.filters ?? NO_FILTERS);
+    useHints(side === "homebrew" && !typing ? APP_HINTS : null);
+    // The store's filters as they were (`view.before`): searching starts from none, and closing hands these back.
     // Going back hands them back (below, in `leave`), not when the page unmounts: a header pill (Favorites, Top, New)
-    // closes this page too, having just set filters of its own that must stay.
+    // closes this page too, having just set filters of its own that must stay. Back from a result keeps the page's own.
     useEffect(() => {
-      setFilters(NO_FILTERS);
+      if (!returning) setFilters(NO_FILTERS);
     }, []);
     const current = useRef(store.query);
     current.current = store.query;
@@ -207,8 +228,9 @@ import { FocusScope, ScrollView, Text, View, motion } from '@ps5-react/core';
       }
     }));
     const leave = () => {
+      kept = null;
       setQuery("");
-      setFilters(before.current);
+      setFilters(view.before);
       onBack();
       return true;
     };
@@ -216,12 +238,13 @@ import { FocusScope, ScrollView, Text, View, motion } from '@ps5-react/core';
       if (action === "l2") setQuery("");
       else if (action === "r2") on.submit();
       else if (action === "triangle" && !typing) on.type();
-      else if (action === "square" || action === "options") return onFavorite(action);
+      else if ((action === "square" || action === "options") && side === "games") return onFavorite(action);
       else return false;
       return true;
     };
     const chooseSide = (next) => {
       setSide(next);
+      view.side = next;
       focusLater(`search:side:${next}`);
     };
     const games = side === "games";
@@ -230,8 +253,9 @@ import { FocusScope, ScrollView, Text, View, motion } from '@ps5-react/core';
         jsxs(View, { scrollAnchor: true, style: { gap: 20 }, children: [
           jsxs(View, { style: { height: 84, flexDirection: "row", alignItems: "center", gap: 16 }, children: [
             jsx(Field, { query, side, typing, onPress: on.type }),
-            jsx(SideTab, { id: "games", label: t2("search.games"), icon: "disc", tone: colors.accent, selected: games, onPress: () => chooseSide("games") }),
-            jsx(SideTab, { id: "homebrew", label: t2("nav.homebrew"), icon: "package", tone: hb().accent, selected: !games, onPress: () => chooseSide("homebrew") })
+            // Homebrew only (opened from its section): the field says so, and there is no other side to pick.
+            view.only ? null : jsx(SideTab, { id: "games", label: t2("search.games"), icon: "disc", tone: colors.accent, selected: games, onPress: () => chooseSide("games") }),
+            view.only ? null : jsx(SideTab, { id: "homebrew", label: t2("nav.homebrew"), icon: "package", tone: hb().accent, selected: !games, onPress: () => chooseSide("homebrew") })
           ] }),
           games ? jsx(GameChips, {
             filters: filters,

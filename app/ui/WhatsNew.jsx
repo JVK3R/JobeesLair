@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FocusScope, Text, View, motion, useIsFocused } from '@ps5-react/core';
 import { useT } from '../i18n/index.js';
 import { useNavActions } from '../state/nav.jsx';
-import { markWhatsNewSeen, shouldShowWhatsNew } from '../state/whats-new.js';
+import { lastWhatsNewSeen, markWhatsNewSeen, shouldShowWhatsNew } from '../state/whats-new.js';
 import { FocusRing } from './FocusRing.jsx';
 import { Icon } from './Icon.jsx';
 import { JLMark } from './JLMark.jsx';
@@ -16,13 +16,17 @@ import { colors, radius } from './colors.js';
 
   // After the store's reveal (index.jsx CURTAIN_MS) has finished.
   var DELAY_MS = 4500;
+  // 0.5.3's. (0.5.2's: online, Fix it, Homebrew keeps your saves, backports.)
   var ITEMS = [
-    // 0.5.2: the online card says the stats are on, and where they turn off.
-    { icon: "globe", tone: "#38bdf8", title: "whatsNew.online", detail: "whatsNew.onlineDetail" },
-    { icon: "restart", tone: "#4ade80", title: "whatsNew.fixIt", detail: "whatsNew.fixItDetail" },
-    { icon: "folder", tone: "#facc15", title: "whatsNew.saves", detail: "whatsNew.savesDetail" },
-    { icon: "package", tone: "#a78bfa", title: "whatsNew.backports", detail: "whatsNew.backportsDetail" }
+    { icon: "package", tone: "#a78bfa", title: "whatsNew.packages", detail: "whatsNew.packagesDetail" },
+    { icon: "search", tone: "#38bdf8", title: "whatsNew.hbSearch", detail: "whatsNew.hbSearchDetail" },
+    { icon: "star", tone: "#facc15", title: "whatsNew.topGames", detail: "whatsNew.topGamesDetail" },
+    { icon: "restart", tone: "#4ade80", title: "whatsNew.reopen", detail: "whatsNew.reopenDetail" }
   ];
+  // A player who never saw 0.5.2's panel (an update from 0.5.1 or earlier, or a new install) still learns there that
+  // the anonymous stats are on and where they turn off: 0.5.2's online card takes the last place.
+  var ONLINE = { icon: "globe", tone: "#38bdf8", title: "whatsNew.online", detail: "whatsNew.onlineDetail" };
+  var itemsFor = (seen) => seen === "0.5.2" ? ITEMS : [...ITEMS.slice(0, 3), ONLINE];
   var text = (size, color, extra) => ({ fontFamily: "Exo2", fontSize: size, lineHeight: Math.round(size * 1.35), color, ...extra });
   function ButtonFace({ label, primary }) {
     const focused = useIsFocused();
@@ -35,6 +39,8 @@ import { colors, radius } from './colors.js';
     const t2 = useT();
     const { push } = useNavActions();
     const [open, setOpen] = useState(false);
+    // Read before closing marks this release seen.
+    const [items] = useState(() => itemsFor(lastWhatsNewSeen()));
     const done = useRef(false);
     useEffect(() => {
       if (!shouldShowWhatsNew()) return void 0;
@@ -54,7 +60,7 @@ import { colors, radius } from './colors.js';
         jsx(JLMark, { height: 34 }),
         jsx(Text, { style: text(36, colors.fg, { fontWeight: 700 }), children: t2("whatsNew.title") })
       ] }),
-      jsx(View, { style: { flexDirection: "row", flexWrap: "wrap", gap: 18 }, children: ITEMS.map((item) => jsxs(View, { style: { width: 495, flexDirection: "row", gap: 18, borderRadius: radius.md, backgroundColor: colors.surface, padding: 20 }, children: [
+      jsx(View, { style: { flexDirection: "row", flexWrap: "wrap", gap: 18 }, children: items.map((item) => jsxs(View, { style: { width: 495, flexDirection: "row", gap: 18, borderRadius: radius.md, backgroundColor: colors.surface, padding: 20 }, children: [
         jsx(View, { style: { width: 48, height: 48, alignItems: "center", justifyContent: "center", borderRadius: radius.sm, backgroundColor: colors.surface3 }, children: jsx(Icon, { name: item.icon, size: 22, color: item.tone }) }),
         jsxs(View, { style: { flex: 1, gap: 4 }, children: [
           jsx(Text, { style: text(23, colors.fg, { fontWeight: 600 }), children: t2(item.title) }),

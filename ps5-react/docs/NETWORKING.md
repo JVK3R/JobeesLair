@@ -15,7 +15,7 @@ Add these fields to your app's `app.json`, then build normally:
 ```
 
 Every request identifies itself with `"userAgent"` from `app.json` (printable
-ASCII, 1..128 characters), `PS5React/0.1` when the app sets none.
+ASCII, 1..128 characters), `PS5React/0.2` when the app sets none.
 
 The initial native-title transport requires successful console filesystem
 elevation (resident Lapy or a localhost ELF loader, as described in

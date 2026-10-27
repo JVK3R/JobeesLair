@@ -152,7 +152,17 @@ export class FocusManager {
 
   /** Laid-out screen rectangle, before transforms and scrolling. @param {Node} node @param {Rect} rect */
   setRect(node, rect) {
+    const unplaced = !node.rect;
     node.rect = rect;
+    // MODIFIED (Jobee'sLair 0.5.3): focused before its first layout (autoFocus as a screen mounts), its reveal had no
+    // rectangle and did nothing, so a first card below the fold stayed out of view. It runs once this layout pass
+    // is through (the ScrollView is laid out too), at once (no earlier view to ease from), and with the least
+    // movement: what the first screen shows already stays put, the header above it with it (the Homebrew section).
+    if (unplaced && this.focused === node) {
+      this.setTimer(() => {
+        if (this.focused === node && !node.dead) this.reveal(node, {instant: true, least: true});
+      }, 0);
+    }
   }
 
   /** @param {() => void} listener @returns {() => void} */
@@ -331,15 +341,17 @@ export class FocusManager {
 
   /**
    * Scrolls every scrolling ancestor, innermost first, until `node` is in view; each one aligns the
-   * nearest `scrollAnchor` ancestor that it contains directly, if any. @param {Node} node
+   * nearest `scrollAnchor` ancestor that it contains directly, if any. `instant` jumps instead of easing;
+   * `least` moves the least that shows it, with no anchor and no top-of-content rule.
+   * @param {Node} node @param {{instant?: boolean, least?: boolean}} [options]
    */
-  reveal(node) {
+  reveal(node, {instant = false, least = false} = {}) {
     let rect = node.rect;
     if (!rect) return;
     for (let frame = node.frame; frame; frame = frame.parent) {
-      let anchor = node.anchor;
+      let anchor = least ? null : node.anchor;
       while (anchor && anchor.frame !== frame) anchor = anchor.parent;
-      frame.reveal(rect, anchor?.rect ?? null, {first: !frame.props?.horizontal && this.firstIn(node, rect, frame)});
+      frame.reveal(rect, anchor?.rect ?? null, {instant, first: !least && !frame.props?.horizontal && this.firstIn(node, rect, frame)});
       rect = scrolledBy(rect, frame);
     }
   }

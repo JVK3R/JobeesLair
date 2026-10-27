@@ -38,10 +38,13 @@ import { FocusScope, Text, View } from '@ps5-react/core';
       /* @__PURE__ */ (0, jsx)(Button2, { label: t2("capture.confirm.refuse"), variant: "outline", onPress: () => downloadQueue().confirmCapturedFile(job2.id, false) })
     ] });
     const link = job2.captureMode === "link";
+    // 0.5.3: how far it got, by a state it has a message for: "confirm" just answered (its file gone, the next state
+    // not set yet) read "capture.confirm" on screen for a moment.
+    const stage = ["preparing", "capturing", "validating"].includes(job2.captureState) ? job2.captureState : "preparing";
     return /* @__PURE__ */ (0, jsxs)(Panel, { onBack: close, children: [
       /* @__PURE__ */ (0, jsx)(Text, { style: text(36, colors.fg), children: t2(link ? "capture.link.title" : "capture.title") }),
       /* @__PURE__ */ (0, jsx)(Text, { style: text(24, colors.muted, { width: 1260, numberOfLines: 2, ellipsizeMode: "tail" }), children: job2.title }),
-      /* @__PURE__ */ (0, jsx)(Text, { style: text(26, colors.glow, { fontWeight: 600 }), children: t2(`capture.${job2.captureState}`) }),
+      /* @__PURE__ */ (0, jsx)(Text, { style: text(26, colors.glow, { fontWeight: 600 }), children: t2(`capture.${stage}`) }),
       /* @__PURE__ */ (0, jsx)(Text, { style: text(24, colors.muted, { width: 1260, numberOfLines: 3, ellipsizeMode: "tail" }), children: t2(link ? "capture.link.detail" : "capture.detail") }),
       /* @__PURE__ */ (0, jsx)(Button2, { label: t2("download.enterLink"), variant: "outline", onPress: () => downloadQueue().cancelBrowserCapture(job2.id, { manual: true }) }),
       /* @__PURE__ */ (0, jsx)(Button2, { label: t2("urlDialog.cancel"), variant: "outline", onPress: close })

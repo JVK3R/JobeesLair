@@ -1,7 +1,7 @@
 // Copyright (C) 2026 half144 and PS5 React contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Additional attribution term: see LICENSE-ATTRIBUTION.
-// Native API contract (ABI v21) between the hosts and `@ps5-react/core`. The input actions hosts
+// Native API contract (ABI v23) between the hosts and `@ps5-react/core`. The input actions hosts
 // pass to `__ps5ReactDispatch` are a separate contract with its own version (runtime/js/input.js).
 //
 // host_api.cpp (shared) installs `globalThis.__ps5ReactNative` through
@@ -21,8 +21,9 @@
 //   fs.remove(path)                file or empty directory
 //   fs.removeTree(path)            a file, or a directory and everything in it; symbolic links are
 //                                  unlinked, never followed; synchronous, for small app-owned trees
-//   fs.removeAsync(path)           ABI v16; task ID; removes as removeTree does, on a worker thread, in
-//                                  the order asked; a path already gone counts as removed
+//   fs.removeAsync(path, background) ABI v16; task ID; removes as removeTree does, on a worker thread, in
+//                                  the order asked; a path already gone counts as removed. ABI v23:
+//                                  background true queues it on a second worker of its own (removals.hpp)
 //   removals.poll()                [{id, state, error}]; error is the system error; consumes terminal
 //   fs.copyAsync(from, to, options) ABI v19; task ID; copies a file or a tree on a worker thread
 //                                  (copies.hpp) into <to>.partial, reads it back against the source,

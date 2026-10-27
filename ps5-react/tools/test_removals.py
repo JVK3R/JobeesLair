@@ -19,7 +19,7 @@ def main():
    str(ROOT/"tools/tests/removal_client.cpp"),str(ROOT/"native/shared/removals.cpp"),"-o",str(binary)],check=True)
   def remove(mode,*paths):
    out=subprocess.check_output([str(binary),mode,*map(str,paths)],text=True,timeout=60).splitlines()
-   return int(out[0]),[tuple(line.split("\t")) for line in out[1:]]
+   return int(out[0]),[tuple(line.split("\t")) for line in out[1:-1]],[int(i) for i in out[-1].split()[1:]]
   # A file, a tree, a path never there; a link inside the tree is removed, not what it points to.
   outside=root/"outside";outside.mkdir();(outside/"kept").write_bytes(b"x")
   game=tree(root/"game",50);(game/"d0/link").symlink_to(outside)
@@ -36,8 +36,20 @@ def main():
   assert (locked/"d1/f1").exists()
   # Queueing returns at once while the worker removes; stopping cancels what is left.
   big=tree(root/"big",5000)
-  queued,states=remove("stop",big,root/"after")
+  queued,states,_=remove("stop",big,root/"after")
   assert queued<50 and states==[("cancelled","Operation canceled")]*2 and big.exists(),(queued,states)
-  print("PASS: removals off the render thread; files, trees, symbolic links, missing paths, overlapping removals, system errors and stop")
+  # Removals take turns: a file queued after a big tree waits for it...
+  part=root/"cancelled.part";part.write_bytes(b"x")
+  _,states,order=remove("wait",big,part)
+  assert states==[("completed","")]*2 and order==[0,1] and not big.exists(),(states,order)
+  # ...unless the tree is a background removal (a clean-up), on its own worker: the file goes first.
+  big=tree(root/"big",20000);part.write_bytes(b"x")
+  _,states,order=remove("wait",f"bg:{big}",part)
+  assert states==[("completed","")]*2 and order==[1,0] and not big.exists() and not part.exists(),(states,order)
+  # Stopping ends the background worker's removals too.
+  big=tree(root/"big",5000)
+  _,states,_=remove("stop",f"bg:{big}",f"bg:{root/'after'}")
+  assert states==[("cancelled","Operation canceled")]*2 and big.exists(),states
+  print("PASS: removals off the render thread; files, trees, symbolic links, missing paths, overlapping removals, system errors, stop, and background removals on a worker of their own")
 
 if __name__=="__main__":main()

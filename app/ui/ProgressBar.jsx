@@ -5,7 +5,7 @@
 import { jsx } from 'react/jsx-runtime';
 import { useLocale } from '../i18n/index.js';
 import { px } from './scale.js';
-import { View, motion } from '@ps5-react/core';
+import { View } from '@ps5-react/core';
 import { colors, radius } from './colors.js';
 
   var glide = { type: "tween", duration: 0.05, ease: "linear" };

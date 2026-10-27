@@ -69,7 +69,8 @@ import { FocusScope, ScrollView, Text, View, useIsFocused } from '@ps5-react/cor
     const roots = drives.roots;
     const [drive, setDrive] = (0, useState)(0);
     const [kind, setKind] = (0, useState)("all");
-    const root2 = roots[drive];
+    // 0.5.3: the first drive when the chosen one is gone (a USB drive unplugged while the page was open).
+    const root2 = roots[drive] ?? roots[0];
     const { files, installing, install, remove, shadowMount } = useFiles(root2);
     const sums = (0, useMemo)(() => totals(files), [files]);
     const shown = kind === "all" ? files : files.filter((file) => file.kind === kind);

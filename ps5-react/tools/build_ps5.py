@@ -153,7 +153,7 @@ def main():
     definitions = next(line.split("=", 1)[1] for line in
                        (cross / "bridge/engine/CMakeFiles/embedded-react.dir/flags.make").read_text().splitlines()
                        if line.startswith("C_DEFINES ="))
-    sources = [ROOT / "native/ps5/native_host.cpp", ROOT / "native/ps5/async_log.cpp", ROOT / "native/ps5/host_platform.cpp", ROOT / "native/ps5/video_output.cpp", ROOT / "native/ps5/time_compat.c", ROOT / "native/ps5/archive_compat.c",
+    sources = [ROOT / "native/ps5/native_host.cpp", ROOT / "native/ps5/async_log.cpp", ROOT / "native/ps5/host_platform.cpp", ROOT / "native/ps5/video_output.cpp", ROOT / "native/ps5/time_compat.c", ROOT / "native/ps5/archive_compat.c", ROOT / "native/ps5/random_compat.c",
                ROOT / "native/ps5/filesystem_access.cpp",
                ROOT / "native/ps5/elevation_transport.cpp",
                ROOT / "native/shared/host_api.cpp", ROOT / "native/shared/removals.cpp", ROOT / "native/shared/copies.cpp", ROOT / "native/shared/disk_probes.cpp", ROOT / "native/shared/network.cpp",
@@ -182,6 +182,9 @@ def main():
     if network_ports:
         sources.extend(access_client / "examples/pacbrew-curl" / name for name in ("netdb.c",))
         includes.append(network_ports / "include")
+    else:
+        # OpenSSL names getaddrinfo and its family, which titles are not given: lookups that fail instead.
+        sources.append(ROOT / "native/ps5/netdb_offline.c")
     # Video: the player and the pinned FFmpeg, only in apps that ask for them.
     video_libs, video_stubs = [], []
     if config.get("video"):
@@ -373,7 +376,7 @@ def main():
     shutil.copy2(ROOT / "docs/DEPENDENCIES.md", notices / "SOURCES.md")
     run([host_tool, "self", "--inspect", "--file", app / "eboot.bin"])
     run([host_tool, "self", "--inspect", "--file", app / "sce_module/libc.prx"])
-    receipts = {"title": TITLE, "app": app_dir.name, "framework_version": "0.1.0",
+    receipts = {"title": TITLE, "app": app_dir.name, "framework_version": "0.2.0",
                 "hardware_tested": False, "dependencies": LOCK,
                 "config": config, "bundle_sha256": {d.name: digest(d / "app.bundle.js") for d in layout_dirs},
                 "llvm_version": subprocess.check_output([llvm / "clang", "--version"], text=True).splitlines()[0],

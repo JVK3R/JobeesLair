@@ -6,17 +6,20 @@
 #include <string>
 #include <vector>
 // Removals on a worker thread, one at a time in the order asked: unlinking a file of tens of GB, or a
-// game's thousands of files, holds the calling thread for seconds.
+// game's thousands of files, holds the calling thread for seconds. Background removals (clean-ups nobody
+// waits on) have a worker of their own, beside the first and in their own order, so a long one never holds
+// up the others.
 namespace removals {
 struct Snapshot { std::uint32_t id = 0; std::string state = "queued", error; };
 // A file, or a directory and everything in it; a symbolic link is unlinked, never entered, so nothing
 // outside the tree is reached. With `missing_ok`, what is already gone counts as removed. False with
 // errno set.
 bool remove_tree(const std::string& path, bool missing_ok);
-// Queues `path` (a real path); 0 with `error` when the worker cannot start.
-std::uint32_t start(std::string path, std::string& error);
+// Queues `path` (a real path), on the background worker with `background`; 0 with `error` when the worker
+// cannot start.
+std::uint32_t start(std::string path, std::string& error, bool background = false);
 // Every removal's state; terminal ones ("completed", "failed", "cancelled") are reported once.
 std::vector<Snapshot> poll();
-// Stops between two entries; the removal under way and those queued end "cancelled".
+// Stops between two entries; the removals under way and those queued end "cancelled".
 void stop();
 }

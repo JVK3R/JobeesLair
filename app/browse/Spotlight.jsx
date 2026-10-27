@@ -3,16 +3,17 @@
 // MODIFIED: Up from the hero goes to the current section in the top island (nav:current).
 // MODIFIED: a full-width hero banner; its slides are picked from a thumbnail strip over its lower right
 // (HeroThumbs) instead of a list beside it, and Down leads to the Featured lane.
+// MODIFIED (0.5.3): top games, a new few each launch (browse/featured.js), and X on a thumbnail opens its game.
 
 import '../assets/Exo2.ttf';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { memo, useEffect, useRef, useState } from 'react';
+import { featured } from './featured.js';
 import { FIRST_FEATURED } from './Lanes.jsx';
 import { HeroThumbs } from './HeroThumbs.jsx';
 import { useSlides } from './useSlides.js';
-import { games } from '../data/catalog.js';
 import { LATIN_IN_RTL, focusEnd, useLocale, useT } from '../i18n/index.js';
-import { fromArchive, genreLabel, oneEach, sortGames, summaryOf } from '../state/catalog.js';
+import { genreLabel, summaryOf } from '../state/catalog.js';
 import { useNavActions, useNavState } from '../state/nav.jsx';
 import { useStoreActions, useWishlist } from '../state/store.jsx';
 import { Button2 } from '../ui/Button.jsx';
@@ -22,24 +23,6 @@ import { EASE_OUT } from '../ui/ease.js';
 import { AnimatePresence, Image, Text, View, motion } from '@ps5-react/core';
 import { colors, radius } from '../ui/colors.js';
 
-  var NEWEST = 150;
-  var shuffle = (list) => {
-    for (let i = list.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [list[i], list[j]] = [list[j], list[i]];
-    }
-    return list;
-  };
-  function selectFeatured() {
-    const eligible = games.filter((game) => game.art.logo && fromArchive(game));
-    const pool = eligible.length >= 5 ? eligible : games.filter((game) => game.art.logo);
-    const byFame = oneEach([...pool].sort((a, b) => b.recommendations - a.recommendations));
-    const latest2 = new Set(sortGames(games, "newest").slice(0, NEWEST));
-    const recent2 = shuffle(byFame.filter((game) => latest2.has(game)).slice(0, 10)).slice(0, 2);
-    const famous = shuffle(byFame.filter((game) => !recent2.includes(game)).slice(0, 20)).slice(0, 5 - recent2.length);
-    return shuffle([...famous, ...recent2]);
-  }
-  var featured = selectFeatured();
   var ART = { width: 1824, height: 600 };
   var LOGO2 = [320, 112, 48 * 256];
   function prefetchSlides() {
@@ -146,6 +129,8 @@ import { colors, radius } from '../ui/colors.js';
     const { rtl } = useLocale();
     const slides = useSlides(featured.length, shown);
     const { openGame } = useNavActions();
+    // Back from the game page returns to its thumbnail.
+    const [open] = (0, useState)(() => (index) => openGame(featured[index].id, `spotlight:${index}`));
     const game = featured[slides.active];
     (0, useEffect)(() => {
       const id = setTimeout(prefetchSlides, 1500);
@@ -174,7 +159,7 @@ import { colors, radius } from '../ui/colors.js';
             /* @__PURE__ */ (0, jsx)(WishButton, { id: game.id, toList: `spotlight:${slides.active}` })
           ] })
         ] }),
-        /* @__PURE__ */ (0, jsx)(View, { style: rtl ? { position: "absolute", left: 36, bottom: 36 } : { position: "absolute", right: 36, bottom: 36 }, children: /* @__PURE__ */ (0, jsx)(HeroThumbs, { games: featured, slides, nextFocusDown: FIRST_FEATURED }) })
+        /* @__PURE__ */ (0, jsx)(View, { style: rtl ? { position: "absolute", left: 36, bottom: 36 } : { position: "absolute", right: 36, bottom: 36 }, children: /* @__PURE__ */ (0, jsx)(HeroThumbs, { games: featured, slides, open, nextFocusDown: FIRST_FEATURED }) })
       ] })
     ] });
   });

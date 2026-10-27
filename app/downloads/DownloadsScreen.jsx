@@ -37,9 +37,9 @@ import { AnimatePresence, FocusScope, ScrollView, Text, View } from '@ps5-react/
   var EMPTY_KEY = "downloads:empty";
   var PER_ROW = 2, GAP = 24;
   var ARM_MS = 3e3;
-  // 0.5.1: the whole list at once, above it. "Clear finished" tidies every finished card away; "Cancel all"
-  // stops and removes every download that is not finished, on a second press within three seconds (the first
-  // arms it, like a card's X).
+  // 0.5.1: the whole list at once, at its top (0.5.3: beside the library band). "Clear finished" tidies every
+  // finished card away; "Cancel all" stops and removes every download that is not finished, on a second press
+  // within three seconds (the first arms it, like a card's X).
   function QueueActions({ finished, unfinished, run }) {
     const t2 = useT();
     const [armed, setArmed] = (0, useState)(false);
@@ -102,9 +102,11 @@ import { AnimatePresence, FocusScope, ScrollView, Text, View } from '@ps5-react/
       ...rows.slice(1).map((row) => /* @__PURE__ */ (0, jsx)(View, { scrollAnchor: true, children: rowView(row) }, `anchor:${row[0].id}`))
     ] });
   }
+  // 0.5.3: right under the telemetry. Centered in what was left, it rode up over the telemetry while an announcement
+  // took the page's top (state/online.js), there being less left than the card is tall.
   function Empty({ error: error2, onBack }) {
     const t2 = useT();
-    return /* @__PURE__ */ (0, jsx)(View, { style: { flex: 1, alignItems: "center", justifyContent: "center", paddingBottom: 60 }, children: /* @__PURE__ */ (0, jsxs)(View, { style: { width: CARD_WIDTH, alignItems: "center", borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, paddingVertical: 48, paddingHorizontal: 60 }, children: [
+    return /* @__PURE__ */ (0, jsx)(View, { style: { flex: 1, alignItems: "center", justifyContent: "flex-start", paddingTop: 30 }, children: /* @__PURE__ */ (0, jsxs)(View, { style: { width: CARD_WIDTH, alignItems: "center", borderRadius: radius.xl, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, paddingVertical: 48, paddingHorizontal: 60 }, children: [
       /* @__PURE__ */ (0, jsx)(View, { style: { width: 84, height: 84, alignItems: "center", justifyContent: "center", borderRadius: radius.md, backgroundColor: colors.surface2 }, children: /* @__PURE__ */ (0, jsx)(Icon, { name: "download", size: 36, color: colors.glow }) }),
       /* @__PURE__ */ (0, jsx)(Text, { style: { marginTop: 24, fontFamily: "Exo2", fontSize: 30, fontWeight: 600, color: colors.fg, lineHeight: 42 }, children: t2(error2 ? "downloads.unavailable" : "downloads.empty") }),
       /* @__PURE__ */ (0, jsx)(Text, { style: { marginTop: 6, width: 720, textAlign: "center", fontFamily: "Exo2", fontSize: 23, color: colors.muted, numberOfLines: 3, ellipsizeMode: "tail", lineHeight: 34 }, children: error2 || t2("downloads.emptyDetail") }),
@@ -198,22 +200,25 @@ import { AnimatePresence, FocusScope, ScrollView, Text, View } from '@ps5-react/
       { title: "downloads.section.completed", tone: "#4ade80", jobs: done }
     ].filter((section) => section.jobs.length);
     return /* @__PURE__ */ (0, jsx)(FocusScope, { autoFocus: true, onBack: back2, onAction, children: /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, paddingHorizontal: 48 }, children: [
-      /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", paddingTop: 12, paddingBottom: 20 }, children: [
-        /* @__PURE__ */ (0, jsxs)(Text, { style: { width: 1200, fontFamily: "Exo2", fontSize: 36, fontWeight: 600, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 48, letterSpacing: 1 }, children: [
-          fitBytes(t2("downloads.title"), SPAN_MAX),
-          /* @__PURE__ */ (0, jsx)(Text, { style: { fontSize: 22, fontWeight: 400, color: colors.subtle }, children: jobs.length ? fitBytes(`   ${summary(jobs)}`, SPAN_MAX) : "" })
-        ] }),
-        // 0.5.1: Clear finished and Cancel all, at the top right where they are seen (QueueActions).
-        /* @__PURE__ */ (0, jsx)(QueueActions, { finished: done.length, unfinished: active2.length + stopped.length, run: handlers.runAll })
-      ] }),
+      /* @__PURE__ */ (0, jsx)(View, { style: { flexDirection: "row", alignItems: "flex-end", paddingTop: 12, paddingBottom: 20 }, children: /* @__PURE__ */ (0, jsxs)(Text, { style: { width: 1200, fontFamily: "Exo2", fontSize: 36, fontWeight: 600, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 48, letterSpacing: 1 }, children: [
+        fitBytes(t2("downloads.title"), SPAN_MAX),
+        /* @__PURE__ */ (0, jsx)(Text, { style: { fontSize: 22, fontWeight: 400, color: colors.subtle }, children: jobs.length ? fitBytes(`   ${summary(jobs)}`, SPAN_MAX) : "" })
+      ] }) }),
       failure || note ? /* @__PURE__ */ (0, jsx)(Text, { style: { width: 1800, marginBottom: 16, fontFamily: "Exo2", fontSize: 21, color: failure ? "#f87171" : colors.muted, numberOfLines: 2, ellipsizeMode: "tail", lineHeight: 30 }, children: failure || note }) : null,
       // One scroll for the whole page below the title: the library band and the telemetry scroll away
       // with the cards (a fixed band left the cards a strip a card and a half tall, and moving up never
-      // brought the top back). The band, the telemetry and the first section are one scroll anchor, so
-      // focus on the first row scrolls to the very top; each later section anchors on its own title.
+      // brought the top back). The band, the telemetry and the first section are one scroll anchor: focus on
+      // the first row shows as much of the top as it can, the queue's buttons beside the band all of it; each
+      // later section anchors on its own title.
       jobs.length > 0 ? /* @__PURE__ */ (0, jsx)(ScrollView, { style: { flex: 1 }, children: /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 48, paddingBottom: 48 }, children: sections.map(
         (section, index) => index === 0 ? /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, children: [
-          /* @__PURE__ */ (0, jsx)(View, { style: { marginBottom: 20 }, children: /* @__PURE__ */ (0, jsx)(CountBand, {}) }),
+          // 0.5.3: Clear finished and Cancel all beside the band, in the scroll (above it, where they were, they
+          // left nothing in it to reach its top): up from the first card they bring the band and the telemetry
+          // back. With an announcement up, the first card no longer fits under them, so the page scrolls to it.
+          /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 20 }, children: [
+            /* @__PURE__ */ (0, jsx)(View, { style: { flex: 1 }, children: /* @__PURE__ */ (0, jsx)(CountBand, {}) }),
+            /* @__PURE__ */ (0, jsx)(QueueActions, { finished: done.length, unfinished: active2.length + stopped.length, run: handlers.runAll })
+          ] }),
           /* @__PURE__ */ (0, jsx)(Telemetry, { error: error2 }),
           /* @__PURE__ */ (0, jsx)(View, { style: { marginTop: 30 }, children: /* @__PURE__ */ (0, jsx)(Section, { ...section, first, handlers, anchor: false }, section.title) })
         ] }, "top") : /* @__PURE__ */ (0, jsx)(Section, { ...section, first, handlers }, section.title)

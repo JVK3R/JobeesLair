@@ -1,6 +1,56 @@
 # Changelog
 
-## Unreleased — image retries that find room
+## Unreleased — PS5 packages
+
+- `Packages.install` takes PS5 packages too, as docs/NATIVE-API.md already said. `pkg-installer.elf` accepted only
+  a PS4 package (`\x7FCNT`) and refused a PS5 one (`\x7FFIH`) as "not a PKG". It now reads the content ID from
+  the CNT header a PS5 package carries at the offset it keeps at 0x58, and hands the file to the install service
+  with no content ID, as ezRemote's installer (ps5-ezremote-dpi) does. A file that is neither is refused as "not
+  a PS4 or PS5 package". Not yet hardware-tested.
+- A failed install's message names the call and the package once: the native reason carries the reason and the
+  code, and the JavaScript task adds the rest (it said both twice).
+- `tools/test_pkg_installer.py` runs the payload on the desktop against a stand-in install service: PS4 and PS5
+  packages, a 4-byte stand-in, a web page, bad offsets, a refusal's code, paths it must not touch.
+- `FileSystem.removeAsync(path, {background: true})` (ABI v23): a clean-up nobody waits on goes to a second
+  worker, beside the first and in its own order. Removals ran one at a time, so a long clean-up (a homebrew
+  app's 19,462 files, minutes on a PS5) held up a cancelled download's few files behind it.
+  `tools/test_removals.py` checks both orders.
+- Focus scrolling: an element focused before its first layout (`autoFocus` as a screen mounts) is revealed once
+  it is laid out, with the least movement; its reveal had no rectangle and did nothing, so a first card below
+  the fold stayed out of view. The top-most focusable element of a `ScrollView`, and one under a
+  `scrollAnchor` at the content's top, show as much of the top as still shows them when they do not fit under
+  it; the least movement, coming back up, kept the top out of reach.
+
+## 0.2.0 — 2026-10-25
+
+The first release since half144's 0.1.0, and the first from JVK3R/ps5-react, where PS5 React continues since the
+original repository disappeared around 13 October 2026. It holds half144's own work from 5 to 12 October, which
+that repository never released (under "half144's work after 0.1.0"), and what was added since, built and tested
+through [Jobee'sLair](https://github.com/JVK3R/JobeesLair) (under "Since the continuation"). Native ABI v22.
+
+### Since the continuation (15–25 October)
+
+- **An app replaces its own image** (`SelfUpdate.arm`, ABI v20): `updater.elf` swaps a staged disk image in once
+  the title closes, relaunches it, and puts the previous one back when the new one does not start.
+- **Copies off the render thread** (`FileSystem.copyAsync`, ABI v19): verified, and resumed after a cut.
+- **Payloads** (`Payloads.send`, ABI v22): an ELF the app can read, sent to the console's payload loader with a
+  request and an answer back. app.json `payloads` builds an app's own C payloads with the SDK.
+- **A download rate limit** (`Downloads.setRateLimit`, ABI v21) all file downloads share.
+- **Phones stay signed in** to `LocalServer` across restarts (`start({session})`, `LocalServer.token()`).
+- **Extracted files are rwxrwxrwx**, so a game's `eboot.bin` and libraries can be loaded (seen on a PS5), and a
+  cancelled or cut-off staging clear never loses the staging's record.
+- **A RAR set names a duplicated volume** ("Volume 4 of 10 is a copy of part 3"), so the app can fetch that one again.
+- **Browser capture** takes links to refuse (`rejected`) and resumes (`resume`).
+- **A payload's answer** is read past a system library's own log lines (`[SceLncUtil] …`) on the same socket.
+- **Focus:** revealing the first focusable element scrolls its frame to the very top; `FocusScope` takes `ends`.
+- **Images:** a decode that runs out of heap trims the cache before its retries.
+- **Builds:** apps without networking, and apps with video, link again (both failed their import check).
+  Every source a build fetches from someone else's account or site comes from an unchanged mirror under JVK3R
+  (docs/DEPENDENCIES.md). Every push builds the starter and video-lab from a clean checkout, and a weekly run
+  downloads every pinned source again.
+- **Docs:** `Payloads`, `Downloads.setRateLimit` and `LocalServer` sessions in docs/NATIVE-API.md.
+
+#### Image retries that find room
 
 - A decode that runs out of heap now counts as memory pressure for a minute: unused decoded images are
   kept to 16 MiB, as during a memory hold, so its retries 1 and 2 s later find the room those images
@@ -8,7 +58,7 @@
   about two in three full-screen screenshots failed for hours with "out of memory for decoded pixels".
   `tools/test_images.py` covers it (`starved`). Not yet hardware-tested.
 
-## Unreleased — an app replaces its own image
+#### An app replaces its own image
 
 - Add `SelfUpdate.arm(controlDir)` (native ABI v20, `update.arm`). It sends `updater.elf`
   (native/ps5/payloads/updater.c) to the payload loader. Once the title closes, the updater:
@@ -18,9 +68,10 @@
   - restores the previous image when the new build does not report that it started.
 
   `tools/test_updater.py` covers the payload against a stand-in for ShadowMount+'s API. `verify.py`
-  checks both payloads and the layout the app reads from its own ZIP. Not yet hardware-tested.
+  checks both payloads and the layout the app reads from its own ZIP. On PS5 consoles since
+  Jobee'sLair 0.2.1 (16 October), whose in-app updates it carries out.
 
-## Unreleased — copies off the render thread
+#### Copies off the render thread
 
 - Add `FileSystem.copyAsync(from, to, options)` (native ABI v19, `fs.copyAsync`, `copies.poll`,
   `copies.cancel`): a file or a tree copied on a worker thread (native/shared/copies.cpp) into
@@ -29,7 +80,9 @@
   `receipt: true` copies a downloaded file only when its download receipt is its own. Not yet
   hardware-tested.
 
-## Unreleased — comparing upscalers
+### half144's work after 0.1.0 (5–12 October)
+
+#### Comparing upscalers
 
 - `<Video compare={{upscale, split}}>` (native ABI v15, `video.setCompare`): right of `split` (0 to 1
   across the picture) the picture goes through a second model, or none, so two upscalers show side
@@ -41,7 +94,7 @@
   so the paused one went on showing as it came. A model picked over a paused picture now runs on it
   once.
 
-## Unreleased — focus returns through stacked pages
+#### Focus returns through stacked pages
 
 - Add `useFocusActions()`: `focus`, `blur` and `focusedRect` without subscribing to focus changes.
   A component that called `useFocus()` only to move focus re-rendered, with everything under it, on
@@ -53,7 +106,7 @@
   goes back to where a closed layer was opened from now leaves the return targets of the scopes it
   lands in alone.
 
-## Unreleased — local time
+#### Local time
 
 - Add `DeviceInfo.utcOffset(time)` (native ABI v14, `device.utcOffset`): the system time zone's
   offset from UTC in minutes at an instant, from `localtime_r` in the shared host. The runtime has
@@ -61,7 +114,7 @@
   PS5's libc gives the console's zone in the calendar fields but leaves `tm_gmtoff` 0, so the
   offset is the fields less the instant.
 
-## Unreleased — HDMI audio passthrough
+#### HDMI audio passthrough
 
 - `<Video audioOutput>`: `'pcm'` (the default, as before) decodes the track; `'auto'` sends AC-3,
   E-AC-3 and DTS (the core) at 48 kHz to the TV or receiver undecoded when its EDID lists the codec;
@@ -74,7 +127,7 @@
   codecs it can be passed, and its most PCM channels, for an app to decide what to ask a media
   server for. The desktop preview reports `known: false`.
 
-## Unreleased — light on glass
+#### Light on glass
 
 - Add the View styles `roundedClip` and `mixBlendMode: 'plus-lighter'`
   (`patches/embeddedReact-rounded-clip-blend.patch`). `roundedClip: true` clips children to the
@@ -84,7 +137,7 @@
   damage tracker wraps. Neither has a Tailwind class; `mix-blend-*` now names the style in its
   error. Desktop tests only; not yet run on a PS5.
 
-## Unreleased — rows and the touchpad
+#### Rows and the touchpad
 
 - `FocusScope row`: Left and Right stop at a row's ends instead of stepping into the rows around it
   (a `blocked` move), and a row entered for the first time starts at its `selected` element or its
@@ -96,7 +149,7 @@
 - `useFocus().focusedRect()`: the focused element's rectangle on screen, to place a menu beside it.
 - Input scripts and `ps5_drive.py script` take `swipe:DIRECTION:TRAVEL`.
 
-## Unreleased — controller events and trigger effects
+#### Controller events and trigger effects
 
 - Add `useControllerEvents(handler)` and `Controller.subscribe(listener)`: once per frame, from one
   shared read of the controller state, `press` and `release` (with `heldMs`) for every
@@ -118,14 +171,14 @@
   `trigger l2|r2 VALUE [ms]`, and the input-script steps `hold:`, `release:` and `trigger:` on both
   hosts. A held button with an action dispatches it as it goes down.
 
-## Unreleased — Options for apps
+#### Options for apps
 
 - Options reaches every app as the `options` action, as upstream now delivers it (O and a
   controller's Start on the desktop); the PS button leaves, Escape on the desktop. The
   `"optionsButton"` app.json setting this fork added for the same is gone: an app that sets it
   builds as before, and the key is ignored.
 
-## Unreleased — resolution auto
+#### Resolution auto
 
 - The starter, and so every `npm run create` scaffold, uses `"resolution": "auto"` at 60 Hz. It
   rendered at 2560×1440 into a 1920×1080 surface, which the presenter scaled down 0.75× and a 4K
@@ -137,7 +190,7 @@
   assets moved to `.build/<app>/generated/<width>x<height>/`, and `--resolution 1080p` previews the
   small layout.
 
-## Unreleased — runtime refresh rate
+#### Runtime refresh rate
 
 - Add `Display.refreshRate()` and `Display.setRefreshRate(hz)` (native ABI v11): an app switches
   between 60 and 120 Hz while it runs, among the rates app.json `"refreshRates"` lists. The PS5 host
@@ -145,7 +198,7 @@
   the TV resyncs. The desktop preview rebuilds its presenter and keeps the monitor's rate. Not yet
   validated on a PS5.
 
-## Unreleased — fixes
+#### Fixes
 
 - The glyph cache unlinked its oldest glyph from the wrong end of its recently-used list, so
   evicting it once the cache was full left the freed glyph listed as the oldest.
@@ -153,7 +206,7 @@
   page's backdrop) showed through them on screen. The presenter now paints the bars black. `shot:`
   screenshots already composited them black, which hid it.
 
-## Unreleased — video upscalers
+#### Video upscalers
 
 - `<Video upscale>` doubles a picture shown bigger than its source with a network for animation
   before it is scaled to its box: `'artcnn'` (ArtCNN C4F16, the luma) or `'anime4k-s'`, `-m`, `-l`,
@@ -162,7 +215,7 @@
 - 10-bit pictures from the PS5 decoder are read as low-aligned samples: HEVC Main 10
   showed green.
 
-## Unreleased — less CPU per frame
+#### Less CPU per frame
 
 - The presenter keeps the framebuffer in a GPU texture: moved rects are blitted there, damaged
   rows are uploaded in merged bands through small buffer textures, and one draw composites the
@@ -183,7 +236,7 @@
 - The frame-time log reports `cpu=` cores and the render thread's CPU ms per frame
   (docs/ANIMATION.md).
 
-## Unreleased — cheaper mounts
+#### Cheaper mounts
 
 - `motion` elements run two effects each instead of six and add a context provider only
   when they pass new variant labels down. Their animations now start in a microtask after the
@@ -193,7 +246,7 @@
   element copies only the props it was given and a plain style object is not re-flattened.
 - The frame-time log splits `present` into `upload` and `draw` and reports the kilobytes uploaded
   per frame (docs/ANIMATION.md).
-## Unreleased — render thread freed during downloads, RAR sets checked before decoding
+#### Render thread freed during downloads, RAR sets checked before decoding
 
 - `Archives.inspect` reads a RAR's first file header, then walks the next ones for about 100 ms
   (plus the header under way), instead of up to 4096 of them. Each header sits after the previous
@@ -213,14 +266,14 @@
   leave the reason to the extraction, as before. A last volume cut short (a download stopped early) fails
   as before, now always named: `... Volume 4 of 4 looks incomplete.`
 
-## Unreleased — extracted file permissions
+#### Extracted file permissions
 
 - Archives extracted in the app (ZIP, 7z, TAR, and RAR when rar-extract cannot start) write folders
   0777 and files 0666, and every extraction root is 0777, whatever the app's umask. They were 0700
   and 0600: a game extracted that way and installed by ShadowMount froze the console at launch until
   its tree was set to 0777 by hand. rar-extract already wrote its files open.
 
-## Unreleased — verified sandbox roots
+#### Verified sandbox roots
 
 - After filesystem elevation, find /app0, /download0 and /temp0 from a descriptor opened on each
   before the root change (the helper replaces only the root and jail), checked by device and inode,
@@ -230,7 +283,7 @@
   eboot.bin, ShadowMount's /system_ex/app/<TITLE> included; each rejected candidate is logged.
 - app.log keeps the lines logged before it opens, so it shows how filesystem access chose its roots.
 
-## Unreleased — download tail splitting
+#### Download tail splitting
 
 - Once every range of a download has a connection, idle connections split the range with the most
   bytes left and fetch its second half, down to 1 MiB parts. Files with fewer ranges than allowed
@@ -240,14 +293,14 @@
 - An origin's connection window grows while nine-tenths of it is busy, not only when it is full: a
   console download held 25 of 27 connections for most of a 1.27 GB file and never grew.
 
-## Unreleased — RAR extraction threads
+#### RAR extraction threads
 
 - rar-extract decodes with 6 threads when no download runs and 4 while one does (or while the set
   itself still downloads), instead of 4 always; it never takes more than the cores but one. Its
   `throughput` trace line adds the threads, cores, process CPU time, write and fsync time and the
   decoder's waits, which the worker now reports on a `t` line.
 
-## Unreleased — downloads across rest mode
+#### Downloads across rest mode
 
 - A download whose connections die while the title is suspended (rest mode, or another app in
   front) retries the ranges they carried without counting them as a busy server's refusals: they
@@ -255,7 +308,7 @@
   second for the rest of the job, nor spend the attempts that fail a download. Connection failures
   in the minute after the suspension, while the network comes back, are treated the same way.
 
-## Unreleased — multi-core rendering
+#### Multi-core rendering
 
 - Keep translated framebuffer copies out from under translucent ancestors, use
   clipped coverage for image crossfades, retain images by the displayed scroll
@@ -357,13 +410,13 @@
   screen fill a row a frame instead of all at once. A PS5 search keystroke that
   remounts a results grid went from a 44 ms frame to 26 ms (docs/LISTS.md).
 
-## Unreleased — browser capture
+#### Browser capture
 
 - Add ABI v7 `BrowserCapture.capture`, a bounded, read-only Vikingfile URL
   matcher running through a loader payload, with cancellation and desktop failure.
   Adapted from Orbit Store 1.0.1; firmware execution still needs hardware validation.
 
-## Unreleased — package installation
+#### Package installation
 
 - Add `Packages.install` (ABI v5 additive `packages.install/cancel/poll`): a
   `.pkg` installs through the console's install service from a loader payload,
@@ -380,7 +433,7 @@
   that mount for console access, which left the app sandboxed with no image
   cache and froze it in fs.mounts.
 
-## Unreleased — international text
+#### International text
 
 - Add the `latin-ext`, `cyrillic` and `european` baked glyph sets, so runtime
   text in Spanish, French, German, Portuguese, Indonesian, Russian and the other
@@ -406,7 +459,7 @@
   63-byte limits on a character boundary (`er_utf8_clip`): a span could end in
   half a UTF-8 sequence, and a clipped string in a mark without its letter.
 
-## Unreleased — native archive extraction
+#### Native archive extraction
 
 - Skip optional RAR5 quick-open (`QO`) service indexes and read original headers.
   3D MiniGolf's index carried a different password check, causing a false incorrect
@@ -428,7 +481,7 @@
 - Link pinned PacBrew archive/compression ports into native PS5 titles; add
   `tools/build_ps5.py --compile-only` for package-free linker validation.
 
-## Unreleased — video
+#### Video
 
 - Add `<Video>` (native ABI v10, docs/VIDEO.md): files and http(s) streams, demuxed by FFmpeg 7.1.5
   (LGPL-3.0-or-later, pinned and built static for both hosts by `tools/ffmpeg.py`), decoded on the
@@ -442,7 +495,7 @@
 - `apps/video-lab`: plays the files in its `media/` folder and URLs, with the player's measurements
   on screen and an unattended playlist mode for console runs.
 
-## Unreleased
+#### First changes after 0.1.0
 
 - Add `LocalNetwork.broadcast({port, message})` (native ABI v9): a UDP broadcast on the local
   network whose replies come back with their sender's address, for service discovery such as

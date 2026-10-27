@@ -5,11 +5,17 @@ import { loadList, saveList } from './saved.js';
 
   var SETTINGS = "settings.json";
   // Raised when a release has a new panel to show (ui/WhatsNew.jsx). 0.5.2: its online card is where players
-  // learn the anonymous stats are on, and where to turn them off.
-  var WHATS_NEW = "0.5.2";
+  // learn the anonymous stats are on, and where to turn them off. 0.5.3: PS5 packages, Homebrew search, Discover's
+  // top games, "Device busy".
+  var WHATS_NEW = "0.5.3";
   var shouldShowWhatsNew = () => loadList(SETTINGS, "settings").whatsNewSeen !== WHATS_NEW;
+  // The release whose panel was shown last ("" for none: a new install).
+  var lastWhatsNewSeen = () => {
+    const seen = loadList(SETTINGS, "settings").whatsNewSeen;
+    return typeof seen === "string" ? seen : "";
+  };
   function markWhatsNewSeen() {
     saveList(SETTINGS, "settings", { ...loadList(SETTINGS, "settings"), whatsNewSeen: WHATS_NEW });
   }
 
-export { WHATS_NEW, markWhatsNewSeen, shouldShowWhatsNew };
+export { WHATS_NEW, lastWhatsNewSeen, markWhatsNewSeen, shouldShowWhatsNew };

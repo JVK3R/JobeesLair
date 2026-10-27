@@ -5,7 +5,7 @@
 
 import '../assets/Exo2.ttf';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
-import { useT } from '../i18n/index.js';
+import { latin, useLocale, useT } from '../i18n/index.js';
 import { useHomebrewStatus } from '../state/homebrew-store.js';
 import { roleOf } from '../state/homebrew-index.js';
 import { FocusRing } from '../ui/FocusRing.jsx';
@@ -57,6 +57,7 @@ import { Text, View, motion, useIsFocused } from '@ps5-react/core';
   }
   function Face({ app }) {
     const t2 = useT();
+    const { rtl } = useLocale();
     const focused = useIsFocused();
     const kind = roleOf(app.files[0]);
     return jsxs(Fragment, { children: [
@@ -66,7 +67,8 @@ import { Text, View, motion, useIsFocused } from '@ps5-react/core';
         jsx(StatusBadge, { id: app.id })
       ] }),
       jsxs(View, { style: { marginTop: 14, width: TILE, gap: 2 }, children: [
-        jsx(Text, { style: { fontFamily: "Exo2", fontSize: 22, fontWeight: 600, lineHeight: 30, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail" }, children: app.name }),
+        // 0.5.3: latin(): in a right-to-left language an English name's last punctuation went to its front.
+        jsx(Text, { style: { fontFamily: "Exo2", fontSize: 22, fontWeight: 600, lineHeight: 30, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail" }, children: latin(rtl, app.name) }),
         jsx(Text, { style: { fontFamily: "Exo2", fontSize: 18, lineHeight: 25, color: focused ? hb().glow : colors.subtle, numberOfLines: 1, ellipsizeMode: "tail" }, children: `${t2(`homebrew.kind.${kind}`)} · ${app.author}` })
       ] })
     ] });

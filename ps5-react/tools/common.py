@@ -214,7 +214,7 @@ def app_config(app, config=None):
         raise ValueError("filesystemAccess must be sandbox or console")
     if type(config.get("networking", False)) is not bool:
         raise ValueError("networking must be a boolean")
-    agent = config.get("userAgent", "PS5React/0.1")
+    agent = config.get("userAgent", "PS5React/0.2")
     if (not isinstance(agent, str) or not 1 <= len(agent) <= 128 or agent[0] == " "
             or any(not " " <= ch <= "~" for ch in agent)):
         raise ValueError("userAgent must be 1..128 printable ASCII characters")
@@ -263,7 +263,7 @@ def generated_config(config, directory):
                    "NAME": config["name"], "TITLE": config["titleId"],
                    "CONSOLE_FILESYSTEM": int(config.get("filesystemAccess", "sandbox") == "console"),
                    "NETWORKING": int(config.get("networking", False)),
-                   "USER_AGENT": config.get("userAgent", "PS5React/0.1"),
+                   "USER_AGENT": config.get("userAgent", "PS5React/0.2"),
                    "VIDEO": int(config.get("video", False))}
     (directory / "app_config.hpp").write_text("#pragma once\n" + "".join(
         f"#define PS5_REACT_{key} {json.dumps(value)}\n" for key, value in definitions.items()))

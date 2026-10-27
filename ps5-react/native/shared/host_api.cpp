@@ -236,11 +236,12 @@ JSValue fs_remove_tree(JSContext* ctx, JSValueConst, int, JSValueConst* argv) {
   return JS_UNDEFINED;
 }
 
-JSValue fs_remove_async(JSContext* ctx, JSValueConst, int, JSValueConst* argv) {
+JSValue fs_remove_async(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
   Path path(ctx, argv[0]);
   if (!path) return path.error("fs.removeAsync");
   std::string error;
-  const auto id = removals::start(path.real(), error);
+  // ABI v23: true as the second argument queues it on the background worker (removals.hpp).
+  const auto id = removals::start(path.real(), error, argc > 1 && JS_ToBool(ctx, argv[1]) == 1);
   if (!id) return JS_ThrowPlainError(ctx, "fs.removeAsync %s: %s", path.app(), error.c_str());
   return JS_NewUint32(ctx, id);
 }
@@ -680,7 +681,7 @@ JSValue namespace_object(JSContext* ctx, const char* space, const Function (&fun
 constexpr Function kFs[] = {
   {"readDir", fs_read_dir, 1}, {"stat", fs_stat, 1}, {"readFile", fs_read_file, 1},
   {"writeFile", fs_write_file, 4}, {"mkdir", fs_mkdir, 2}, {"remove", fs_remove, 1},
-  {"removeTree", fs_remove_tree, 1}, {"removeAsync", fs_remove_async, 1}, {"copyAsync", fs_copy_async, 3},
+  {"removeTree", fs_remove_tree, 1}, {"removeAsync", fs_remove_async, 2}, {"copyAsync", fs_copy_async, 3},
   {"rename", fs_rename, 2}, {"chmod", fs_chmod, 2}, {"mounts", fs_mounts, 0}, {"diskUsage", fs_disk_usage, 1},
   {"diskUsageAsync", fs_disk_usage_async, 1}, {"mountsAsync", fs_mounts_async, 0},
 };

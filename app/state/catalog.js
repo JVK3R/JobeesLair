@@ -176,11 +176,27 @@ import { FileSystem, Image } from '@ps5-react/core';
   // The Browse rows and the catalog grid show a game once; its page offers the other editions.
   // A title as editions share it: no ™/®, no platform word, letters and digits only.
   var plainTitle = (title) => title.toLowerCase().replace(/[™®©]/g, "").replace(/\b(?:ps[45]|playstation ?[45])\b/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  // 0.5.3: each game's keys are worked out once (its work, rating and title stay the same while the app runs):
+  // oneEach goes over the whole catalog at every section change.
+  var editionKeys = /* @__PURE__ */ new WeakMap();
+  function keysOf(game) {
+    let keys = editionKeys.get(game);
+    // The same name and the same stars is one game too (eFootball's editions, rated a person apart).
+    if (!keys) editionKeys.set(game, keys = [...game.work ? [`work:${game.work}`] : [], ...game.ratingCount >= TOP_RATED_MIN ? [`rated:${game.stars}/${game.ratingCount}`, `named:${plainTitle(game.title)}/${game.stars}`] : []]);
+    return keys;
+  }
+  // 0.5.3: `list` less the games in `shown` and every other edition of them: Discover's rows each show games the rows
+  // above them do not (Featured, Ready and Popular now opened with the same eight).
+  function otherThan(list, shown) {
+    const own = new Set(shown);
+    const taken = new Set();
+    for (const game of shown) for (const key of keysOf(game)) taken.add(key);
+    return list.filter((game) => !own.has(game) && !keysOf(game).some((key) => taken.has(key)));
+  }
   function oneEach(list) {
     const seen = /* @__PURE__ */ new Set();
     return list.filter((game) => {
-      // The same name and the same stars is one game too (eFootball's editions, rated a person apart).
-      const keys = [...game.work ? [`work:${game.work}`] : [], ...game.ratingCount >= TOP_RATED_MIN ? [`rated:${game.stars}/${game.ratingCount}`, `named:${plainTitle(game.title)}/${game.stars}`] : []];
+      const keys = keysOf(game);
       if (keys.some((key) => seen.has(key))) return false;
       for (const key of keys) seen.add(key);
       return true;
@@ -190,11 +206,6 @@ import { FileSystem, Image } from '@ps5-react/core';
   var sortLabel = (id) => t(`sort.${id}`);
   var sortGames = (list, id) => [...list].sort(SORTS.find((sort) => sort.id === id).compare);
   var fromArchive = (game) => Boolean(game.providers?.includes("archive.org"));
-  function showcase(list, count) {
-    list = oneEach(list);
-    const first = list.filter(fromArchive);
-    return first.length >= count ? first.slice(0, count) : [...first, ...list.filter((game) => !fromArchive(game))].slice(0, count);
-  }
   var HOST_NAMES = {
     "overdrive cdn": "Overdrive CDN",
     "archive.org": "Archive.org",
@@ -359,4 +370,4 @@ import { FileSystem, Image } from '@ps5-react/core';
   }
   var formatDate3 = (iso) => iso ? formatDate2(iso) : "\u2014";
 
-export { CDN_HOST, FACETS, NO_FILTERS, SORTS, activeCount, bundledIndex, editionsOf, facetCounts, facetLabel, facetTitle, featureLabel, filterGames, formatDate3, fromArchive, genreLabel, genres, getGame, listedId, onCdn, oneEach, optionLabel, ratingScore, readyHere, readyLabel, relatedGames, showcase, sortGames, sortLabel, summaryOf, toggleValue, topRated, warmCovers };
+export { CDN_HOST, FACETS, NO_FILTERS, SORTS, activeCount, bundledIndex, editionsOf, facetCounts, facetLabel, facetTitle, featureLabel, filterGames, formatDate3, fromArchive, genreLabel, genres, getGame, listedId, onCdn, oneEach, optionLabel, otherThan, ratingScore, readyHere, readyLabel, relatedGames, sortGames, sortLabel, summaryOf, toggleValue, topRated, warmCovers };

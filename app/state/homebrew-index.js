@@ -39,10 +39,12 @@
     }
     return out;
   }
-  function normalizeApp(app, categories) {
+  function normalizeApp(app, categories, categoryNames = /* @__PURE__ */ new Map()) {
     if (!app || typeof app !== "object" || typeof app.repo !== "string" || !REPO.test(app.repo)) return null;
     const name = str(app.name, 60).trim();
     if (!name) return null;
+    const author = str(app.author, 40) || app.repo.split("/")[0];
+    const category = categories.has(app.category) ? app.category : "system";
     const files = (Array.isArray(app.files) ? app.files : []).slice(0, MAX_FILES).map((file) => normalizeFile(file, app.repo)).filter(Boolean);
     if (!files.length) return null;
     const release = app.release && typeof app.release === "object" ? app.release : {};
@@ -50,8 +52,8 @@
       id: app.repo.toLowerCase(),
       repo: app.repo,
       name,
-      author: str(app.author, 40) || app.repo.split("/")[0],
-      category: categories.has(app.category) ? app.category : "system",
+      author,
+      category,
       description: str(app.description, 300),
       about: str(app.about, 1200),
       stars: num(app.stars) ?? 0,
@@ -75,8 +77,9 @@
       note: str(app.note, 300) || null,
       // Payloads installed with the app (its helper), by file name; only names the release really has.
       with: (Array.isArray(app.with) ? app.with : []).map((name2) => str(name2, 120)).filter((name2) => files.some((file) => file.name === name2)).slice(0, 3),
-      // Lowercased words for search, built once.
-      search: `${name} ${app.repo} ${str(app.description, 300)}`.toLowerCase()
+      // Lowercased words for search, built once. 0.5.3: its maker and its category's name too ("emulator" found
+      // none of the emulators whose description did not say it).
+      search: `${name} ${author} ${app.repo} ${str(app.description, 300)} ${category} ${categoryNames.get(category) ?? ""}`.toLowerCase()
     };
   }
   // The index as the app uses it, or null when the document is not one.
@@ -88,10 +91,11 @@
       categories.push({ id: "system", name: "System tools" });
       known.add("system");
     }
+    const names = new Map(categories.map((c) => [c.id, c.name]));
     const seen = /* @__PURE__ */ new Set();
     const apps = [];
     for (const raw of doc.apps.slice(0, MAX_APPS)) {
-      const app = normalizeApp(raw, known);
+      const app = normalizeApp(raw, known, names);
       if (!app || seen.has(app.id)) continue;
       seen.add(app.id);
       apps.push(app);
@@ -104,11 +108,16 @@
   var PAYLOAD_KINDS = ["payload", "archive-payload"];
   var PACKAGE_KINDS = ["pkg", "archive-pkg"];
   var roleOf = (file) => APP_KINDS.includes(file.kind) ? "app" : PAYLOAD_KINDS.includes(file.kind) ? "payload" : "package";
-  // Search: every word of the query in the name, the repository or the description; name matches first.
-  function searchApps(apps, query) {
+  // Search: every word of the query in the name, the maker, the repository, the description or the category (its
+  // name in the player's language too, `categoryLabel`); name matches first.
+  function searchApps(apps, query, categoryLabel = null) {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
     if (!words.length) return apps;
-    const found = apps.filter((app) => words.every((word) => app.search.includes(word)));
+    const text = categoryLabel ? (app) => `${app.search} ${String(categoryLabel(app) ?? "").toLowerCase()}` : (app) => app.search;
+    const found = apps.filter((app) => {
+      const haystack = text(app);
+      return words.every((word) => haystack.includes(word));
+    });
     const named = (app) => words.every((word) => app.name.toLowerCase().includes(word)) ? 1 : 0;
     return found.sort((a, b) => named(b) - named(a) || b.stars - a.stars);
   }

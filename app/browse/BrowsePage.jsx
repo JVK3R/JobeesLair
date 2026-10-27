@@ -21,6 +21,7 @@ import { NewLane, FeaturedLane, HomebrewLane, ReadyLane, RecentLane, TopLane } f
 import { useT } from '../i18n/index.js';
 import { StoreFreeze } from '../state/store.jsx';
 import { useFavoriteAction } from '../ui/GameCard.jsx';
+import { Later } from '../ui/later.js';
 import { Logo } from '../ui/Logo.jsx';
 import { colors } from '../ui/colors.js';
 import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
@@ -39,18 +40,20 @@ import { FocusScope, ScrollView, Text, View } from '@ps5-react/core';
         /* @__PURE__ */ (0, jsx)(Spotlight, {})
       ] }),
       /* @__PURE__ */ (0, jsx)(FeaturedLane, {}),
-      /* @__PURE__ */ (0, jsx)(TopLane, {}),
-      /* @__PURE__ */ (0, jsx)(NewLane, {}),
-      /* @__PURE__ */ (0, jsx)(ReadyLane, {}),
-      /* @__PURE__ */ (0, jsx)(ContinueRow, {}),
-      /* @__PURE__ */ (0, jsx)(PopularRail, {}),
-      /* @__PURE__ */ (0, jsx)(RecentLane, {}),
-      /* @__PURE__ */ (0, jsx)(HomebrewLane, {}),
-      /* @__PURE__ */ (0, jsx)(RecentRow, {}),
-      /* @__PURE__ */ (0, jsx)(CdnRail, {}),
-      /* @__PURE__ */ (0, jsx)(GenreRail, {}),
-      /* @__PURE__ */ (0, jsx)(Catalog, { onOpenFilters }),
-      /* @__PURE__ */ (0, jsx)(Footer, {})
+      // 0.5.3: the rest is under the first screenful and comes after it (ui/later.js), the catalog first: L1/R1
+      // and the menus go to it.
+      /* @__PURE__ */ (0, jsx)(Later, { turn: 1, children: jsx(TopLane, {}) }),
+      /* @__PURE__ */ (0, jsx)(Later, { turn: 2, children: jsx(NewLane, {}) }),
+      /* @__PURE__ */ (0, jsx)(Later, { turn: 3, children: jsx(ReadyLane, {}) }),
+      /* @__PURE__ */ (0, jsx)(Later, { turn: 4, children: jsx(ContinueRow, {}) }),
+      /* @__PURE__ */ (0, jsx)(Later, { turn: 5, children: jsx(PopularRail, {}) }),
+      /* @__PURE__ */ (0, jsx)(Later, { turn: 6, children: jsx(RecentLane, {}) }),
+      /* @__PURE__ */ (0, jsx)(Later, { turn: 7, children: jsx(HomebrewLane, {}) }),
+      /* @__PURE__ */ (0, jsx)(Later, { turn: 8, children: jsx(RecentRow, {}) }),
+      /* @__PURE__ */ (0, jsx)(Later, { turn: 9, children: jsx(CdnRail, {}) }),
+      /* @__PURE__ */ (0, jsx)(Later, { turn: 10, children: jsx(GenreRail, {}) }),
+      /* @__PURE__ */ (0, jsx)(Later, { turn: 0, children: jsx(Catalog, { onOpenFilters }) }),
+      /* @__PURE__ */ (0, jsx)(Later, { turn: 11, children: jsx(Footer, {}) })
     ] }) });
   });
   var BrowsePage = (0, memo)(function BrowsePage2() {

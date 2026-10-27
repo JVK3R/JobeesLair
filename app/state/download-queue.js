@@ -23,6 +23,7 @@ import { createMoves } from './queue-moves.js';
 import { createPayloadChecks } from './payload-checks.js';
 import { vikingLinkPage } from './viking-capture.js';
 import { readJSON } from './read-json.js';
+import { STAGING_SUFFIXES } from './extraction-staging.js';
 import { busyWhileOpen, mountedImages, shadowRequest, within2 } from './shadowmount.js';
 import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
 
@@ -1145,7 +1146,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         job2.release.parts && setDirectory(job2)
         // 0.5.1: an extraction's staging (Archives.extract: <output>.extracting, -<n> after a silent worker, and
         // .discard, an earlier run's set aside) goes with the job; it was left for the Files screen to delete.
-      ].filter(Boolean).flatMap((path) => [path, ...[".complete", ".complete.tmp", ".part", ".resume", ".resume.tmp", ".extracting", ".extracting.discard", ".extracting-1", ".extracting-1.discard", ".extracting-2", ".extracting-2.discard", ".extracting-3", ".extracting-3.discard"].map((suffix) => path + suffix)]);
+      ].filter(Boolean).flatMap((path) => [path, ...[".complete", ".complete.tmp", ".part", ".resume", ".resume.tmp", ...STAGING_SUFFIXES].map((suffix) => path + suffix)]);
       return [...new Set(paths)].filter((path) => managed(path) && !jobs.some((other) => other !== job2 && [other.artifact.destination, other.downloadDestination, other.output, other.publishTo].some((owned2) => owned2 && (owned2 === path || owned2.startsWith(`${path}/`)))));
     }
     async function executeSet(job2, signal) {
@@ -1377,7 +1378,10 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       if ((job2.rootIdentity || job2.written) && !job2.adopted && onOriginalStorage(job2)) {
         const paths = job2.release.parts ? setFiles(job2) : partialFiles(job2);
         if (job2.state === "queued") job2.state = "paused";
+        // 0.5.3: said, with how long it took: a cancel that waited minutes behind another deletion left no trace.
+        const began = Date.now();
         await removing(job2, () => removeAll(paths));
+        console.log(`[download-queue] ${job2.id}: cancelled, its partial files deleted in ${((Date.now() - began) / 1e3).toFixed(1)} s`);
       }
       const previous = jobs;
       jobs = jobs.filter((item) => item !== job2);
@@ -1680,6 +1684,8 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
           continue;
         }
         const set = await setStatus(job2, game);
+        // 0.5.3: deleted or moving on while ShadowMount was asked, it keeps what that set (the delete's own state).
+        if (!jobs.includes(job2) || !AWAITING_INSTALL.includes(job2.state)) continue;
         const own = problemOf(game.title_id, game);
         const problems = [...own?.problem ? [own.problem] : [], ...set.problems];
         job2.installedTitleId = game.title_id;

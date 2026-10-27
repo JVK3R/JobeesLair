@@ -19,6 +19,15 @@ test('there are 13 translations next to the English file', () => {
   assert.equal(others.length, 13);
 });
 
+// 0.5.3: "✕ on a picture opens it" drew "?": Exo2 has no dingbats, and the fallback fonts (tools/text_fonts.py) are cut
+// to their scripts' character sets, which have none either (arrows and ○ □ △ are in them). Emoji neither.
+test('no message uses a symbol none of the app\'s fonts can draw (dingbats like ✕ ✓, emoji)', () => {
+  const undrawable = /[✀-➿\u{1F300}-\u{1FAFF}]/u;
+  const found = [];
+  for (const file of ['en.json', ...others]) for (const [key, text] of Object.entries(read(file))) if (undrawable.test(text)) found.push(`${file} ${key}: ${text.match(undrawable)[0]}`);
+  assert.deepEqual(found, []);
+});
+
 for (const file of others) {
   test(`${file}: every English key is translated, none is left over`, () => {
     const messages = read(file);

@@ -26,6 +26,8 @@
 // One install runs at a time, in the order asked; the console's runtime runs one network task at a time
 // anyway, so an install also waits for a game download in progress.
 
+import { extractInTurn } from './archive-turn.js';
+import { stagingOf } from './extraction-staging.js';
 import { normalizeIndex, roleOf } from './homebrew-index.js';
 
   // 0.5.1: the index is built and kept in its own repository, apart from the store's.
@@ -39,6 +41,24 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
   // A payload's loader port: ELF loaders take .elf on 9021; a raw .bin goes to 9021 too (most PS5 .bin
   // payloads are ELF files), and to the 9020 loader when 9021 does not answer.
   var portsOf = (path) => /\.elf$/i.test(path) ? [9021] : [9021, 9020];
+  // 0.5.3: smaller than this, a release file is a stand-in, not an app (one author's newest release held a
+  // 4-byte Void.pkg reading "soon"). The index passes such releases over; this covers an index from before.
+  var MIN_FILE = 1024;
+  var standIn = (file) => Number.isFinite(file.size) && file.size > 0 && file.size < MIN_FILE;
+  // 0.5.3: a file's name with its version taken out, so a release's file is matched with the one an older release
+  // gave the same variant: "EVOPlayer-v0.13.0-PPSA99039-pro.ffpfsc" and "EVOPlayer-v0.14.0-PPSA99039-pro.ffpfsc" are
+  // one, the "-pro" and the plain build are not, and neither are PS5MC's kodi21 and kodi22 builds.
+  var variantOf = (name) => String(name).toLowerCase().replace(/v?\d+(?:\.\d+)+|\bv\d+\b/g, "#");
+  // An error as the stats get it: without the native call and the path that a task's message starts with
+  // ("Packages.install /data/downloads/homebrew/<app>/<file>.pkg: ").
+  var reasonOf = (message) => String(message).replace(/^[A-Z][A-Za-z]*\.[a-z][A-Za-z]* \/[^\n]*?: /, "");
+  // What a package install's failure means, in plain words where the reason is a known one.
+  function packageFailure(message) {
+    const reason = reasonOf(message);
+    if (/is not a (PS4 or PS5 package|PKG)/.test(reason)) return "This file isn't a package the console can install: it doesn't start like a PS4 or PS5 package.";
+    if (/payload loader on port 9021 did not answer/.test(reason)) return "Installing a package needs an ELF loader on port 9021 (etaHEN and OnionHEN have one). Load one, then try again.";
+    return reason;
+  }
   function createHomebrew({
     fs,
     http,
@@ -102,7 +122,14 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
       const next = normalizeIndex(doc);
       if (!next || !next.apps.length) return false;
       if (index && next.generated <= index.generated) return false;
-      index = { ...next, from, byId: new Map(next.apps.map((app) => [app.id, app])) };
+      // 0.5.3: an app whose newest release holds only stand-ins keeps the release the index before had, when that
+      // one has the app in it, so it still installs and no "update" to nothing is offered (an index built before
+      // the builder passed such releases over listed Spectrum Library 1.4.9, a 4-byte Void.pkg).
+      const apps = next.apps.map((app) => {
+        const before = index?.byId.get(app.id);
+        return app.files.every(standIn) && before && !before.files.every(standIn) ? { ...app, release: before.release, files: before.files, with: before.with } : app;
+      });
+      index = { ...next, apps, from, byId: new Map(apps.map((app) => [app.id, app])) };
       log(`index from ${from}: ${next.apps.length} apps`);
       return true;
     }
@@ -120,7 +147,10 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
       const saved = readJSON(installedFile);
       installed = saved && saved.version === 1 && saved.apps && typeof saved.apps === "object" ? saved.apps : {};
       pruneGone();
-      defer(repairModes);
+      defer(() => {
+        repairModes();
+        sweepTrash();
+      });
       scanFound();
       return index;
     }
@@ -232,7 +262,9 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
         record,
         outside,
         update: Boolean(app && record && record.tag !== app.release.tag),
-        task: task && task.phase !== "done" ? task : null,
+        // 0.5.3: an install still under way. A failed one counted too, so its page said "Installing…" for good,
+        // beside the reason it failed and a Cancel with nothing left to stop, until the app was restarted.
+        task: task && task.phase !== "done" && task.phase !== "failed" ? task : null,
         failed: task?.phase === "failed" ? task.error : ""
       };
     }
@@ -304,18 +336,28 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
     // Resolves with the folder the archive went to: `destination`, or one beside it when that will not clear.
     async function unpack(task, source, destination) {
       update(task, { phase: "extracting" });
-      try {
-        if (fs.exists(destination)) fs.removeTree(destination);
-      } catch (error) {
-        log(`${destination} not cleared: ${error.message}`);
+      // 0.5.3: with the extractor's own staging beside it (extraction-staging.js): an install cut off while it
+      // unpacked left that, and every later try, downloading the archive anew, was refused as another extraction's.
+      let clear = true;
+      for (const path of [destination, ...stagingOf(destination)]) {
+        try {
+          if (fs.exists(path)) fs.removeTree(path);
+        } catch (error) {
+          clear = false;
+          log(`${path} not cleared: ${error.message}`);
+        }
       }
       // 0.5.2: the extractor refuses a folder it did not finish ("Existing extraction has no matching, valid
       // completion receipt"), so a staging folder that will not clear made every later update of the app fail.
-      const into = fs.exists(destination) ? `${destination}-${now()}` : destination;
+      const into = clear && !fs.exists(destination) ? destination : `${destination}-${now()}`;
       fs.mkdir(parentOf(into), { recursive: true });
-      const extraction = archives.extract({ sources: [source], destination: into, maxBytes: 64 * 1024 ** 3 });
-      task.cancel = () => extraction.cancel();
+      // 0.5.3: the console extracts one archive at a time, so a game download's extraction goes first (archive-turn.js).
+      const turn = { stopped: () => task.cancelled, waiting: () => update(task, { phase: "waiting", waitFor: "unpack" }) };
+      task.cancel = () => turn.wake?.();
       try {
+        const extraction = await extractInTurn(archives, { sources: [source], destination: into, maxBytes: 64 * 1024 ** 3 }, turn);
+        if (task.waitFor) update(task, { phase: "extracting", waitFor: null });
+        task.cancel = () => extraction.cancel();
         await extraction.done;
       } finally {
         task.cancel = null;
@@ -382,7 +424,7 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
       }
       if (aside) {
         try {
-          if (typeof fs.removeAsync === "function") fs.removeAsync(aside).catch((error) => log(`${aside} not deleted: ${error.message}`));
+          if (typeof fs.removeAsync === "function") fs.removeAsync(aside, { background: true }).catch((error) => log(`${aside} not deleted: ${error.message}`));
           else fs.removeTree(aside);
         } catch (error) {
           log(`${aside} not deleted: ${error.message}`);
@@ -690,6 +732,89 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
         }
       }
     };
+    // What a removal or an update set aside to delete: <drive>/downloads/homebrew/.removed-<time>-<name>, deleted
+    // in the background. Paths this launch is deleting, so the sweep below never starts a second deletion of one.
+    // 0.5.3: on the engine's background worker (removeAsync's `background`). The console deletes one thing at a
+    // time, and RetroArch's 19,462 files, deleted at launch, kept a cancelled download's card on "Removing" for
+    // minutes behind them.
+    const TRASH = ".removed-";
+    const deleting = /* @__PURE__ */ new Set();
+    function deleteLater(path) {
+      if (deleting.has(path)) return;
+      if (typeof fs.removeAsync !== "function") {
+        try {
+          fs.removeTree(path);
+        } catch (error) {
+          log(`${path} not deleted: ${error.message}`);
+        }
+        return;
+      }
+      deleting.add(path);
+      fs.removeAsync(path, { background: true }).catch((error) => log(`${path} not deleted: ${error.message}`)).finally(() => deleting.delete(path));
+    }
+    // 0.5.3: a deletion the app was closed during stopped there, and what it had not reached stayed for good
+    // (PS5X360's whole folder, after a removal, on Jake's console). Deleted again once per launch, after the
+    // drives are known (load's deferred work, then each rescan).
+    const swept = /* @__PURE__ */ new Set();
+    function sweepTrash() {
+      for (const root of roots()) {
+        const dir = `${root}/downloads/homebrew`;
+        if (swept.has(dir)) continue;
+        swept.add(dir);
+        let entries = [];
+        try {
+          entries = fs.exists(dir) ? fs.readDir(dir) : [];
+        } catch (error) {
+          log(`${dir} not read: ${error.message}`);
+        }
+        for (const entry of entries) {
+          if (!entry.name.startsWith(TRASH) || deleting.has(`${dir}/${entry.name}`)) continue;
+          log(`${dir}/${entry.name}: left by a removal that was cut off; deleting it`);
+          deleteLater(`${dir}/${entry.name}`);
+        }
+      }
+    }
+    // 0.5.3: an update whose image (or payload) is named after its version is put beside the old one, not over it:
+    // Lineup-1.4.1.exfat stayed in homebrew/ next to Lineup-1.4.2.exfat, two images of one title for ShadowMount+
+    // and the old one's space taken. Once the new one is in place, the old one goes the way a removed app's does,
+    // but only an older copy of the same file (variantOf): another variant the player put there stays.
+    function dropReplaced(previous, target) {
+      const old = previous?.run ?? previous?.paths?.[0];
+      if (!old || old === target || previous.package || parentOf(old) !== parentOf(target)) return;
+      if (variantOf(baseName(old)) !== variantOf(baseName(target)) || !fs.exists(old)) return;
+      try {
+        if (previous.run) fs.remove(old);
+        else {
+          const trash = `${previous.root}/downloads/homebrew/${TRASH}${now()}-${baseName(old)}`;
+          fs.mkdir(parentOf(trash), { recursive: true });
+          fs.rename(old, trash);
+          deleteLater(trash);
+        }
+        log(`${baseName(old)} is replaced by ${baseName(target)}, so it was deleted`);
+      } catch (error) {
+        log(`${old} not deleted: ${error.message}`);
+      }
+    }
+    // 0.5.3: another of the release's files than the installed one (Spectrum Library's package after its payload)
+    // wrote its record over the old one, and the payload stayed on the console, where Remove no longer looked. The
+    // payload's own files go once the new install is in; anything else in its folder (what it saved) stays.
+    function dropOtherKind(previous, shipped, record) {
+      const folder = previous?.run ? previous.paths?.[0] : null;
+      if (!folder || record.run?.startsWith(`${folder}/`) || record.helperDir === folder || !fs.exists(folder)) return;
+      for (const path of shipped ?? [baseName(previous.run)]) {
+        try {
+          if (fs.exists(`${folder}/${path}`)) fs.remove(`${folder}/${path}`);
+        } catch (error) {
+          log(`${folder}/${path} not deleted: ${error.message}`);
+        }
+      }
+      try {
+        if (!listFiles(folder).length) fs.removeTree(folder);
+      } catch (error) {
+        log(`${folder} not removed: ${error.message}`);
+      }
+      log(`${baseName(previous.run)} is replaced by ${record.package ? "the package" : baseName(record.paths[0])}, so it was deleted`);
+    }
     // An app's helper payloads (an emulator's launcher): kept like any payload, run from the app's page.
     async function addHelpers(task, app, slug, record) {
       for (const wanted of app.with ?? []) {
@@ -719,6 +844,9 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
         return;
       }
       const role = roleOf(file);
+      // What was installed before, for dropReplaced and dropOtherKind (the record is written anew at the end).
+      const previous = installed[app.id] ?? null;
+      const shippedBefore = previous?.run ? readShipped(slug) : null;
       const root = role === "payload" ? null : rootFor(file, app);
       const work = role === "payload" ? `${payloadDir}/.incoming/${slug}` : `${root}/downloads/homebrew/${slug}`;
       const download = `${work}/${file.name}`;
@@ -729,6 +857,9 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
       // install, so what an earlier attempt left there is never in the way).
       const backup = `${work}/previous-${now()}`;
       log(`${app.id}: installing ${file.name} (${file.kind}) ${app.release.tag}`);
+      if (standIn(file)) {
+        throw new Error(`This release's ${file.name} is only ${file.size} bytes, so it isn't ${app.name} itself. Its author may not have uploaded it yet.`);
+      }
       keepLeftovers(work, slug);
       await fetchTo(task, file, download, root ?? void 0);
       update(task, { phase: "installing", written: task.total ?? task.written });
@@ -736,6 +867,7 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
       if (file.kind === "image") {
         const target = `${root}/homebrew/${file.name}`;
         place(download, target);
+        dropReplaced(previous, target);
         record = { paths: [target], root };
       } else if (file.kind === "app") {
         const into = await unpack(task, download, unpacked);
@@ -760,10 +892,12 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
         if (!image) throw new Error("The archive holds no disk image.");
         const target = `${root}/homebrew/${baseName(image)}`;
         place(image, target);
+        dropReplaced(previous, target);
         record = { paths: [target], root };
       } else if (file.kind === "payload") {
         const target = `${payloadDir}/${slug}/${file.name}`;
         place(download, target);
+        dropReplaced(previous, target);
         record = { paths: [`${payloadDir}/${slug}`], run: target };
         rememberShipped(slug, [file.name], record.paths[0]);
         bringBack(slug, record, record.paths[0], /* @__PURE__ */ new Set([file.name]));
@@ -779,6 +913,7 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
         if (fs.exists(target)) mergeInto(folder, target, keep, backup);
         else place(folder, target);
         dropMarkers(target);
+        dropReplaced(previous, `${target}/${baseName(elf)}`);
         record = { paths: [target], run: `${target}/${baseName(elf)}` };
         rememberShipped(slug, files, target);
         bringBack(slug, record, target, new Set(files));
@@ -795,9 +930,14 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
         }
         update(task, { phase: "installing" });
         const install = packages.install({ path: pkg, name: app.name });
-        await install.done;
+        await install.done.catch((error) => {
+          throw error?.name === "AbortError" || task.cancelled ? error : new Error(packageFailure(error?.message ?? error));
+        });
         record = { paths: [], root, package: true };
+        // 0.5.3: a package's helper payloads too (PS5Library's agent), kept and run like a folder app's.
+        await addHelpers(task, app, slug, record);
       }
+      dropOtherKind(previous, shippedBefore, record);
       tidy(work, `${payloadDir}/.incoming/${slug}`);
       installed[app.id] = { tag: app.release.tag, file: file.name, kind: file.kind, installedAt: now(), ...record };
       delete found[app.id];
@@ -822,18 +962,27 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
         log(`${task.appId}: ${cancelled ? "cancelled" : `install failed: ${error?.message}`}`);
         if (cancelled) tasks.delete(task.appId);
         update(task, { phase: cancelled ? "done" : "failed", error: cancelled ? "" : String(error?.message || error) });
-        if (!cancelled) onInstalled({ app: task.appId, ok: false, error: String(error?.message || error) });
+        if (!cancelled) onInstalled({ app: task.appId, ok: false, error: reasonOf(error?.message || error) });
       } finally {
         running = null;
         void pumpQueue();
       }
     }
-    // Queues the app's install (its best file, or the one named). Returns at once; statusOf shows progress.
+    // The file an update installs: the one installed when the release still has it, else the same variant under
+    // its new version's name (variantOf), else the release's best. 0.5.3: a release that names its files after
+    // their version took its first file, so an update switched EVO Player's "-pro" build for the plain one.
+    function updateFileOf(app, record) {
+      const was = record?.file;
+      if (!was) return app.files[0];
+      return app.files.find((item) => item.name === was) ?? app.files.find((item) => item.kind === record.kind && variantOf(item.name) === variantOf(was)) ?? app.files[0];
+    }
+    // Queues the app's install (its best file, or the one named; an update, the installed one's). Returns at once;
+    // statusOf shows progress.
     function install(id, fileName2) {
       load();
       const app = index.byId.get(id);
       if (!app) throw new Error("No such app.");
-      const file = fileName2 ? app.files.find((item) => item.name === fileName2) : app.files[0];
+      const file = fileName2 ? app.files.find((item) => item.name === fileName2) : updateFileOf(app, installed[id]);
       if (!file) throw new Error("No such file in this release.");
       const current = tasks.get(id);
       if (current && current.phase !== "failed" && current.phase !== "done") return;
@@ -990,10 +1139,10 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
           if (!fs.exists(path)) continue;
           if (record.run) fs.removeTree(path);
           else {
-            const trash = `${record.root}/downloads/homebrew/.removed-${now()}-${baseName(path)}`;
+            const trash = `${record.root}/downloads/homebrew/${TRASH}${now()}-${baseName(path)}`;
             fs.mkdir(parentOf(trash), { recursive: true });
             fs.rename(path, trash);
-            if (typeof fs.removeAsync === "function") fs.removeAsync(trash).catch((error) => log(`${trash} not deleted: ${error.message}`));
+            deleteLater(trash);
           }
         } catch (error) {
           // The app stays, so what was kept goes back in with it.
@@ -1046,6 +1195,7 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
       rescan: () => {
         pruneGone();
         scanFound();
+        sweepTrash();
         emit();
       },
       canRun: (id) => Boolean(installed[id]?.run),
@@ -1056,4 +1206,4 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
     };
   }
 
-export { INDEX_URL, createHomebrew, slugOf };
+export { INDEX_URL, createHomebrew, slugOf, variantOf };

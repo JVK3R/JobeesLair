@@ -50,9 +50,7 @@ import { logical } from './scale.js';
 import { PRESETS, presetOf, useActiveTheme } from './themes.js';
 import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocused } from '@ps5-react/core';
 
-  var COLUMN = 852;
   var CARD = { gap: 16, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 34 };
-  var ENTER = { type: "tween", duration: 0.34, ease: [0.22, 1, 0.36, 1] };
   var THUMB = { type: "tween", duration: 0.18, ease: "easeOut" };
   var text = (size, color, extra) => ({ fontFamily: "Exo2", fontSize: size, lineHeight: Math.round(size * 1.4), color, ...extra });
   var STATUS = {
@@ -111,7 +109,6 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
   }
   // A paragraph or two behind a row (the credits, the legal notice): shown only once the row is opened.
   function Folded({ focusKey, name, paragraphs }) {
-    const t2 = useT();
     const [open, setOpen] = (0, useState)(false);
     return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
       /* @__PURE__ */ (0, jsx)(Row, { focusKey, name, end: /* @__PURE__ */ (0, jsx)(Icon, { name: open ? "chevronUp" : "chevronDown", color: colors.muted }), onPress: () => setOpen((value) => !value) }),
