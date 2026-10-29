@@ -90,7 +90,7 @@ body:
     id: logs
     attributes:
       label: Log
-      description: If the app won't install or start, the relevant lines from `/data/shadowmount/debug.log` help a lot.
+      description: For install or startup failures, attach /data/shadowmount/debug.log or paste the relevant lines here. A path alone is not the log. Remove console IP addresses before posting.
       render: text
 
   - type: checkboxes
