@@ -90,7 +90,7 @@ body:
     id: logs
     attributes:
       label: Log
-      description: For install or startup failures, attach /data/shadowmount/debug.log or paste the relevant lines here. A path alone is not the log. Remove console IP addresses before posting.
+      description: For a crash or freeze, attach Jobee'sLair's own log, `/data/ps5-react/PPSA99471/logs/jobeeslair.log` (`app.log` in the same folder helps too). If the app won't install or start at all, attach `/data/shadowmount/debug.log` as well, or paste the relevant lines here. A path alone is not the log. Remove console IP addresses before posting.
       render: text
 
   - type: checkboxes
