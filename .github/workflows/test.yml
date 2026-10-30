@@ -1,10 +1,12 @@
 name: test
 
-# The app's logic and screen tests (tests/, run with npm) on every push and pull request. They need only
+# The app's logic and screen tests (tests/, run with npm) on every branch push and pull request. They need only
 # Node: no console, no toolchain. The build workflow (build.yml) and the beta workflow (beta.yml) run
-# them again before they build anything.
+# them again before they build anything. A release's tag is left out: publishing the draft pushes it onto a
+# commit already tested on main, and a second run there only adds a second check to the same commit.
 on:
   push:
+    branches: ['**']
   pull_request:
 
 permissions:

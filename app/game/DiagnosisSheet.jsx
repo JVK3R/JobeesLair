@@ -9,12 +9,13 @@ import '../assets/Exo2.ttf';
 import '../assets/JetBrainsMono-Regular.ttf';
 import { jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useState } from 'react';
-import { useT } from '../i18n/index.js';
+import { tWhole, useT } from '../i18n/index.js';
 import { downloadQueue } from '../state/downloads.js';
 import { Button2 } from '../ui/Button.jsx';
 import { FocusRing } from '../ui/FocusRing.jsx';
 import { fixNeeded, fixStateText, fixText } from './fix-text.js';
 import { SideSheet } from '../ui/SideSheet.jsx';
+import { LongText } from '../ui/LongText.jsx';
 import { colors, radius } from '../ui/colors.js';
 import { Text, View } from '@ps5-react/core';
 
@@ -70,7 +71,7 @@ import { Text, View } from '@ps5-react/core';
     };
     const body = loading ? [/* @__PURE__ */ (0, jsx)(Block, { autoFocus: true, children: /* @__PURE__ */ (0, jsx)(Text, { style: [BODY, { color: colors.muted }], children: t2("diagnosis.checking") }) }, "loading")] : error ? [/* @__PURE__ */ (0, jsx)(Block, { autoFocus: true, children: /* @__PURE__ */ (0, jsx)(Text, { style: [BODY, { color: colors.fg }], children: t2("diagnosis.unavailable", { error }) }) }, "error")] : [
       /* @__PURE__ */ (0, jsxs)(Block, { autoFocus: true, children: [
-        /* @__PURE__ */ (0, jsx)(Text, { style: [BODY, { color: colors.fg }], children: result.verdict.text }),
+        /* @__PURE__ */ (0, jsx)(LongText, { style: [BODY, { color: colors.fg }], children: result.verdict.text }),
         /* @__PURE__ */ (0, jsx)(Text, { style: [BODY, { fontSize: 19, color: colors.subtle }], children: t2("diagnosis.attempts", { count: result.launches, version: result.version || "?" }) })
       ] }, "verdict"),
       now ? /* @__PURE__ */ (0, jsxs)(View, { style: { gap: 10, paddingHorizontal: 18, paddingVertical: 6 }, children: [
@@ -80,6 +81,8 @@ import { Text, View } from '@ps5-react/core';
       ] }, "fix") : null,
       // 0.5.1: it loaded its own fakelib; turning that off is the first thing to try when it crashes.
       result.fakelib ? /* @__PURE__ */ (0, jsx)(Block, { children: /* @__PURE__ */ (0, jsx)(Text, { style: [BODY, { color: colors.fg }], children: t2("diagnosis.fakelibTip") }) }, "fakelib") : null,
+      // 0.5.4: it froze; the error code alone read like a failed install.
+      result.froze ? /* @__PURE__ */ (0, jsx)(Block, { children: /* @__PURE__ */ (0, jsx)(LongText, { style: [BODY, { color: colors.fg }], children: tWhole("diagnosis.frozeTip") }) }, "froze") : null,
       result.lines.length ? /* @__PURE__ */ (0, jsx)(Lines, { heading: t2("diagnosis.logLines"), lines: result.lines }, "log") : null,
       result.kernel.length ? /* @__PURE__ */ (0, jsx)(Lines, { heading: t2("diagnosis.kernelLines"), lines: result.kernel }, "kernel") : /* @__PURE__ */ (0, jsx)(Block, { children: /* @__PURE__ */ (0, jsx)(Text, { style: [BODY, { color: colors.muted }], children: t2(result.kernelRead ? "diagnosis.noKernel" : "diagnosis.kernelUnread") }) }, "kernel")
     ].filter(Boolean);

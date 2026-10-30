@@ -19,24 +19,25 @@ import { useEffect, useState } from 'react';
 import { CREATOR, choosePin, setCompanion, setCompanionAway, useCompanion } from '../companion/service.js';
 import { URLDialog } from '../downloads/URLDialog.jsx';
 import { formatDate2, formatNumber2 } from '../i18n/core.js';
-import { chooseLanguage, languageChoice, systemLocale, useT } from '../i18n/index.js';
+import { chooseLanguage, languageChoice, systemLocale, tWhole, useT } from '../i18n/index.js';
 import { LOCALES } from '../i18n/locales.js';
 import { reportRelay, sendReport } from '../state/bug-report.js';
 import { online, useOnline } from '../state/online.js';
-import { setAllDebridKey, setTorBoxKey, testAllDebrid, testTorBox, useDebrid } from '../state/debrid.js';
+import { debridStatus, setAllDebridKey, setTorBoxKey, testAllDebrid, testTorBox, useDebrid } from '../state/debrid.js';
 import { HOMEBREW_ONLY } from '../edition.js';
 import { LIMITS as SPEED_LIMITS, setSpeedLimit, useSpeedLimit } from '../state/speed-limit.js';
 import { setAutoContinueParts, useAutoContinueParts } from '../state/auto-continue.js';
 import { setScreenSaver, showScreenSaver, useScreenSaverOn } from '../state/screen-saver.js';
+import { setTypingChoice, useTypingChoice } from '../state/system-keyboard.js';
 import { useNavActions } from '../state/nav.jsx';
 import { downloadQueue, driveName } from '../state/downloads.js';
 import { useDrives } from '../state/drives.js';
 import { MAX_FEEDS, MAX_MIRRORS, addFeed, addMirror, refreshFeeds, removeFeed, removeMirror, useFeeds } from '../state/feeds.js';
 import { formatBytes } from '../state/size.js';
-import { isoDate } from '../state/clock.js';
-import { canInstall, checkForUpdate, openUpdateDialog, setAutoInstall, useAutoInstall, useInstall, useUpdate } from '../state/update.js';
+import { canInstall, checkForUpdate, openUpdateDialog, setAutoInstall, updateDetail, useAutoInstall, useInstall, useUpdate } from '../state/update.js';
 import { REPO, VERSION_LABEL } from '../version.js';
 import { JLMark } from './JLMark.jsx';
+import { LongText } from './LongText.jsx';
 import { FocusRing } from './FocusRing.jsx';
 import { Icon } from './Icon.jsx';
 import { Menu, MenuDivider, MenuItem } from './Menu.jsx';
@@ -48,7 +49,7 @@ import { setNavigationHaptics, useNavigationHaptics } from './haptics.js';
 import { onStatusLight, setStatusLight, statusLightOn } from './lightBar.js';
 import { logical } from './scale.js';
 import { PRESETS, presetOf, useActiveTheme } from './themes.js';
-import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocused } from '@ps5-react/core';
+import { FocusScope, Image, Keyboard, Linking, ScrollView, Text, View, motion, useIsFocused } from '@ps5-react/core';
 
   var CARD = { gap: 16, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 34 };
   var THUMB = { type: "tween", duration: 0.18, ease: "easeOut" };
@@ -60,11 +61,11 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     locked: { color: "#fbbf24", label: "settings.status.locked" },
     error: { color: "#f87171", label: "settings.status.error" }
   };
-  // A status pill with a colored dot: the companion's state at a glance.
+  // A status tag with a colored dot: the companion's state at a glance.
   function Chip({ status }) {
     const t2 = useT();
     const { color, label } = STATUS[status];
-    return /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 10, borderRadius: radius.pill, backgroundColor: colors.surface3, paddingHorizontal: 18, paddingVertical: 6 }, children: [
+    return /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 10, borderRadius: radius.sm, backgroundColor: colors.surface3, paddingHorizontal: 18, paddingVertical: 6 }, children: [
       /* @__PURE__ */ (0, jsx)(View, { style: { width: 10, height: 10, borderRadius: radius.pill, backgroundColor: color } }),
       /* @__PURE__ */ (0, jsx)(Text, { style: text(19, colors.fg, { fontWeight: 600 }), children: t2(label) })
     ] });
@@ -112,7 +113,10 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     const [open, setOpen] = (0, useState)(false);
     return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
       /* @__PURE__ */ (0, jsx)(Row, { focusKey, name, end: /* @__PURE__ */ (0, jsx)(Icon, { name: open ? "chevronUp" : "chevronDown", color: colors.muted }), onPress: () => setOpen((value) => !value) }),
-      ...open ? paragraphs.map((paragraph, index) => /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: paragraph }, index)) : []
+      // 0.5.4: each in a row it flexes across, as a Callout's (a Text stacked straight in the card was measured at the
+      // page's width before the card's was known, and got too few lines), and in pieces the engine keeps whole
+      // (ui/LongText.jsx): the stats' "What it sends" and the legal notice had lost their ends.
+      ...open ? paragraphs.map((paragraph, index) => /* @__PURE__ */ (0, jsx)(View, { style: { flexDirection: "row" }, children: /* @__PURE__ */ (0, jsx)(LongText, { style: text(20, colors.muted), box: { flex: 1 }, children: paragraph }) }, index)) : []
     ] });
   }
   function Callout({ tone = "info", children }) {
@@ -216,8 +220,18 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:statusLight", name: t2("settings.statusLight"), hint: t2("settings.statusLightDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: light }), onPress: () => setStatusLight(!light) })
     ] });
   }
+  // 0.5.4: whether typing opens the PS5's own keyboard (state/system-keyboard.js) or the store's keys.
+  function keyboardThere() {
+    try {
+      return Keyboard.available;
+    } catch {
+      return false;
+    }
+  }
   function LanguageCard() {
     const t2 = useT();
+    const typing = useTypingChoice();
+    const [there] = (0, useState)(keyboardThere);
     const choice = languageChoice();
     const [open, setOpen] = (0, useState)(false);
     const nameOf = (code) => LOCALES.find((locale) => locale.code === code)?.name ?? code;
@@ -231,7 +245,10 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
           /* @__PURE__ */ (0, jsx)(MenuDivider, {}),
           LOCALES.map(({ code, name }) => /* @__PURE__ */ (0, jsx)(MenuItem, { label: name, checked: choice === code, onSelect: () => chooseLanguage(code) }, code))
         ] })
-      ] })
+      ] }),
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:typing", name: t2("settings.typing"), hint: t2(there ? "settings.typingDetail" : "settings.typingMissing"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: there && typing === "system" }), onPress: () => {
+        if (there) setTypingChoice(typing === "system" ? "keys" : "system");
+      } })
     ] });
   }
   var hostOf = (url) => /^https?:\/\/([^/?#]+)/i.exec(url)?.[1] ?? url;
@@ -325,22 +342,9 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       feeds.some((feed) => feed.restart) ? /* @__PURE__ */ (0, jsx)(Callout, { children: t2("settings.feeds.restart") }) : null
     ] });
   }
-  // What the TorBox account looks like, from the last connection test (state/debrid.js).
-  function accountText(t2, account) {
-    if (!account) return null;
-    const plan = t2(`settings.debrid.plan.${account.planName}`);
-    if (!account.premium) return t2("settings.debrid.free");
-    return account.expiresAt ? t2("settings.debrid.okUntil", { plan, date: formatDate2(account.expiresAt.slice(0, 10)) }) : t2("settings.debrid.ok", { plan });
-  }
   // Debrid providers: the TorBox API key (typed in, kept as its last four characters on screen), a
   // connection test that pauses a running download while it asks (the network is one task at a time),
   // and removing the key. With a key, the source list offers TorBox on the hosts it supports.
-  // 0.5.1: AllDebrid's account, from its last connection test.
-  function allDebridText(t2, account) {
-    if (!account) return null;
-    if (!account.premium) return t2("settings.alldebrid.free");
-    return account.expiresAt ? t2("settings.alldebrid.okUntil", { date: formatDate2(account.expiresAt.slice(0, 10)) }) : t2("settings.alldebrid.ok");
-  }
   var quietly = (reason, work) => downloadQueue().quietNetwork ? downloadQueue().quietNetwork(reason, work) : work();
   function DebridCard({ onKey, onAllDebridKey }) {
     const t2 = useT();
@@ -356,7 +360,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       );
     };
     const all = debrid.allDebrid;
-    const allStatus = allTest.state === "testing" ? t2("settings.alldebrid.testing") : allTest.state === "failed" ? null : allDebridText(t2, all.account);
+    const allStatus = allTest.state === "testing" ? t2("settings.alldebrid.testing") : allTest.state === "failed" ? null : debridStatus(t2, "alldebrid", all.account);
     const run = () => {
       if (test.state === "testing") return;
       setTest({ state: "testing", error: "" });
@@ -365,7 +369,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
         (error2) => setTest({ state: "failed", error: error2.message })
       );
     };
-    const status = test.state === "testing" ? t2("settings.debrid.testing") : test.state === "failed" ? null : accountText(t2, debrid.account);
+    const status = test.state === "testing" ? t2("settings.debrid.testing") : test.state === "failed" ? null : debridStatus(t2, "torbox", debrid.account);
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "zap", title: t2("settings.card.debrid") }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:torbox:key", name: t2("settings.debrid.key"), detail: debrid.configured ? t2("settings.debrid.keySet", { key: debrid.masked }) : t2("settings.debrid.keyNone"), hint: `${t2("settings.debrid.detail")} ${t2("settings.debrid.stored")}`, end: /* @__PURE__ */ (0, jsx)(Icon, { name: "chevronRight", color: colors.muted }), onPress: onKey }),
@@ -417,21 +421,6 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:guide", name: open ? t2("settings.guide.hide") : t2("settings.guide.show"), hint: t2("settings.guide.detail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: open ? "chevronUp" : "chevronDown", color: colors.muted }), onPress: () => setOpen((value) => !value) }),
       ...open ? steps.map(([title, detail], index) => /* @__PURE__ */ (0, jsx)(View, { focusKey: `settings:guide:${index}`, focusable: true, style: STEP, children: /* @__PURE__ */ (0, jsx)(StepFace, { index, title, detail }) }, index)) : []
     ] });
-  }
-  // What the update row says: checking, a newer version (downloading, ready to install, or not installed),
-  // a failed check, or when it last looked.
-  function updateDetail(t2, update, install) {
-    if (update.checking) return t2("settings.update.checking");
-    const version = update.update?.version;
-    if (version && install.version === version) {
-      if (["ready", "armed"].includes(install.phase)) return t2("settings.update.ready", { version });
-      if (["waiting", "downloading", "checking"].includes(install.phase))
-        return t2("settings.update.downloading", { version, percent: String(install.total ? Math.floor(Math.min(1, install.written / install.total) * 100) : 0) });
-      if (install.phase === "failed") return t2("settings.update.installFailed", { version });
-    }
-    if (update.update) return t2("settings.update.available", { version: update.update.version });
-    if (update.failed) return t2("settings.update.failed");
-    return update.checkedAt ? t2("settings.update.current", { date: formatDate2(isoDate(update.checkedAt)) }) : t2("settings.update.never");
   }
   // The optional donation link: a QR code for the phone and a short note, shown only when the row is
   // opened. Nothing in the app depends on it, asks for it or reminds anyone of it.
@@ -488,7 +477,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     return jsxs(Fragment, { children: [
       ...announcements.map((note) => jsx(Callout, { tone: note.level === "warning" ? "warn" : "info", children: `${t2("news.title")}: ${note.text}` }, note.id)),
       jsx(Row, { focusKey: "settings:stats", name: t2("settings.online.row"), hint: t2("settings.online.detail"), end: jsx(Switch, { on: enabled }), onPress: () => online().setEnabled(!enabled) }),
-      jsx(Folded, { focusKey: "settings:stats:what", name: t2("settings.online.what"), paragraphs: [t2("settings.online.sends"), t2("settings.online.never")] })
+      jsx(Folded, { focusKey: "settings:stats:what", name: t2("settings.online.what"), paragraphs: [tWhole("settings.online.sends"), tWhole("settings.online.never")] })
     ] });
   }
   function AboutCard() {
@@ -528,7 +517,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
       } }) : null,
       jsx(ReportRow, {}),
       jsx(OnlineRows, {}),
-      /* @__PURE__ */ (0, jsx)(Folded, { focusKey: "settings:credits", name: t2("settings.about.creditsRow"), paragraphs: [t2("settings.about.origin"), t2("settings.about.credits")] })
+      /* @__PURE__ */ (0, jsx)(Folded, { focusKey: "settings:credits", name: t2("settings.about.creditsRow"), paragraphs: [tWhole("settings.about.origin"), tWhole("settings.about.credits")] })
     ] });
   }
   // The content neutrality and takedown notice (the same text as README.md and LICENSE): what the app is, what it
@@ -538,7 +527,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "alert", title: t2("settings.card.legal") }),
       /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted), children: t2("settings.legal.neutral") }),
-      /* @__PURE__ */ (0, jsx)(Folded, { focusKey: "settings:legal:read", name: t2("settings.legal.read"), paragraphs: [t2("settings.legal.nohost"), t2("settings.legal.feeds"), t2("settings.legal.report")] }),
+      /* @__PURE__ */ (0, jsx)(Folded, { focusKey: "settings:legal:read", name: t2("settings.legal.read"), paragraphs: [tWhole("settings.legal.nohost"), tWhole("settings.legal.feeds"), tWhole("settings.legal.report")] }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:report", name: t2("settings.legal.reportRow"), detail: `github.com/${REPO}/issues`, end: /* @__PURE__ */ (0, jsx)(Icon, { name: "external", color: colors.muted }), onPress: () => {
         try {
           Linking.openURL(`https://github.com/${REPO}/issues/new?template=takedown.yml`);
@@ -629,7 +618,7 @@ import { FocusScope, Image, Linking, ScrollView, Text, View, motion, useIsFocuse
         setMirrorOf(null);
         closed(`settings:feed:${url}`);
       } }) : null,
-      keying ? /* @__PURE__ */ (0, jsx)(URLDialog, { title: t2("settings.debrid.keyTitle"), detail: t2("settings.debrid.keyDetail"), initial: "", submit: setTorBoxKey, onClose: () => {
+      keying ? /* @__PURE__ */ (0, jsx)(URLDialog, { title: t2("settings.debrid.keyTitle"), detail: t2("settings.debrid.keyDetail"), initial: "", kind: "key", submit: setTorBoxKey, onClose: () => {
         setKeying(false);
         closed("settings:torbox:key");
       } }) : null,

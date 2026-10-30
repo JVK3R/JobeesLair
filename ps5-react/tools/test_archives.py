@@ -1,6 +1,6 @@
 """Real local archive extraction with the same native worker used on PS5."""
 from pathlib import Path
-import binascii,hashlib,io,json,lzma,os,random,struct,subprocess,tarfile,tempfile,time,zipfile
+import binascii,hashlib,io,json,lzma,os,random,struct,subprocess,sys,tarfile,tempfile,time,zipfile
 from rar_worker import build_host
 ROOT=Path(__file__).resolve().parents[1]
 DATA=bytes(range(256))*1024
@@ -22,6 +22,13 @@ def encode_7z_header(plain):
   +b"\x07\x0b"+number7z(1)+b"\x00"+number7z(1)+coder+b"\x0c"+number7z(len(header))+b"\x00\x00")
  start=struct.pack("<QQI",offset+len(packed),len(encoded),binascii.crc32(encoded))
  return plain[:8]+struct.pack("<I",binascii.crc32(start))+start+plain[32:32+offset]+packed+encoded
+
+def seven_dictionary(plain,bits):
+ """A bsdtar LZMA2 7z whose coder declares dictionary property `bits` instead (30: 128 MiB), its CRCs redone."""
+ offset,size=struct.unpack("<QQ",plain[12:28]);at=32+offset;header=bytearray(plain[at:at+size])
+ header[header.index(b"\x21\x21\x01")+3]=bits
+ start=struct.pack("<QQI",offset,size,binascii.crc32(header))
+ return plain[:8]+struct.pack("<I",binascii.crc32(start))+start+plain[32:at]+bytes(header)
 
 def vint(v):
  out=b""
@@ -116,9 +123,9 @@ def uudecode(source,destination):
 def main():
  with tempfile.TemporaryDirectory(prefix="ps5-react-archives-") as tmp:
   root=Path(tmp);binary=root/"archive-client"
-  prefix=subprocess.check_output(["brew","--prefix","libarchive"],text=True).strip()
-  xz=subprocess.check_output(["brew","--prefix","xz"],text=True).strip()
-  crypto=subprocess.check_output(["brew","--prefix","openssl@3"],text=True).strip()
+  # Homebrew's keg-only formulae on macOS; the system's own libraries on Linux.
+  brew=lambda formula:subprocess.check_output(["brew","--prefix",formula],text=True).strip() if sys.platform=="darwin" else "/usr"
+  prefix=brew("libarchive");xz=brew("xz");crypto=brew("openssl@3")
   sources=[ROOT/"tools/tests/archive_client.cpp",ROOT/"native/shared/archives.cpp",ROOT/"native/shared/archive_preflight.cpp",ROOT/"native/shared/rar5_password.cpp",ROOT/"native/shared/archive_writer.cpp",ROOT/"native/desktop/rar_worker_process.cpp"]
   # RAR volumes go to rar-extract, as in the app; the other formats stay with libarchive.
   os.environ["PS5_REACT_RAR_WORKER"]=str(build_host(root/"rar-extract"))
@@ -248,9 +255,11 @@ def main():
   assert "synced 5/5" in phases("phase-ring",[several])
   assert "synced 0/0" in phases("phase-inline",[several],ARCHIVE_PIPELINE_BYTES="0")
   rar_phases=phases("phase-rar",[root/"plain.rar"])
-  # rar-extract reads what the set unpacks to from its headers before extracting; libarchive cannot.
+  # rar-extract reads what the set unpacks to from its headers before extracting; a ZIP's central directory
+  # and a 7z's header say it too, and the preflight reads them first.
   assert "rar worker finishing" in rar_phases and f"total {len(DATA)}" in rar_phases
-  assert "total 0" in phases("phase-total-zip",[several])
+  assert "total 500000" in phases("phase-total-zip",[several])
+  assert "total 0" in phases("phase-total-tar",[tar])
   older=root/"older-worker";older.write_text(f"#!/bin/sh\n'{os.environ['PS5_REACT_RAR_WORKER']}' | grep --line-buffered -vx s\n");older.chmod(0o755)
   assert "rar worker finishing" not in phases("phase-older-rar",[root/"plain.rar"],PS5_REACT_RAR_WORKER=str(older))
   assert (root/"phase-older-rar/game.ffpfsc").read_bytes()==DATA
@@ -355,6 +364,7 @@ def main():
   subprocess.run([prefix+"/bin/bsdtar","--format=7zip","-cf",str(seven),"-C",str(root),"payload.bin"],check=True)
   assert run("7zip",[seven])[0]=="completed"
   assert (root/"7zip/payload.bin").read_bytes()==DATA
+  assert f"total {len(DATA)}" in phases("phase-total-7z",[seven])
   blob=seven.read_bytes();seven_parts=[]
   for i in range(3):
    p=root/f"seven-part{i}";p.write_bytes(blob[i*len(blob)//3:(i+1)*len(blob)//3]);seven_parts.append(p)
@@ -372,6 +382,17 @@ def main():
   assert (root/"encoded-7zip/payload.bin").read_bytes()==DATA
   encoded_big=root/"encoded-big.7z";encoded_big.write_bytes(encode_7z_header(big.read_bytes()))
   assert run("encoded-big-7zip",[encoded_big])[0]=="completed"
+  huge=root/"huge.7z";huge.write_bytes(seven_dictionary(big.read_bytes(),30))
+  assert run("huge-7zip",[huge])[1:]==["0",TOO_BIG]
+  encoded_huge=root/"encoded-huge.7z";encoded_huge.write_bytes(encode_7z_header(huge.read_bytes()))
+  assert run("encoded-huge-7zip",[encoded_huge])[1:]==["0",TOO_BIG]
+  # The same refusal before a download, from the ranges a server would send: the start header, the directory,
+  # and for a compressed directory its packed bytes.
+  def ranges(path):
+   return subprocess.check_output([str(binary),"ranges",str(path)],text=True,timeout=20).split("\n")[:4]
+  for path,refusal,count in [(seven,"",2),(big,"",2),(encoded_big,"",3),(huge,TOO_BIG,2),(encoded_huge,TOO_BIG,3)]:
+   assert ranges(path)==["7z",refusal,str(path.stat().st_size),str(count)],(path.name,ranges(path))
+  assert ranges(zip)==["","","0","1"],ranges(zip)
   p=root/"preset9.tar.xz";p.write_bytes(lzma.compress(tar.read_bytes(),preset=9))
   assert run("xz9",[p])[0]=="completed"
   p=root/"huge.tar.xz"

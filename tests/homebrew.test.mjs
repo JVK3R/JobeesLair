@@ -49,6 +49,28 @@ test('the index: a file from anywhere but the app\'s own release is dropped, and
   assert.deepEqual(searchApps(index.apps, 'FOUR').map((a) => a.id), ['d/four']);
 });
 
+test('the index: an app marked for the PS4 is the PS4\'s alone, and the rest are the PS5\'s', () => {
+  const both = doc([
+    app('a/five', [{ name: 'five.elf', kind: 'payload', url: release('a/five', 'five.elf') }]),
+    app('b/four', [{ name: 'four.pkg', kind: 'pkg', url: release('b/four', 'four.pkg') }], { platform: 'ps4' }),
+  ]);
+  assert.deepEqual(normalizeIndex(both).apps.map((a) => a.id), ['a/five'], 'the PS5 (and any console the app runs on)');
+  assert.deepEqual(normalizeIndex(both, true).apps.map((a) => a.id), ['b/four'], 'the PS4');
+});
+
+test('the index: a payload inside a Mac app is a computer\'s archive and is dropped (Orbit Zero, 0.5.4)', () => {
+  const orbit = 'saawant12/orbit-store-ps5';
+  const index = normalizeIndex(doc([app(orbit, [
+    { name: 'PPSA99177.ffpkg', kind: 'image', url: release(orbit, 'PPSA99177.ffpkg'), size: 122847232 },
+    { name: 'orbit_store.elf', kind: 'payload', url: release(orbit, 'orbit_store.elf'), size: 48642552 },
+    { name: 'Orbit-Zero-1.6.0-mac-x64.zip', kind: 'archive-payload', url: release(orbit, 'Orbit-Zero-1.6.0-mac-x64.zip'), size: 167914627, inner: 'Orbit Zero.app/Contents/Resources/orbit/orbit_store.elf' },
+    { name: 'payloads.zip', kind: 'archive-payload', url: release(orbit, 'payloads.zip'), inner: 'bin/orbit_store.elf' },
+  ])]));
+  assert.deepEqual(index.apps[0].files.map((f) => f.name), ['PPSA99177.ffpkg', 'orbit_store.elf', 'payloads.zip']);
+  const shippedOrbit = normalizeIndex(shipped).apps.find((a) => a.id === orbit);
+  if (shippedOrbit) assert.ok(!shippedOrbit.files.some((f) => /\.app\//.test(f.inner || '')), 'not in the shipped index either');
+});
+
 // ---- Installing ---------------------------------------------------------------------------------------
 
 function memoryFs(seed = {}) {

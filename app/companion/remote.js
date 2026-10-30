@@ -4,9 +4,13 @@
 // handed to the navigation (Header.jsx, useRemoteShortcuts), which owns the sections and Settings.
 
 import { useEffect, useRef } from 'react';
+import { cancelForPhone } from '../state/system-keyboard.js';
 
   var listeners = /* @__PURE__ */ new Set();
   function pressRemote(action) {
+    // 0.5.4: the PS5 keyboard takes the controller's buttons, but the remote's reach the app beneath it: Back closes
+    // the keyboard, as Circle does on the controller.
+    if (action === "back" && cancelForPhone()) return;
     const dispatch = globalThis.__ps5ReactDispatch;
     if (typeof dispatch !== "function") throw new Error("This console build takes no remote input.");
     dispatch(action);

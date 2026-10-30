@@ -38,6 +38,8 @@ void er_register_assets(void);
 #include "control.hpp"
 #include "input_script.hpp"
 #include "js_heap.hpp"
+#include "keyboard.hpp"
+#include "keyboard_desktop.hpp"
 #include "js_profiler.hpp"
 #include "render_workers.hpp"
 #include "screenshot.hpp"
@@ -178,6 +180,9 @@ struct Host {
   JsProfiler profiler{now_us};
   bool l2_down = false, r2_down = false, key_l2_down = false, key_r2_down = false;
   VirtualPad virtual_pad;
+  // While the keyboard is open, and after it until every key and button it was given is let go, the app
+  // hears nothing (keyboard.hpp): the Enter that finished it must not press the button that opened it.
+  bool holding = false;
 
   ~Host() {
     ps5_react_stop_images();
@@ -220,6 +225,7 @@ struct Host {
     if (SDL_DisplayMode mode; SDL_GetWindowDisplayMode(window, &mode) == 0 && mode.refresh_rate > 0)
       display_frame_us = 1000000 / mode.refresh_rate;
     std::printf("GL %s / %s\n", glGetString(GL_VERSION), glGetString(GL_RENDERER));
+    desktop_keyboard_window(window);
     for (int i = 0; i < SDL_NumJoysticks(); ++i)
       if (SDL_IsGameController(i) && (controller = SDL_GameControllerOpen(i))) break;
     std::printf("Physical controller: %s\n", controller ? SDL_GameControllerName(controller) : "not connected");
@@ -359,8 +365,15 @@ struct Host {
       if (verb == "press") {
         const bool known = std::any_of(std::begin(kActionNames), std::end(kActionNames),
                                        [&](const char* name) { return arg == name; });
+        // As on the console, presses do not reach the app while its keyboard is up.
+        if (known && keyboard::is_open()) {
+          Control::reply(client, "the keyboard is open: use type <text> or keyboard-cancel");
+          continue;
+        }
         if (known && !dispatch(arg.c_str())) return false;
         Control::reply(client, known ? "ok" : "unknown action: " + arg);
+      } else if (verb == "type" || verb == "keyboard-cancel") {
+        Control::reply(client, desktop_keyboard_type(arg, verb != "type") ? "ok" : "no keyboard is open");
       } else if (verb == "hold" || verb == "release" || verb == "trigger") {
         std::string step = line;
         std::replace(step.begin(), step.end(), ' ', ':');
@@ -427,6 +440,12 @@ struct Host {
       const char* action = nullptr;
       if (event.type == SDL_QUIT) running = false;
       if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_EXPOSED) exposed = true;
+      if (desktop_keyboard_event(event)) {
+        holding = true;
+        held_action = nullptr;
+        continue;
+      }
+      if (holding) continue; // keys and buttons from before the keyboard closed
       // The host repeats held directions itself, so OS key repeats are ignored.
       if (event.type == SDL_KEYDOWN && !event.key.repeat) {
         const SDL_Scancode key = event.key.keysym.scancode;
@@ -455,6 +474,7 @@ struct Host {
     }
     if (!play_script()) return false;
     if (controlled && !serve_control()) return false;
+    if (holding || keyboard::is_open()) held_action = nullptr;
     if (held_action) {
       // Polled state, not key-up events: synthetic self-test presses never stay held.
       const bool down = held_key != SDL_SCANCODE_UNKNOWN ? SDL_GetKeyboardState(nullptr)[held_key]
@@ -467,13 +487,24 @@ struct Host {
       }
     }
     if (!running) return true;
-    if (crossed(key_l2_down, key_travel(SDL_SCANCODE_Z)) && !dispatch(action_name(HostAction::l2))) return false;
-    if (crossed(key_r2_down, key_travel(SDL_SCANCODE_C)) && !dispatch(action_name(HostAction::r2))) return false;
     GamepadState state = read_gamepad(controller);
-    // What a tool holds presses like the controller: the buttons' actions, once (directions do not repeat).
-    for (std::uint32_t pressed = virtual_pad.merge(state, SDL_GetTicks64()), i = 0; pressed; pressed >>= 1, ++i) {
-      const char* held = pressed & 1 ? VirtualPad::action(i) : nullptr;
-      if (held && !dispatch(held)) return false;
+    if (keyboard::is_open()) {
+      holding = true;
+      held_action = nullptr;
+    } else if (holding && !state.buttons && state.l2 == 0 && state.r2 == 0) {
+      holding = false;
+    }
+    if (holding) {
+      state = GamepadState{};
+      state.connected = controller != nullptr;
+    } else {
+      if (crossed(key_l2_down, key_travel(SDL_SCANCODE_Z)) && !dispatch(action_name(HostAction::l2))) return false;
+      if (crossed(key_r2_down, key_travel(SDL_SCANCODE_C)) && !dispatch(action_name(HostAction::r2))) return false;
+      // What a tool holds presses like the controller: the buttons' actions, once (directions do not repeat).
+      for (std::uint32_t pressed = virtual_pad.merge(state, SDL_GetTicks64()), i = 0; pressed; pressed >>= 1, ++i) {
+        const char* held = pressed & 1 ? VirtualPad::action(i) : nullptr;
+        if (held && !dispatch(held)) return false;
+      }
     }
     ps5_react_set_gamepad(state);
     stats.lap(FrameStats::input, now_us());

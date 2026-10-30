@@ -22,6 +22,7 @@ import { deviceFacts } from './device.js';
 import { OLD_TITLE_ID } from './title-migration.js';
 import { TITLE_ID } from '../version.js';
 import { autoContinueParts } from './auto-continue.js';
+import { online } from './online.js';
 import { Archives, BrowserCapture, DeviceInfo, DownloadFormats, Downloads, FileSystem, Http, Linking, Notifications, Packages, Platform, Power } from '@ps5-react/core';
 
   var instance;
@@ -64,8 +65,18 @@ import { Archives, BrowserCapture, DeviceInfo, DownloadFormats, Downloads, FileS
     releasesOf: (id) => getGame(id)?.releases || [],
     firmware: () => deviceFacts().firmware,
     playtime,
-    autoContinue: autoContinueParts
+    autoContinue: autoContinueParts,
+    // 0.5.4: each launch learned goes to the players' numbers (state/online.js; only with stats on).
+    onLaunch: (title, report) => !OWN_TITLES.includes(title) && online().launched({ title, ...report })
   }));
+  // 0.5.4: the first time with stats on, the launches known from before go to the players' numbers too.
+  function reportPastLaunches() {
+    try {
+      online().launchedBefore((downloadQueue().launchHistory?.() ?? []).filter((report) => !OWN_TITLES.includes(report.title)));
+    } catch (error2) {
+      console.log(`[downloads] past launches not kept to send: ${error2?.message}`);
+    }
+  }
   var shadowMountUp = Platform.OS === "ps5" ? createShadowMountProbe({ http: Http, now: Date.now }) : async () => true;
   function driveName(root2) {
     if (root2 === "/data") return t("drives.internal");
@@ -74,4 +85,4 @@ import { Archives, BrowserCapture, DeviceInfo, DownloadFormats, Downloads, FileS
     return t(mount[1] === "usb" ? "drives.usb" : "drives.extended", { number: String(Number(mount[2]) + 1) });
   }
 
-export { downloadQueue, driveName, freeBytes, shadowMountUp, storageRoots };
+export { downloadQueue, driveName, freeBytes, reportPastLaunches, shadowMountUp, storageRoots };

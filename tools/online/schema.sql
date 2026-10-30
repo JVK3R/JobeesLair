@@ -17,16 +17,16 @@ CREATE INDEX IF NOT EXISTS consoles_last_seen ON consoles (last_seen);
 
 -- Which consoles were on each day: daily, weekly and monthly users. Kept 400 days.
 CREATE TABLE IF NOT EXISTS active (
-  day TEXT NOT NULL,            -- YYYY-MM-DD, UTC
+  day TEXT NOT NULL,            -- YYYY-MM-DD, Eastern time (UTC before 2026-10-28)
   id TEXT NOT NULL,
   PRIMARY KEY (day, id)
 );
 
--- Time in Jobee'sLair, counted from the pings above (nothing more is sent for it): each UTC day's pings (one stands
+-- Time in Jobee'sLair, counted from the pings above (nothing more is sent for it): each day's pings (one stands
 -- for about five minutes open), sessions (a console's first ping after ten quiet minutes) and the most consoles
 -- online at once. Kept 400 days.
 CREATE TABLE IF NOT EXISTS usage (
-  day TEXT PRIMARY KEY,         -- YYYY-MM-DD, UTC
+  day TEXT PRIMARY KEY,         -- YYYY-MM-DD, Eastern time (UTC before 2026-10-28)
   pings INTEGER NOT NULL,
   sessions INTEGER NOT NULL,
   peak INTEGER NOT NULL
@@ -39,6 +39,44 @@ CREATE TABLE IF NOT EXISTS usage_hours (
   pings INTEGER NOT NULL,
   peak INTEGER NOT NULL
 );
+
+-- The phone companion (0.5.4 on), for whether it earns its place in 1.0: for each console that shares stats, each
+-- day it pinged, whether the companion was on (and kept on by the helper while the app was closed), and what a phone
+-- did, as counts: minutes with the page open, times it was opened, games queued, Homebrew actions, download controls,
+-- Fix it, remote presses and shortcuts, feed changes. Under the same random ID as consoles. Kept 400 days.
+CREATE TABLE IF NOT EXISTS companion_days (
+  day TEXT NOT NULL,            -- YYYY-MM-DD, Eastern time (UTC before 2026-10-28)
+  id TEXT NOT NULL,
+  enabled INTEGER NOT NULL,     -- 1 when it was on at any ping that day
+  away INTEGER NOT NULL,        -- 1 when the helper kept it on while the app was closed
+  minutes INTEGER NOT NULL,
+  opens INTEGER NOT NULL,
+  games INTEGER NOT NULL,
+  homebrew INTEGER NOT NULL,
+  downloads INTEGER NOT NULL,
+  library INTEGER NOT NULL,
+  remote INTEGER NOT NULL,
+  feeds INTEGER NOT NULL,
+  PRIMARY KEY (day, id)
+);
+
+-- Game launches (0.5.4 on), for the game page's "Started for players" and the dashboard: for each console and game,
+-- what ShadowMount saw at its latest launch. Under a token the app makes from the title ID and a secret that never
+-- leaves the console: no console ID, and two tokens can't be told to be one console's. Kept a year after the latest.
+CREATE TABLE IF NOT EXISTS launches (
+  token TEXT PRIMARY KEY,       -- 32 hex characters
+  title TEXT NOT NULL,          -- the title ID: PPSA01234, CUSA01234
+  firmware TEXT NOT NULL,       -- its family, as the app shows it: "13.59"
+  outcome TEXT NOT NULL,        -- "played" or "wontStart"
+  verdict TEXT NOT NULL,        -- "ran", or why not: "crashed", "notStarted", "mountFailed"
+  format TEXT NOT NULL,         -- "exfat", "ffpkg", "ffpfs", "ffpfsc", "folder" or "other" (put there another way)
+  fixed INTEGER NOT NULL,       -- 1 when Fix it had changed something before this launch
+  backport INTEGER NOT NULL,    -- 1 when a backport was installed with it
+  version TEXT NOT NULL,        -- the app's
+  at INTEGER NOT NULL           -- ms: when it was reported
+);
+CREATE INDEX IF NOT EXISTS launches_title ON launches (title);
+CREATE INDEX IF NOT EXISTS launches_at ON launches (at);
 
 -- Homebrew installs, with no console ID: which app, whether it worked, and the error when it didn't. Kept 180 days.
 CREATE TABLE IF NOT EXISTS installs (
@@ -74,6 +112,14 @@ CREATE TABLE IF NOT EXISTS admin_failures (
   at INTEGER NOT NULL
 );
 
+-- How many consoles are online, shared by every copy of the Worker (worker.js onlineNow): counting reads a row for
+-- each console online and every console asks about once a minute, so it's counted at most once a minute for everyone.
+CREATE TABLE IF NOT EXISTS online (
+  slot INTEGER PRIMARY KEY CHECK (slot = 1),
+  at INTEGER NOT NULL,          -- ms: when it was last counted
+  n INTEGER NOT NULL
+);
+
 -- The announcements up now, posted from the dashboard (five at most): every app shows them in a bar under its top
 -- menu, taking turns, until each is taken down or its time runs out.
 CREATE TABLE IF NOT EXISTS announcements (
@@ -91,7 +137,7 @@ CREATE TABLE IF NOT EXISTS github (
   data TEXT NOT NULL            -- JSON: {total, stars, forks, watchers, releases: [...]}
 );
 CREATE TABLE IF NOT EXISTS github_days (
-  day TEXT PRIMARY KEY,         -- YYYY-MM-DD, UTC
+  day TEXT PRIMARY KEY,         -- YYYY-MM-DD, Eastern time (UTC before 2026-10-28)
   downloads INTEGER NOT NULL,
   stars INTEGER NOT NULL
 );

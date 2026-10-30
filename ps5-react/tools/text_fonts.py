@@ -3,9 +3,9 @@
 # Additional attribution term: see LICENSE-ATTRIBUTION.
 """Runtime fonts for the scripts an app lists in app.json "textFonts" (docs/TEXT.md).
 
-Each script gets one pinned Noto font, subset at build time to the characters it is used for, so
-the package carries the common set of a script rather than the whole font. The runtime shaper
-(native/shared/text_shaper.cpp) loads a file the first time text needs it.
+Each script gets pinned Noto fonts (one, or two for symbols), subset at build time to the characters
+they are used for, so the package carries the common set of a script rather than the whole font. The
+runtime shaper (native/shared/text_shaper.cpp) loads a file the first time text needs it.
 """
 import hashlib
 import shutil
@@ -22,6 +22,11 @@ SHAPING = {0x00A0, 0x200B, 0x200C, 0x200D, 0x200E, 0x200F, 0x2010, 0x2013, 0x201
 
 def span(first, last):
     return set(range(first, last + 1))
+
+
+SYMBOLS = (ASCII | span(0x2190, 0x21FF) | span(0x2300, 0x23FF) | span(0x2460, 0x24FF) | span(0x25A0, 0x25FF) |
+           span(0x2600, 0x26FF) | span(0x2700, 0x27BF) | span(0x27F0, 0x27FF) | span(0x2900, 0x297F) |
+           span(0x2B00, 0x2BFF) | span(0x1F300, 0x1F6FF) | span(0x1F780, 0x1F8FF) | {0xFE0E, 0xFE0F})
 
 
 def euc_rows(codec, first, last):
@@ -49,6 +54,11 @@ SCRIPTS = {
     # Arabic and Urdu letters, presentation forms and Arabic-Indic digits.
     "arabic": ("NotoSansArabic-Regular.ttf", lambda: ASCII | span(0x0600, 0x06FF) | span(0x0750, 0x077F) |
                span(0x08A0, 0x08FF) | span(0xFB50, 0xFDFF) | span(0xFE70, 0xFEFF) | SHAPING),
+    # Symbols a text font rarely has: arrows, technical and geometric shapes, dingbats (✕ ✓ ★), enclosed
+    # numbers, and the pictographs Noto Sans Symbols 2 draws in its own line style.
+    "symbols": [("NotoSansSymbols2-Regular.ttf", lambda: SYMBOLS), ("NotoSansSymbols-Regular.ttf", lambda: SYMBOLS)],
+    # Every emoji Noto Emoji has, drawn in the text's colour (monochrome), with its sequences (skin tones, ZWJ).
+    "emoji": ("NotoEmoji-Regular.ttf", lambda: None),
 }
 
 
@@ -84,17 +94,25 @@ def subset_tool():
     return tool
 
 
+def faces(script):
+    """The (file, codepoints) pairs of a script: one font, or a list of them."""
+    entry = SCRIPTS[script]
+    return entry if isinstance(entry, list) else [entry]
+
+
 def text_fonts(config, directory):
     """Writes the app's subset fonts to `directory` (and nothing else); returns their paths."""
     scripts = config.get("textFonts", [])
     directory.mkdir(parents=True, exist_ok=True)
-    wanted = {SCRIPTS[script][0]: script for script in scripts}
+    wanted = {name: chosen for script in scripts for name, chosen in faces(script)}
     for stale in directory.iterdir():
         if stale.name not in wanted: stale.unlink()
-    for name, script in wanted.items():
+    for name, chosen in wanted.items():
         pinned = LOCK["notoFonts"][name]
         original = fetch(pinned["url"], DEPS / "fonts" / name, pinned["sha256"])
-        codepoints = "\n".join(f"{c:X}" for c in sorted(SCRIPTS[script][1]())) + "\n"
+        # None keeps every character the font has (the subsetter's "*").
+        characters = chosen()
+        codepoints = "*\n" if characters is None else "\n".join(f"{c:X}" for c in sorted(characters)) + "\n"
         tool = subset_tool()
         key = hashlib.sha256(f"{pinned['sha256']}{tool.name}{codepoints}".encode()).hexdigest()[:16]
         cached = DEPS / "fonts/subset" / f"{key}-{name}"

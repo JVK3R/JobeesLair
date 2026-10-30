@@ -10,8 +10,9 @@
 // download is ready.
 
 import { useEffect, useState } from 'react';
-import { t } from '../i18n/core.js';
+import { formatDate2, t } from '../i18n/core.js';
 import { createAutoUpdater } from './auto-update.js';
+import { isoDate } from './clock.js';
 import { downloadQueue } from './downloads.js';
 import { DAY_MS, HOUR_MS, createUpdateChecker } from './updater.js';
 import { loadList, saveList, savedList } from './saved.js';
@@ -187,6 +188,23 @@ import { Archives, BackHandler, Downloads, FileSystem, Http, Notifications, Plat
     }, []);
     return value;
   }
+  // What Settings' update row says (`t2` its message function; the phone companion's Settings too): checking, a newer
+  // version (downloading, ready to install, or not installed), a failed check, or when it last looked.
+  function updateDetail(t2, update, install) {
+    if (update.checking) return t2("settings.update.checking");
+    const version = update.update?.version;
+    if (version && install.version === version) {
+      if (["ready", "armed"].includes(install.phase)) return t2("settings.update.ready", { version });
+      if (["waiting", "downloading", "checking"].includes(install.phase))
+        return t2("settings.update.downloading", { version, percent: String(install.total ? Math.floor(Math.min(1, install.written / install.total) * 100) : 0) });
+      if (install.phase === "failed") return t2("settings.update.installFailed", { version });
+    }
+    if (update.update) return t2("settings.update.available", { version: update.update.version });
+    if (update.failed) return t2("settings.update.failed");
+    return update.checkedAt ? t2("settings.update.current", { date: formatDate2(isoDate(update.checkedAt)) }) : t2("settings.update.never");
+  }
+  /** The update and its install as they are now, and whether updates install by themselves (the phone's Settings). */
+  var updateSnapshot = () => ({ update: state, install: installer?.state() ?? IDLE, auto: automatic });
   /** Downloads and checks the newer release now. False when there is none it can install. */
   var downloadUpdate = () => Boolean(installer && state.update?.assets && installer.download(state.update));
   var cancelUpdate = () => installer?.cancel();
@@ -222,4 +240,4 @@ import { Archives, BackHandler, Downloads, FileSystem, Http, Notifications, Plat
     return on;
   }
 
-export { canInstall, cancelUpdate, checkForUpdate, closeUpdateDialog, downloadUpdate, openUpdateDialog, restartToApply, setAutoInstall, startInstaller, startUpdateChecks, useAutoInstall, useInstall, useUpdate, useUpdateDialog };
+export { canInstall, cancelUpdate, checkForUpdate, closeUpdateDialog, downloadUpdate, openUpdateDialog, restartToApply, setAutoInstall, startInstaller, startUpdateChecks, updateDetail, updateSnapshot, useAutoInstall, useInstall, useUpdate, useUpdateDialog };

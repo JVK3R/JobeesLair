@@ -23,7 +23,11 @@ import { oneEach, ratingScore, sortGames } from '../state/catalog.js';
       }
       return items;
     };
-    const showable = oneEach(list.filter((game) => game.art.hero && game.art.logo));
+    // 0.5.4: too few with a logo (none of the PS4's has one): any with a banner, its name written where the logo goes
+    // (ui/GameLogo.jsx).
+    const banners = list.filter((game) => game.art.hero);
+    const logos = banners.filter((game) => game.art.logo);
+    const showable = oneEach(logos.length >= SLIDES ? logos : banners);
     const liked = showable.filter((game) => ratingScore(game) >= MIN_SCORE);
     const ranked = (liked.length >= SLIDES ? liked : showable).sort((a, b) => (b.ratingCount ?? 0) - (a.ratingCount ?? 0) || (b.recommendations ?? 0) - (a.recommendations ?? 0));
     const newest = new Set(sortGames(showable.filter((game) => game.releaseDate), "newest").slice(0, NEWEST));

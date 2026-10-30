@@ -18,6 +18,8 @@
     "japanese",
     "devanagari",
     "bengali",
-    "arabic"
+    "arabic",
+    "symbols",
+    "emoji"
   ]
 }

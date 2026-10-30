@@ -85,6 +85,35 @@ std::string cookie_of(const Reply& reply) {
   return reply.head.substr(start, reply.head.find(';', start) - start);
 }
 
+// Reads what a stream has sent until `needle` arrives (or the time runs out); the text so far.
+std::string read_until(int fd, const std::string& needle, std::chrono::milliseconds limit = 2000ms) {
+  std::string data;
+  const auto until = std::chrono::steady_clock::now() + limit;
+  timeval slice{0, 50000};
+  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &slice, sizeof slice);
+  char chunk[4096];
+  while (data.find(needle) == std::string::npos && std::chrono::steady_clock::now() < until) {
+    const ssize_t n = recv(fd, chunk, sizeof chunk, 0);
+    if (n == 0) break;
+    if (n > 0) data.append(chunk, static_cast<std::size_t>(n));
+  }
+  return data;
+}
+// An open event stream (its head already read), from 127.0.0.`device`.
+int open_events(const std::string& cookie, int device = 1) {
+  const int fd = connect_to(port, device);
+  const std::string raw = api("/api/events", cookie);
+  assert(send(fd, raw.data(), raw.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(raw.size()));
+  const std::string head = read_until(fd, ": open\n\n");
+  assert(head.rfind("HTTP/1.1 200 OK\r\n", 0) == 0 && head.find("Content-Type: text/event-stream") != std::string::npos);
+  assert(head.find("Content-Length") == std::string::npos);
+  return fd;
+}
+void wait_streams(std::size_t count) {
+  for (int i = 0; i < 200 && http_server::status().streams != count; ++i) std::this_thread::sleep_for(10ms);
+  assert(http_server::status().streams == count);
+}
+
 void wait_for(const char* state) {
   for (int i = 0; i < 100 && http_server::status().state != state; ++i) std::this_thread::sleep_for(10ms);
   assert(http_server::status().state == state);
@@ -110,14 +139,15 @@ struct Echo {
 
 int main() {
   std::signal(SIGPIPE, SIG_DFL); // a write to a vanished client must not raise it
-  port = static_cast<std::uint16_t>(41000 + getpid() % 2000);
+  // Three ports per process (the busy-port checks squat on the next two), so parallel runs never meet.
+  port = static_cast<std::uint16_t>(41000 + getpid() % 2000 * 3);
   std::string error;
-  assert(!http_server::start({port}, "12345", "", error) && error.find("6 digits") != std::string::npos);
-  assert(!http_server::start({port}, "24a024", "", error));
-  assert(!http_server::start({port}, "1357905", "", error));
-  assert(!http_server::start({}, kPin, "", error) && error.find("1..8 ports") != std::string::npos);
-  assert(http_server::start({port}, kPin, "<!doctype html><title>t</title>", error));
-  assert(!http_server::start({port}, kPin, "", error) && error.find("already running") != std::string::npos);
+  assert(!http_server::start({port}, "12345", "", "", error) && error.find("6 digits") != std::string::npos);
+  assert(!http_server::start({port}, "24a024", "", "", error));
+  assert(!http_server::start({port}, "1357905", "", "", error));
+  assert(!http_server::start({}, kPin, "", "", error) && error.find("1..8 ports") != std::string::npos);
+  assert(http_server::start({port}, kPin, "<!doctype html><title>t</title>", "", error));
+  assert(!http_server::start({port}, kPin, "", "", error) && error.find("already running") != std::string::npos);
   wait_for("listening");
   assert(http_server::status().port == port && !http_server::status().address.empty());
 
@@ -145,7 +175,7 @@ int main() {
   assert(ok.status == 200);
   assert(ok.head.find("HttpOnly") != std::string::npos && ok.head.find("SameSite=Strict") != std::string::npos);
   assert(ok.head.find("Max-Age") == std::string::npos && ok.head.find("Expires") == std::string::npos); // a session cookie
-  const std::string cookie = cookie_of(ok);
+  std::string cookie = cookie_of(ok);
   assert(cookie.size() == 26 && cookie.find_first_not_of("abcdefghijklmnopqrstuvwxyz234567") == std::string::npos);
   assert(cookie != cookie_of(sign_in(kPin, 4)));
   assert(http_server::status().sessions == 2);
@@ -165,6 +195,97 @@ int main() {
     Reply posted = exchange(api("/api/download", cookie, "POST", "{\"id\":\"PPSA04892\"}"), port, 7);
     assert(posted.status == 200 && posted.body == "POST /api/download? [{\"id\":\"PPSA04892\"}] from 127.0.0.7");
     assert(exchange(api("/api/x", cookie, "PUT")).status == 405);
+  }
+
+  // Event streams (ABI v24): signed in like any API request, then held open by their own worker.
+  {
+    bool ok = false;
+    assert(http_server::push("queue", "{}", ok) == 0 && ok); // nobody listening: nothing to do
+    assert(http_server::push("Queue", "{}", ok) == 0 && !ok);
+    assert(http_server::push("", "{}", ok) == 0 && !ok);
+    assert(http_server::push(std::string(33, 'a'), "{}", ok) == 0 && !ok);
+    assert(http_server::push("big", std::string(http_server::kMaxEventBytes + 1, 'x'), ok) == 0 && !ok);
+    assert(exchange(get("/api/events")).status == 403);
+    assert(exchange(get("/api/events", "X-JBH: 1\r\n")).status == 401);
+    assert(exchange(api("/api/events", cookie, "POST")).status == 405);
+    const int first = open_events(cookie);
+    wait_streams(1);
+    assert(http_server::push("queue", "{\"jobs\":[]}", ok) == 1 && ok);
+    assert(read_until(first, "\n\n").find("event: queue\ndata: {\"jobs\":[]}\n\n") != std::string::npos);
+    // Every line of the data is its own field: nothing in it ends the event or starts another.
+    http_server::push("note", "one\ntwo\r\nthree\rfour\n\nevent: fake", ok);
+    const std::string lines = read_until(first, "fake\n\n");
+    assert(lines.find("event: note\ndata: one\ndata: two\ndata: three\ndata: four\ndata: \ndata: event: fake\n\n") != std::string::npos);
+    // Requests are still served while a stream is open.
+    {
+      Echo app;
+      assert(exchange(api("/api/games", cookie)).status == 200);
+    }
+    // A second phone; both hear the next event.
+    const int second = open_events(cookie, 9);
+    wait_streams(2);
+    assert(http_server::push("dashboard", "{\"speed\":1}", ok) == 2);
+    assert(read_until(first, "speed").find("event: dashboard") != std::string::npos);
+    assert(read_until(second, "speed").find("event: dashboard") != std::string::npos);
+    // A new page (the app's language changed): served at once, with both phones still signed in and listening.
+    std::string swapped;
+    assert(!http_server::set_page(std::string(http_server::kMaxPageBytes + 1, 'x'), swapped) && swapped.find("512 KiB") != std::string::npos);
+    assert(http_server::set_page("<!doctype html><title>neu</title>", swapped));
+    assert(exchange(get("/")).body == "<!doctype html><title>neu</title>");
+    assert(http_server::status().streams == 2 && exchange(api("/api/events", cookie, "POST")).status == 405);
+    assert(http_server::push("app", "{\"language\":\"de\"}", ok) == 2);
+    assert(read_until(first, "de\"}").find("event: app") != std::string::npos);
+    assert(read_until(second, "de\"}").find("event: app") != std::string::npos);
+    // A phone that hangs up is noticed and dropped.
+    close(second);
+    wait_streams(1);
+    // A ninth stream closes the oldest (the first, which then reads to its end).
+    int more[http_server::kMaxStreams];
+    for (std::size_t i = 0; i < http_server::kMaxStreams; ++i) more[i] = open_events(cookie, 10 + static_cast<int>(i));
+    wait_streams(http_server::kMaxStreams);
+    char byte;
+    for (int i = 0; i < 40 && recv(first, &byte, 1, MSG_DONTWAIT) != 0; ++i) std::this_thread::sleep_for(25ms);
+    assert(recv(first, &byte, 1, MSG_DONTWAIT) == 0);
+    close(first);
+    for (const int fd : more) close(fd);
+    wait_streams(0);
+    // A phone that stops reading falls behind and is closed once the backlog passes kMaxStreamBacklog; the
+    // server never waits on it, and pushes to others go on.
+    const int stuck = socket(AF_INET, SOCK_STREAM, 0);
+    const int tiny = 2048;
+    setsockopt(stuck, SOL_SOCKET, SO_RCVBUF, &tiny, sizeof tiny);
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    assert(connect(stuck, reinterpret_cast<sockaddr*>(&address), sizeof address) == 0);
+    const std::string raw = api("/api/events", cookie);
+    assert(send(stuck, raw.data(), raw.size(), MSG_NOSIGNAL) == static_cast<ssize_t>(raw.size()));
+    wait_streams(1);
+    const auto pushed_at = std::chrono::steady_clock::now();
+    for (int i = 0; i < 12 && http_server::status().streams; ++i) {
+      http_server::push("big", std::string(http_server::kMaxEventBytes, 'x'), ok);
+      std::this_thread::sleep_for(60ms);
+    }
+    wait_streams(0);
+    assert(std::chrono::steady_clock::now() - pushed_at < 3s);
+    close(stuck);
+    // stop() closes every stream promptly.
+    const int last = open_events(cookie);
+    wait_streams(1);
+    assert(http_server::status().pushed >= 6);
+    http_server::stop();
+    assert(read_until(last, "never", 1500ms).find("never") == std::string::npos);
+    assert(recv(last, &byte, 1, MSG_DONTWAIT) == 0);
+    close(last);
+    assert(http_server::status().streams == 0);
+    std::string again;
+    assert(!http_server::set_page("late", again) && again.find("not running") != std::string::npos);
+    assert(http_server::start({port}, kPin, "<!doctype html><title>t</title>", "", again));
+    wait_for("listening");
+    assert(exchange(get("/")).body == "<!doctype html><title>t</title>"); // the page it started with, not the swapped one
+    assert(exchange(api("/api/events", cookie)).status == 401); // stop() forgot every session
+    cookie = cookie_of(sign_in(kPin, 3));
   }
 
   // Throttling: three free wrong PINs per device, then a growing wait; the right PIN waits too.
@@ -240,7 +361,7 @@ int main() {
   http_server::stop(); // twice is harmless
 
   // Started again (the same fixed PIN): the lock and every old session are gone.
-  assert(http_server::start({port}, kPin, "fresh", error));
+  assert(http_server::start({port}, kPin, "fresh", "", error));
   wait_for("listening");
   assert(!http_server::status().locked && http_server::status().failures == 0);
   assert(exchange(api("/api/games", cookie)).status == 401);
@@ -293,17 +414,17 @@ int main() {
   };
   const auto busy = static_cast<std::uint16_t>(port + 1), busy2 = static_cast<std::uint16_t>(port + 2);
   const int squatter = squat(busy), squatter2 = squat(busy2);
-  assert(http_server::start({busy, busy2}, kPin, "p", error));
+  assert(http_server::start({busy, busy2}, kPin, "p", "", error));
   wait_for("failed");
   const std::string why = http_server::status().error;
   assert(why.find("port " + std::to_string(busy) + ": in use by another app (errno") != std::string::npos);
   assert(why.find("port " + std::to_string(busy2) + ": in use") != std::string::npos);
   http_server::stop();
-  assert(http_server::start({busy, port}, kPin, "second", error));
+  assert(http_server::start({busy, port}, kPin, "second", "", error));
   wait_for("listening");
   assert(http_server::status().port == port && exchange(get("/")).body == "second");
   http_server::stop();
-  assert(http_server::start({busy, busy2, 0}, kPin, "any", error));
+  assert(http_server::start({busy, busy2, 0}, kPin, "any", "", error));
   wait_for("listening");
   const std::uint16_t picked = http_server::status().port;
   assert(picked != 0 && picked != busy && picked != busy2 && exchange(get("/"), picked).body == "any");
@@ -312,7 +433,7 @@ int main() {
   close(squatter2);
 
   // Session cookies (the only random values left) differ between sign-ins.
-  assert(http_server::start({port}, kPin, "cookies", error));
+  assert(http_server::start({port}, kPin, "cookies", "", error));
   wait_for("listening");
   std::set<std::string> seen;
   for (int i = 0; i < 20; ++i) seen.insert(cookie_of(sign_in(kPin, 2 + i % 3)));

@@ -20,17 +20,34 @@ const binary = path.join(dir, 'companion-daemon');
 const running = path.join(dir, 'running');
 const payloads = path.join(dir, 'payloads');
 const queue = path.join(dir, 'downloads.json');
+// A test gives up after this rather than wait forever on a helper or a connection.
+const timeout = 30000;
+// Every helper started here, killed when the file ends whatever happened: one left running keeps node from exiting
+// and the runner waits on it for good (the v0.5.3 tag's CI run, cancelled after 15 minutes).
+const children = new Set();
+after(() => {
+  for (const child of children) child.kill('SIGKILL');
+  rmSync(dir, { recursive: true, force: true });
+});
+// A port for the helper to take. Another test file can take it first; the test's own servers use listening().
 const freePort = () => new Promise((resolve) => {
   const server = net.createServer().listen(0, '127.0.0.1', () => {
     const { port } = server.address();
     server.close(() => resolve(port));
   });
 });
+// Starts one of the test's own servers on a port the system picks; resolves with the port.
+const listening = (server) => new Promise((resolve, reject) => {
+  server.once('error', reject);
+  server.listen(0, '127.0.0.1', () => resolve(server.address().port));
+});
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Starts one with the request lines; resolves with its first answer line and the process.
 function start(env, lines) {
   const child = spawn(binary, [], { env: { ...process.env, ...env }, stdio: ['pipe', 'pipe', 'inherit'] });
+  children.add(child);
+  child.on('exit', () => children.delete(child));
   child.stdin.end(`${lines.join('\n')}\n`);
   return new Promise((resolve) => {
     let out = '';
@@ -53,30 +70,28 @@ async function http(port, method, route, { body, cookie, jbh = true } = {}) {
   });
   return { status: response.status, cookie: response.headers.get('set-cookie'), text: await response.text() };
 }
-after(() => rmSync(dir, { recursive: true, force: true }));
 const refused = (port) => fetch(`http://127.0.0.1:${port}/`).then(() => false, () => true);
 
-test('the closed-app companion signs phones in, launches the app, gives the port up while it runs and runs payloads', { skip }, async (t) => {
+test('the closed-app companion signs phones in, launches the app, gives the port up while it runs and runs payloads', { skip, timeout }, async (t) => {
   assert.equal(build().status, 0, build().stderr);
   mkdirSync(path.join(payloads, 'owner__tool'), { recursive: true });
   writeFileSync(path.join(payloads, 'owner__tool', 'tool.elf'), '\x7fELF-payload-bytes');
   writeFileSync(path.join(payloads, 'index.json'), JSON.stringify({ apps: [{ name: 'Tool', run: path.join(payloads, 'owner__tool', 'tool.elf') }] }));
   writeFileSync(queue, JSON.stringify({ version: 1, jobs: [{ id: 'g/1', title: 'A Game', state: 'paused', written: 5, total: 10 }] }));
-  const [web, control, loaderPort] = [await freePort(), await freePort(), await freePort()];
+  const [web, control] = [await freePort(), await freePort()];
   const received = [];
   const loader = net.createServer((socket) => {
     const chunks = [];
     socket.on('data', (chunk) => chunks.push(chunk));
     socket.on('end', () => received.push(Buffer.concat(chunks).toString()));
-  }).listen(loaderPort, '127.0.0.1');
+  });
+  const loaderPort = await listening(loader);
+  t.after(() => loader.close());
   const env = { COMPANION_TEST_RUNNING: running, COMPANION_TEST_CONTROL: String(control), COMPANION_TEST_LOADER: String(loaderPort) };
   const SESSION = 'abcdefghijklmnopqrstuvwxyz';
   const lines = (pin, session = SESSION) => ['CMP2', 'PPSA99471', String(web), pin, payloads, queue, session];
   const { answer, child } = await start(env, lines('482913'));
-  t.after(() => {
-    child.kill();
-    loader.close();
-  });
+  t.after(() => child.kill());
   assert.equal(answer, 'ready');
   assert.equal(readFileSync(path.join(payloads, 'helper.txt'), 'utf8'), 'ready\n', 'the answer is also in helper.txt, which the app reads');
   await wait(300);
@@ -142,10 +157,9 @@ test('the closed-app companion signs phones in, launches the app, gives the port
   assert.ok(await refused(web));
 });
 
-test('a helper from 0.5.0 Pre Release 1 is told to stop, and the new one takes its place', { skip }, async (t) => {
+test('a helper from 0.5.0 Pre Release 1 is told to stop, and the new one takes its place', { skip, timeout }, async (t) => {
   // The old one reads only CMP1: it answers nothing to CMP2, and stops on a CMP1 with the PIN "-".
   assert.equal(build().status, 0, build().stderr);
-  const control = await freePort();
   const web = await freePort();
   const heard = [];
   const old = net.createServer((socket) => {
@@ -159,7 +173,9 @@ test('a helper from 0.5.0 Pre Release 1 is told to stop, and the new one takes i
         old.close();
       }
     });
-  }).listen(control, '127.0.0.1');
+  });
+  const control = await listening(old);
+  t.after(() => { if (old.listening) old.close(); });
   const env = { COMPANION_TEST_RUNNING: path.join(dir, 'never'), COMPANION_TEST_CONTROL: String(control) };
   const { answer, child } = await start(env, ['CMP2', 'PPSA99471', String(web), '482913', payloads, queue, '-']);
   t.after(() => child.kill());
@@ -178,6 +194,7 @@ function raw(port, { text = '', trickle = '', every = 0 } = {}) {
     let answer = '', timer = null;
     socket.on('data', (chunk) => { answer += chunk; });
     socket.on('error', () => {});
+    socket.setTimeout(10000, () => socket.destroy());
     socket.on('close', () => { clearInterval(timer); resolve({ answer, open: Date.now() - started }); });
     socket.on('connect', () => {
       if (text) socket.write(text);
@@ -187,7 +204,7 @@ function raw(port, { text = '', trickle = '', every = 0 } = {}) {
   });
 }
 
-test('the helper answers only to the console by its IP address, and cuts off a request that trickles in', { skip }, async (t) => {
+test('the helper answers only to the console by its IP address, and cuts off a request that trickles in', { skip, timeout }, async (t) => {
   assert.equal(build().status, 0, build().stderr);
   const [web, control] = [await freePort(), await freePort()];
   const env = { COMPANION_TEST_RUNNING: running, COMPANION_TEST_CONTROL: String(control), COMPANION_TEST_LOADER: '1', COMPANION_TEST_REQUEST_S: '2' };

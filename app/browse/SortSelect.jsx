@@ -18,7 +18,7 @@ import { Text, View, motion, useIsFocused } from '@ps5-react/core';
     const t2 = useT();
     const focused = useIsFocused();
     return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
-      /* @__PURE__ */ (0, jsx)(FocusRing, { round: "full" }),
+      /* @__PURE__ */ (0, jsx)(FocusRing, { round: "md" }),
       /* @__PURE__ */ (0, jsxs)(Text, { focused, style: [{ fontFamily: "Exo2", fontSize: 21, color: colors.muted, lineHeight: 30 }, focused ? { color: colors.fg } : null], children: [
         fitBytes(t2("sort.label"), SPAN_MAX),
         /* @__PURE__ */ (0, jsx)(Text, { style: { color: colors.fg }, children: fitBytes(`  ${sortLabel(sort)}`, SPAN_MAX) })

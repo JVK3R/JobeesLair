@@ -132,7 +132,7 @@ A process lock serializes builds because dependency tooling is shared.
 5. Validate each output on hardware and record the firmware/loader combination.
 
 The default SDK is v0.42 from a pinned URL and hash. Cross-compilation uses
-Clang/LLD 18. Host utilities use the macOS compiler and system zlib. This is
+Clang/LLD 18. Host utilities use the host's compiler (Apple clang, or clang on Linux) and system zlib. This is
 functional reproducibility with recorded dependencies, not a guarantee of
 identical output across operating systems. A future release pipeline should
 also pin the CI image, Python, Node, CMake, and host compiler.
@@ -140,7 +140,10 @@ also pin the CI image, Python, Node, CMake, and host compiler.
 ## Developer experience
 
 `npm run dev` watches JSX, assets, and configuration, rebuilding and reopening
-the macOS preview. State resets; this is not Fast Refresh. Build errors remain
+the desktop preview (macOS, Linux or WSL 2). The app picks up where it was: in npm run dev, a Babel pass
+(tools/keep-state.mjs) turns the app's own `useState` into `useKeptState` (runtime/js/keep-state.js), which
+keeps plain-data values, keyed by call site and `useId`, in the preview's temporary folder, and focus by
+`focusKey`. It is not Fast Refresh: the JavaScript runtime starts again. Build errors remain
 visible and another save retries. The watcher never connects to the console.
 
 `npm run build` produces an application folder and ZIP. JSON controls identity,
@@ -153,7 +156,7 @@ build stage retains its full log.
 - Hardware validation of focus navigation, including modal, reconnect, and repeat tests.
 - Restart only the JS runtime while preserving the desktop graphics context.
 - Measure PS5 frame time and memory, then consider damaged-region uploads.
-- Extend native networking as measured on hardware; add music, text input, save data,
+- Extend native networking as measured on hardware; add music, save data,
   caching, and virtualization behind explicit APIs.
 - Ship an installable CLI and a pinned CI matrix.
 

@@ -4,6 +4,94 @@ What changed in each version of Jobee'sLair. Each release on
 [GitHub](https://github.com/JVK3R/JobeesLair/releases) carries the full notes, the files and their
 SHA-256 checksums.
 
+## 0.5.4 (2026-10-29)
+
+- **The PS5 keyboard.** Searching, and typing a link or a TorBox or AllDebrid key, opens the console's own
+  keyboard, in your language. Search shows its results once you finish typing. To keep the store's own keys,
+  with results as you type, turn off PS5 keyboard in Settings, Look & feel. If the console's keyboard can't
+  open, or the app closed while it was up twice in a row, Jobee'sLair goes back to its own keys by itself.
+- **The phone companion, brought up to date.** Downloads, Homebrew installs and announcements now move on your
+  phone as they happen, instead of the page asking every two seconds. The page comes in the console's language
+  (Arabic and Urdu right to left) and changes with it. New on the phone: your Library with Fix it, removing a
+  Homebrew app (keeping what it saved or not) and running its helper, Clear finished and Cancel all, choosing
+  which source a game downloads from, and Triangle, Square, L2 and R2 on the remote. A phone that puts the page
+  away stops listening, so the console stops sending to it.
+- **Type on your phone instead of the controller.** Whenever the console asks you to type something (a TorBox or
+  AllDebrid key, a catalog feed, a download's file link, a search), the same box shows at the top of the phone's
+  page. Type or paste it there and press Send: it goes in as if typed on the console, and the PS5 keyboard closes.
+  Close, or Back on the phone's remote, closes the PS5 keyboard without typing anything.
+- **Settings on the phone.** Home, Settings on the phone sets your TorBox and AllDebrid keys (paste one in, test
+  the connection, remove it), the download speed limit, whether parts continue by themselves, and updates (check,
+  download and install, restart to apply). The phone is never shown more than a key's last four characters.
+- **Pass a host's check on your phone.** A download waiting on the browser has Get the link here: open the host's
+  page on your phone, pass its check, copy the link from its download button and paste it, and the console
+  downloads from it. Sources that need the browser can be queued from the phone now too, and with a TorBox or
+  AllDebrid key, the phone can send them through it, with no browser at all.
+- **Smaller things on the phone.** A download that stopped has Other sources. A download finishing or stopping
+  pops up on the phone, and the browser tab shows how far the current one is.
+- **See whether a game starts for other players.** A game's Details now say on how many consoles it started, of all
+  that tried it, and the same on your firmware ("Started for players: 31 of 33"), green when nearly all did and red
+  when most didn't. The phone's game page says it too. The numbers come from consoles with "Share anonymous stats"
+  on: each says how its latest launch of a game went (it started, or why not, and how the game was installed),
+  without its ID, under a code that can't be tied to the console or to its other games. Settings, About says
+  exactly what is sent.
+- **Easier to see where you are.** The frame around what you're on is bolder, with a dark band that keeps it
+  apart from the art under it. Homebrew's tiles showed almost no frame at all (growing the tile cut it off), and
+  the Browse menu showed only a slightly lighter row: both get the full frame now. A focused game's genre line
+  turns the accent color too.
+- **Small corners.** Chips, tags, the search and Homebrew filters and the announcement bar have the same small
+  corners as the buttons, and every focus frame follows the shape of what it frames.
+- **Symbols and emoji.** Names and notes with symbols (arrows, stars, card suits) or emoji showed empty boxes.
+  The app has fonts for them now.
+- **Long text shown whole.** Some paragraphs stopped partway with "…": what "Share anonymous stats" sends, the
+  legal notice, the credits, "Why won't it start?" and What's new, in Bengali, Hindi and Russian most of all, where
+  sometimes half was missing. They're shown in full now.
+- **A game that froze says so.** When a game froze and the console closed it, "Why won't it start?" showed only
+  the system's error code (GPU_FAULT_SUSPENDPOINT_TIMEOUT...), which read like a failed install. It now says the
+  game froze, that it installed correctly, and that another download of it from its page may run.
+- **No stray "?" in Arabic and Urdu.** Homebrew app names ended in a "?" in a right-to-left language: the
+  invisible mark that keeps an English name's punctuation in place was drawn as one. It draws as nothing now.
+- **A 7z the console can't unpack is caught before it downloads.** Some uploaders pack a game with settings
+  that need more memory to unpack than a console app can use. A RAR like that was caught in its first seconds,
+  but a 7z keeps its file list at the very end, so you only heard "This archive can't be extracted on the
+  console" after the whole download (128 GB, for one of you). Jobee'sLair now reads that list off the server
+  before downloading, which takes a second, and moves on to the game's next source if there is one.
+- **"Choose another source" instead of a Retry that can't work.** When a download stopped for a reason a retry
+  can't change (an archive the console can't unpack, a password that doesn't work, a source missing parts), its
+  card offered Retry, which failed again at once. The card and the game page now offer Choose another source,
+  which opens the list of sources.
+- **Games packed as an image inside an archive install.** When an archive held a disk image (an .exfat or
+  .ffpkg), Jobee'sLair unpacked it into a folder inside homebrew, where ShadowMount doesn't look for images, so
+  the game never installed and its card stayed on "Install requested". Images now go straight into homebrew,
+  beside the ones you download directly, and any already stuck that way move there the next time Jobee'sLair
+  opens. Thanks to qtrcipher for the detailed report.
+- **exFAT games listed in "parts" install.** For about 60 games, one catalog lists a game's exFAT image as "part 1"
+  and "part 2", but each part is a whole image (the same file twice, or two regions). Jobee'sLair downloaded every
+  part and then failed trying to unpack them as one archive. Now part 1 is installed as the game, and the other
+  parts aren't downloaded at all.
+- **An archive listed as a disk image is unpacked.** A file listed as an exFAT image that was really a 7z (or
+  RAR or ZIP) was handed to ShadowMount, which could only fail to mount it, and nothing said so. It's unpacked
+  now, like any archive.
+- **A tiny file instead of the game is refused.** When a host sent a file of a few kilobytes for a game listed
+  at many gigabytes, it was treated as finished and ended as "not a game". It's refused now as "Not a game file",
+  deleted, and the next source is tried if there is one.
+- **Not enough room to unpack is said at the start.** As soon as unpacking learns how big the game really is,
+  it checks the drive. Too little room stops it right away, saying how much is needed and how much is free,
+  instead of running for hours first and throwing the work away.
+- **Orbit Store's Mac download is gone from its files.** Orbit Store's list of files offered Orbit Zero's Mac app
+  as if it ran on the PS5, and every install of it failed with "Archive contains an unsafe path, link or special
+  file". It isn't offered anymore; the PS5 files (the app and its payload) install as before.
+- **The time left while unpacking.** Unpacking showed the archive's size as the finished size, so an archive
+  that unpacks bigger sat at 99% with "a few seconds left" that kept growing. It now shows the real size from
+  the archive's own list (RAR, 7z and ZIP), and the time left follows the speed over the last half minute
+  instead of jumping each time a file is saved.
+- **No crash while many pictures load.** When a picture's saved copy turned out unreadable while lots of covers were
+  loading at once, the store could close itself: it ran out of download slots. Pictures now wait their turn.
+- **The stats count the phone companion.** With "Share anonymous stats" on, the five-minute ping also says
+  whether the phone companion is on (and kept on while Jobee'sLair is closed), and since the last ping, how many
+  minutes a phone had its page open and how many times one queued a game, installed or ran something, used the
+  remote and so on. Counts only, never what. Settings, About says exactly what is sent.
+
 ## 0.5.3 (2026-10-26)
 
 - **PS5 packages install.** Homebrew apps that ship as a PS5 package (PS5Library, ezRemote Client's package,

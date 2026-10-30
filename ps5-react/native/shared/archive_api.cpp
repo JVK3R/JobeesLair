@@ -76,6 +76,62 @@ JSValue inspect(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
   JS_SetPropertyStr(ctx,out,"title",JS_NewString(ctx,inspection.title.c_str()));
   return out;
 }
+// A string of one character per byte (Http.request's `binary` body) as those bytes, at most `room` of them.
+bool byte_string(JSContext* ctx, JSValueConst value, std::string& out, std::size_t room) {
+  if (!JS_IsString(value)) return false;
+  std::size_t length = 0; const char* text = JS_ToCStringLen(ctx,&length,value);
+  if (!text) return false;
+  out.clear();
+  bool ok = true;
+  for (std::size_t i = 0; ok && i < length; ++i) {
+    const auto lead = static_cast<unsigned char>(text[i]);
+    if (lead < 0x80) out += static_cast<char>(lead);
+    else if ((lead & 0xFE) == 0xC2 && i + 1 < length && (static_cast<unsigned char>(text[i + 1]) & 0xC0) == 0x80)
+      out += static_cast<char>((lead & 0x03) << 6 | (static_cast<unsigned char>(text[++i]) & 0x3F));
+    else ok = false;
+    ok = ok && out.size() <= room;
+  }
+  JS_FreeCString(ctx,text); return ok;
+}
+// Byte ranges of an archive fetched before it downloads, [{offset, bytes}]; a 7z's preflight on them, or the
+// range it reads next.
+JSValue inspect_ranges(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
+  constexpr const char* expected = "archives.inspectRanges: expected at most 16 ranges {offset, bytes}, bytes one character per byte, 16 MiB together";
+  if (argc < 1 || !JS_IsArray(argv[0])) return JS_ThrowTypeError(ctx,"%s",expected);
+  const JSValue length_value = JS_GetPropertyStr(ctx,argv[0],"length"); std::uint32_t length = 0;
+  const int result = JS_ToUint32(ctx,&length,length_value); JS_FreeValue(ctx,length_value);
+  if (result || length > 16) return JS_ThrowTypeError(ctx,"%s",expected);
+  std::vector<archives::Range> ranges(length);
+  std::size_t held = 0;
+  for (std::uint32_t i = 0; i < length; ++i) {
+    const JSValue item = JS_GetPropertyUint32(ctx,argv[0],i);
+    const JSValue offset_value = JS_GetPropertyStr(ctx,item,"offset"), bytes_value = JS_GetPropertyStr(ctx,item,"bytes");
+    double offset = -1;
+    const bool number = JS_IsNumber(offset_value) && !JS_ToFloat64(ctx,&offset,offset_value) && offset >= 0 &&
+                        offset <= 9007199254740991.0 && std::floor(offset) == offset;
+    const bool ok = number && byte_string(ctx,bytes_value,ranges[i].bytes,archives::max_metadata_bytes - held);
+    if (ok) {
+      ranges[i].offset = static_cast<std::uint64_t>(offset);
+      held += ranges[i].bytes.size();
+    }
+    JS_FreeValue(ctx,offset_value); JS_FreeValue(ctx,bytes_value); JS_FreeValue(ctx,item);
+    if (!ok) return JS_ThrowTypeError(ctx,"%s",expected);
+  }
+  const host::CallScope scope("archives.inspectRanges");
+  const auto inspection = archives::inspect_ranges(ranges);
+  JSValue out = JS_NewObject(ctx);
+  JS_SetPropertyStr(ctx,out,"kind",JS_NewString(ctx,inspection.kind.c_str()));
+  JS_SetPropertyStr(ctx,out,"refusal",JS_NewString(ctx,inspection.refusal.c_str()));
+  JS_SetPropertyStr(ctx,out,"size",inspection.size ? JS_NewFloat64(ctx,static_cast<double>(inspection.size)) : JS_NULL);
+  JSValue need = JS_NULL;
+  if (inspection.need_length) {
+    need = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx,need,"offset",JS_NewFloat64(ctx,static_cast<double>(inspection.need_offset)));
+    JS_SetPropertyStr(ctx,need,"length",JS_NewFloat64(ctx,static_cast<double>(inspection.need_length)));
+  }
+  JS_SetPropertyStr(ctx,out,"need",need);
+  return out;
+}
 JSValue cancel(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
   std::uint32_t id = 0;
   if (!argc || JS_ToUint32(ctx,&id,argv[0])) return JS_ThrowTypeError(ctx,"archives.cancel: expected task id");
@@ -106,6 +162,7 @@ JSValue ps5_react_archive_api(JSContext* ctx) {
   JSValue api = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx,api,"extract",JS_NewCFunction(ctx,extract,"extract",5));
   JS_SetPropertyStr(ctx,api,"inspect",JS_NewCFunction(ctx,inspect,"inspect",1));
+  JS_SetPropertyStr(ctx,api,"inspectRanges",JS_NewCFunction(ctx,inspect_ranges,"inspectRanges",1));
   JS_SetPropertyStr(ctx,api,"cancel",JS_NewCFunction(ctx,cancel,"cancel",1));
   JS_SetPropertyStr(ctx,api,"poll",JS_NewCFunction(ctx,poll,"poll",0));
   return api;

@@ -51,7 +51,7 @@ A codepoint the baked font lacks draws as `?`, unless a runtime font has it.
 List the scripts an app shows in `app.json`:
 
 ```json
-"textFonts": ["chinese", "japanese", "devanagari", "bengali", "arabic"]
+"textFonts": ["chinese", "japanese", "devanagari", "bengali", "arabic", "symbols", "emoji"]
 ```
 
 | Script | Languages | Font (subset) | Characters | Package |
@@ -61,9 +61,17 @@ List the scripts an app shows in `app.json`:
 | `devanagari` | Hindi, Marathi, Nepali | Noto Sans Devanagari | Devanagari, Devanagari Extended, Vedic Extensions | 0.16 MB |
 | `bengali` | Bengali, Assamese | Noto Sans Bengali | Bengali | 0.09 MB |
 | `arabic` | Arabic, Urdu, Persian | Noto Sans Arabic | Arabic, Supplement, Extended-A, presentation forms | 0.11 MB |
+| `symbols` | Any | Noto Sans Symbols 2 and Noto Sans Symbols | Arrows, technical and geometric shapes, dingbats (✕ ✓ ★), enclosed numbers (①), symbols in the pictograph planes | 0.37 MB |
+| `emoji` | Any | Noto Emoji (monochrome) | Every emoji it has, with skin tones and joined sequences (👍🏽 👨‍👩‍👧) | 0.84 MB |
 
-All five add 3.7 MB to the package. Urdu is drawn in Noto Sans Arabic's Naskh
+The five scripts add 3.7 MB to the package. Urdu is drawn in Noto Sans Arabic's Naskh
 style, not Nastaliq.
+
+`symbols` and `emoji` are for text the app does not write itself: names, descriptions and release notes
+from the web are full of ✓, ★ and emoji, which a baked font draws as `?`. Emoji are drawn in the text's
+colour, from Noto Emoji's default (Regular) instance, not in colour. A character goes to its own kind first
+(an emoji to Noto Emoji, a symbol to the symbol fonts), then to any other runtime font that has it. Both draw in
+the em box, so neither makes its line taller.
 
 The build pins each font in `dependencies.lock.json`, subsets it with HarfBuzz
 (`tools/font_subset.cpp`, cached in `.deps/fonts/subset/`) and packages it in
@@ -132,7 +140,27 @@ An Arabic or Urdu interface sets `direction: 'rtl'` once on its root view. A
 truncated right-to-left line keeps its start at the right and puts `…` at its
 left end. The `text-start` and `text-end` utilities follow the direction.
 
+### Right-to-left layout
+
+`left`, `right`, `marginLeft`, `paddingRight` and the rest are physical: they stay where they are in a
+right-to-left screen. The logical edges follow the node's direction (inherited), as in React Native:
+
+| Style | Left to right | Right to left |
+| --- | --- | --- |
+| `start`, `end` | `left`, `right` | `right`, `left` |
+| `marginStart`, `marginEnd` | `marginLeft`, `marginRight` | `marginRight`, `marginLeft` |
+| `paddingStart`, `paddingEnd` | `paddingLeft`, `paddingRight` | `paddingRight`, `paddingLeft` |
+
+A logical edge wins over the physical edge it lands on; `start` and `end` take percentages like `left`. The
+engine resolves them at every layout, so switching a screen's `direction` (a language change) moves them with
+nothing else to change. A badge pinned to a card's corner stays at the corner a reader starts from:
+
+```jsx
+<View style={{position: 'absolute', top: 8, end: 8}} />
+```
+
+The Tailwind classes `start-*`, `end-*`, `ms-*`, `me-*`, `ps-*` and `pe-*` compile to them.
+
 Limits: a horizontal `ScrollView` keeps left-to-right order (reverse its data
-for right-to-left); margins, padding and `left`/`right` insets stay physical
-(there are no `marginStart`/`paddingEnd` styles); focus moves by laid-out
+for right-to-left); borders, radii and transforms stay physical; focus moves by laid-out
 position, so the D-pad follows the mirrored layout.

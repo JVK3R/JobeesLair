@@ -6,6 +6,18 @@ A Cloudflare Worker with a D1 database at **https://api.jobees.org**, behind the
 - **Stats.** With "Share anonymous stats" on (Settings, About; on by default), the app pings every five minutes while
   it's open with a random ID made on that console, its version and edition, the firmware and the language. Homebrew
   installs send which app and whether it worked (the error when it didn't), without the ID.
+- **The phone companion** (0.5.4 on), to decide whether it earns its place in 1.0: each ping also says whether the
+  companion is on (and kept on while the app is closed), and since the last ping, the minutes a phone had the page
+  open and how many times one opened it, queued a game, did something in Homebrew, controlled a download, used Fix
+  it, pressed the remote or changed a feed. Counts only, kept per console and day (`companion_days`); the dashboard's
+  Phone companion section shows how many consoles have it on, how many a phone really uses, and who comes back.
+- **Game launches** (0.5.4 on), for the game page's "Started for players": how each console's latest launch of a
+  game went, as ShadowMount saw it (started, or why not: crashed, no game process, didn't mount), the firmware's
+  family ("13.59"), how the game was installed and whether Fix it or a backport was involved. Sent on a look that
+  isn't a ping, without the console's ID, under a token the app makes from the title and a secret that never leaves
+  the console: one row per console and game (`launches`), and two rows can't be told to be one console's. Kept a
+  year. `GET /v1/compat` hands every app each game's totals (cached ten minutes); the dashboard's Games section shows
+  the games that won't start for the most consoles, and each format's and firmware's numbers.
 - **The live count**, shown in the app's bottom bar and in Settings, About.
 - **Time in Jobee'sLair**, counted from those same pings (nothing more is sent): each day's and each hour's totals of
   time open, sessions and the most consoles online at once, with no console ID.
@@ -18,7 +30,7 @@ A Cloudflare Worker with a D1 database at **https://api.jobees.org**, behind the
   (sending nothing about the console), so a post or a take-down shows within about a minute.
 
 Never stored: IP addresses (the limits against floods hold one in the Worker's memory for an hour at most), the
-console's own ID, PSN names, anyone's games or downloads. `schema.sql` is everything stored and for how long; a
+console's own ID, PSN names, any console's list of games or its downloads. `schema.sql` is everything stored and for how long; a
 nightly run drops the rest.
 
 ## Deploy (once)
@@ -31,7 +43,10 @@ nightly run drops the rest.
     node reset-login.mjs                             # opens the dashboard's first-time setup for an hour
 
 After a change to `worker.js` or `dashboard.js`: `npx wrangler deploy`. After a change to `schema.sql`: the
-`d1 execute` line again (every statement is safe to repeat).
+`d1 execute` line again (every statement is safe to repeat). When both change (0.5.4's `companion_days`, then its
+`launches`), the schema goes first: the nightly tidy-up deletes from every table in one batch, which fails while a
+table is missing, and until `launches` exists the app's launches are refused (it keeps them and tries again) and the
+dashboard shows the Games section as empty.
 
 ## Signing in to the dashboard
 
@@ -51,7 +66,7 @@ someone with your password gets that far.
   setup again. If it was you, wait an hour, or
   `npx wrangler d1 execute jobeeslair-online --remote --command "DELETE FROM admin_failures"`.
 - **Junk in the stats:** the online count is in every app's bottom bar, so a ping is counted for at most 40 consoles
-  from one address in five minutes, and events are taken 60 an hour from one address (counted in the Worker's memory,
+  from one address in five minutes, events are taken 60 an hour and launches 200 an hour from one address (counted in the Worker's memory,
   never written). The worst junk can do is nudge the count and skew a chart.
   `npx wrangler d1 execute jobeeslair-online --remote --command "DELETE FROM ..."` cleans it.
 - **The Worker is down:** the app keeps working as before; it just shows no count or announcement.

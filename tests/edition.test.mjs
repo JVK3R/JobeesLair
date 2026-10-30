@@ -36,7 +36,8 @@ test("the homebrew edition's manifest is the store's with its own identity", () 
   assert.equal(homebrew.name, EDITIONS.homebrew.name);
   assert.equal(homebrew.version, contentVersionOf(VERSION), 'the same package version as the store');
   assert.match(homebrew.userAgent, /^JobeesLair-Homebrew\//);
-  const same = ({ titleId, contentId, name, userAgent, ...rest }) => rest;
+  // `ps4` is identity too: the PS4 build's title and content IDs (ps5-react/tools/build_ps4.py).
+  const same = ({ titleId, contentId, name, userAgent, ps4, ...rest }) => rest;
   assert.deepEqual(same(homebrew), same(store), 'everything else as the store has it');
 });
 

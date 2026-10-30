@@ -2,12 +2,13 @@
   "$schema": "https://raw.githubusercontent.com/half144/ps5-react/main/app.schema.json",
   "titleId": "PPSA99471",
   "contentId": "UP9000-PPSA99471_00-JOBEESLAIR000000",
+  "ps4": { "titleId": "JOBE00001", "contentId": "IV0000-JOBE00001_00-JOBEESLAIR000000" },
   "name": "Jobee'sLair",
-  "version": "01.005.003",
+  "version": "01.005.004",
   "render": { "width": 1920, "height": 1080 },
   "surface": { "width": 1920, "height": 1080 },
   "refreshRate": 60,
-  "textFonts": ["chinese", "japanese", "bengali", "devanagari", "arabic"],
+  "textFonts": ["chinese", "japanese", "bengali", "devanagari", "arabic", "symbols", "emoji"],
   "resources": ["data/releases", "data/pages", "data/homebrew.json", "data/private", "i18n/locales"],
   "payloads": [
     {
@@ -23,6 +24,6 @@
   ],
   "filesystemAccess": "console",
   "networking": true,
-  "userAgent": "JobeesLair/0.5.3 (PS5)",
+  "userAgent": "JobeesLair/0.5.4 (PS5)",
   "timeoutSeconds": 0
 }

@@ -732,6 +732,7 @@ void ps5_react_install_host_api(JSContext* ctx) {
   JS_SetPropertyStr(ctx, api, "image", ps5_react_image_api(ctx));
   JS_SetPropertyStr(ctx, api, "sound", ps5_react_sound_api(ctx));
   JS_SetPropertyStr(ctx, api, "audioOutput", ps5_react_audio_output_api(ctx));
+  JS_SetPropertyStr(ctx, api, "keyboard", ps5_react_keyboard_api(ctx));
   JSValue global = JS_GetGlobalObject(ctx);
   JS_SetPropertyStr(ctx, global, "__ps5ReactNative", api);
   JS_FreeValue(ctx, global);

@@ -6,7 +6,7 @@ import {Image, Text, View} from 'embedded-react';
 import {createMotion} from './motion.js';
 
 export {AnimatePresence} from './presence.js';
-export {transitions} from './transitions.js';
+export {transitions, setLightMotion} from './transitions.js';
 
 export const motion = {
   View: createMotion(View),

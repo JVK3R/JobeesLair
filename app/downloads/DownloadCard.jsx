@@ -2,7 +2,8 @@
 // A state stripe down its leading edge and a state chip name what it is doing (accent while it moves,
 // amber held, red failed, green done); the big readout is its percentage; the meter, sizes, time left and a
 // live speed trace follow; the controls sit along the bottom: the main action (Pause, Resume, Retry,
-// Restart, Install, Continue on the page), the game page, and a cancel that arms before it deletes.
+// Restart, Install, Continue on the page, Choose another source), the game page, and a cancel that arms
+// before it deletes.
 // The card redraws only when the job's shape changes (memo on shapeOf); the moving numbers live in
 // CardMeter and CardSpeed, which follow the job's own progress, so a running download repaints its meter
 // and not the whole card.
@@ -12,7 +13,7 @@ import '../assets/JetBrainsMono-Regular.ttf';
 import { jsx, jsxs } from 'react/jsx-runtime';
 import { memo, useEffect, useState } from 'react';
 import { SpeedChart } from './SpeedChart.jsx';
-import { STALE_PARTIAL, cause, explainError } from './errors.js';
+import { STALE_PARTIAL, cause, explainError, finalError } from './errors.js';
 import { formatSpeed, formatTimeLeft } from './format.js';
 import { WAITING, clearAction, formatOf, partOf, shownState, stateLabel } from './labels.js';
 import { fractionOf, shapeOf, useProgress } from './useQueue.js';
@@ -61,6 +62,9 @@ import { Text, View, motion } from '@ps5-react/core';
     if (BUSY.includes(state)) return { icon: "pause", label: "downloads.action.pause", onPress: () => run("pause") };
     if (["paused", "failed"].includes(state) && STALE_PARTIAL.test(cause(error2))) return { icon: "download", label: "downloads.action.restart", onPress: () => run("restart") };
     if (state === "paused") return { icon: "play", label: "downloads.action.resume", onPress: () => run("resume") };
+    // 0.5.4: a refusal Retry would only meet again (an archive the console can't unpack): the game page,
+    // whose button then opens the list of sources.
+    if (state === "failed" && finalError(error2, Boolean(parts))) return { icon: "list", label: "download.otherSource.label", onPress: openGame };
     if (state === "failed") return { icon: "download", label: "downloads.action.retry", onPress: () => run("resume") };
     if (state === "awaiting-browser") return { icon: "play", label: "downloads.action.continueOnPage", onPress: openGame };
     if (state === "downloaded") return { icon: "circleCheck", label: "downloads.action.install", onPress: () => run("register") };
@@ -193,7 +197,7 @@ import { Text, View, motion } from '@ps5-react/core';
           /* @__PURE__ */ (0, jsx)(Cover, { game, label: false, style: THUMB }),
           /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, gap: 6 }, children: [
             /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 14 }, children: [
-              /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: radius.pill, backgroundColor: colors.canvas2, paddingHorizontal: 12, paddingVertical: 2 }, children: [
+              /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: radius.sm, backgroundColor: colors.canvas2, paddingHorizontal: 12, paddingVertical: 2 }, children: [
                 /* @__PURE__ */ (0, jsx)(View, { style: { width: 10, height: 10, borderRadius: radius.pill, backgroundColor: tone } }),
                 /* @__PURE__ */ (0, jsx)(Text, { style: mono(16, tone, { letterSpacing: 1.5 }), children: fitBytes(stageLabel(ready.stage).toUpperCase(), 96) })
               ] }),
@@ -215,7 +219,8 @@ import { Text, View, motion } from '@ps5-react/core';
         }),
         /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, children: [
           /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", gap: 12 }, children: [
-            main ? /* @__PURE__ */ (0, jsx)(Button2, { variant: "primary", icon: main.icon, label: t2(main.label), style: { width: 230 }, autoFocus, focusKey: primaryKey(job2.id), ...focusOf("main"), onPress: main.onPress }) : null,
+            // 0.5.4: at least 230 wide, wider for a longer label ("Choose another source"), never cut.
+            main ? /* @__PURE__ */ (0, jsx)(Button2, { variant: "primary", icon: main.icon, label: t2(main.label), style: { minWidth: 230 }, autoFocus, focusKey: primaryKey(job2.id), ...focusOf("main"), onPress: main.onPress }) : null,
             /* @__PURE__ */ (0, jsx)(Button2, { variant: main ? "secondary" : "primary", icon: "chevronRight", label: t2("downloads.action.gamePage"), style: { width: 210 }, autoFocus: main ? false : autoFocus, focusKey: main ? `downloads-page:${job2.id}` : primaryKey(job2.id), ...focusOf("page"), onPress: openGame }),
             /* @__PURE__ */ (0, jsx)(CancelButton, { id: job2.id, action: clearAction(state), run: (name) => run(job2, name), ...focusOf("cancel") })
           ] }),

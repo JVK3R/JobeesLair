@@ -7,6 +7,8 @@
 // (https://github.com/<owner>/<repo>/releases/download/...), so the index can point the console at
 // nothing else. Images may come from any https address (they are only drawn).
 
+import { PS4 } from './ps4.js';
+
   var MAX_APPS = 600, MAX_FILES = 12, MAX_SHOTS = 4;
   // What the console does with each kind of file (tools/homebrew/build-index.mjs names them).
   var KINDS = /* @__PURE__ */ new Set(["image", "app", "archive-image", "payload", "archive-payload", "pkg", "archive-pkg"]);
@@ -19,6 +21,10 @@
   var fileName = (value) => typeof value === "string" && value.length <= 200 && /^[^/\\\x00-\x1f]+$/.test(value) && value !== "." && value !== ".." ? value : null;
   // A path inside an archive: relative, without "..", ending in a name.
   var innerPath = (value) => typeof value === "string" && value.length <= 400 && !/[\\\x00-\x1f]/.test(value) && !value.startsWith("/") && !value.split("/").includes("..") ? value : null;
+  // 0.5.4: a file inside a Mac app is a computer's archive. The index listed Orbit Store's Orbit-Zero-1.6.0-mac-x64.zip
+  // (its Mac app, carrying orbit_store.elf) as a PS5 payload, and every install of it failed: the extractor refuses
+  // the links a Mac app holds. The release ships the same payload on its own.
+  var IN_MAC_APP = /(^|\/)[^/]+\.app\/Contents\//i;
   function normalizeFile(file, repo) {
     if (!file || typeof file !== "object") return null;
     const name = fileName(file.name);
@@ -34,7 +40,7 @@
     }
     if (file.kind.startsWith("archive-")) {
       const inner = innerPath(file.inner);
-      if (!inner) return null;
+      if (!inner || IN_MAC_APP.test(inner)) return null;
       out.inner = inner;
     }
     return out;
@@ -82,8 +88,9 @@
       search: `${name} ${author} ${app.repo} ${str(app.description, 300)} ${category} ${categoryNames.get(category) ?? ""}`.toLowerCase()
     };
   }
-  // The index as the app uses it, or null when the document is not one.
-  function normalizeIndex(doc) {
+  // The index as the app uses it, or null when the document is not one. One index holds both consoles' apps: one
+  // marked "platform": "ps4" is the PS4's alone, any other the PS5's (state/ps4.js says which this is).
+  function normalizeIndex(doc, ps4 = PS4) {
     if (!doc || typeof doc !== "object" || doc.version !== 1 || !Array.isArray(doc.apps)) return null;
     const categories = (Array.isArray(doc.categories) ? doc.categories : []).filter((c) => c && CATEGORY.test(c.id) && typeof c.name === "string").map((c) => ({ id: c.id, name: c.name.slice(0, 40) }));
     const known = new Set(categories.map((c) => c.id));
@@ -95,6 +102,7 @@
     const seen = /* @__PURE__ */ new Set();
     const apps = [];
     for (const raw of doc.apps.slice(0, MAX_APPS)) {
+      if ((raw?.platform === "ps4") !== ps4) continue;
       const app = normalizeApp(raw, known, names);
       if (!app || seen.has(app.id)) continue;
       seen.add(app.id);

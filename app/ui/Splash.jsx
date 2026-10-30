@@ -5,8 +5,9 @@
 // ([SYSTEM] [AUTH] [FEED] [STATUS]) type in one after another with real values (version, whether a companion
 // PIN is set, how many titles are indexed). Then the whole screen slides up and away, off the startup notice
 // that was mounted under it. Nothing fades: every move is a transform of a small element (the mark, a line)
-// or of the full-screen layer, which is translated, never faded or scaled. About 2.7 seconds. Same lifecycle
-// as before: nothing of the store is rendered until `onDone`.
+// or of the full-screen layer, which is translated, never faded or scaled. About 2.7 seconds; about 1.2 on the
+// PS4, where every move is short too (light-motion.js). Same lifecycle as before: nothing of the store is rendered
+// until `onDone`.
 
 import '../assets/Exo2.ttf';
 import '../assets/JetBrainsMono-Regular.ttf';
@@ -20,6 +21,7 @@ import { TITLE_ID, VERSION_LABEL } from '../version.js';
 import { JLHalf, J_RED } from './JLMark.jsx';
 import { colors } from './colors.js';
 import { EASE_OUT } from './ease.js';
+import { LIGHT } from './light-motion.js';
 import { logical } from './scale.js';
 
   // The mark's box in output pixels, under 512 wide so the engine can scale it.
@@ -27,9 +29,9 @@ import { logical } from './scale.js';
   var MARK_W = MARK_H * 1.5;
   var GREEN = "#4ade80";
   // Milliseconds from launch: the lines type in, the screen holds on READY, then it leaves.
-  var LINE_AT = [480, 780, 1080, 1380];
-  var EXIT_AT = 2200;
-  var GONE_MS = 3e3;
+  var LINE_AT = LIGHT ? [150, 300, 450, 600] : [480, 780, 1080, 1380];
+  var EXIT_AT = LIGHT ? 1e3 : 2200;
+  var GONE_MS = LIGHT ? 1500 : 3e3;
   var ARRIVE = { type: "tween", duration: 0.66, ease: EASE_OUT };
   var SLIDE = { type: "tween", duration: 0.18, ease: "easeOut" };
   var LEAVE = { type: "tween", duration: 0.5, ease: [0.7, 0, 0.84, 0] };

@@ -1,11 +1,18 @@
 // Jobee'sLair online (0.5.2): a Cloudflare Worker with a D1 database (schema.sql) behind the app's online features
 // (app/state/online.js) and Jake's dashboard.
 //
-//   POST /v1/ping    {id, version, edition, firmware, language}: a console that shares stats, every five minutes
-//                    while the app is open. Answers {online, announcements: [{id, text, level, until}]}.
+//   POST /v1/ping    {id, version, edition, firmware, language, companion}: a console that shares stats, every five
+//                    minutes while the app is open. Answers {online, announcements: [{id, text, level, until}]}.
+//                    `companion` (0.5.4 on): {on, away, minutes, opens, games, homebrew, downloads, library, remote,
+//                    feeds}, the phone companion's switches and what a phone did since the last ping, as counts.
 //   GET  /v1/status  the same answer, with nothing about the console sent or kept: every app asks once a minute
 //                    between its pings (with stats off, only this).
 //   POST /v1/event   {type: "homebrew-install", app, ok, error, version, firmware}: kept with no console ID.
+//   POST /v1/launches  {firmware, version, reports: [{token, title, outcome, verdict, format, fixed, backport}]}
+//                    (0.5.4 on): how each game's latest launch went, with no console ID. `token` is the app's, made
+//                    from the title and a secret that never leaves the console: one row per console and game.
+//   GET  /v1/compat  every game's numbers: {at, titles: {TITLE: {s, f, fw: {"13.59": [s, f]}}}}, s started and f
+//                    didn't, on all firmware and on each. Sends nothing about the console; cached ten minutes.
 //   GET  /dashboard  the dashboard page (dashboard.js), and its typeface (/dashboard/exo2-*.woff2). Signing in
 //                    (POST /v1/admin/login) takes the password and the 6-digit code of an authenticator app; the
 //                    first time, reset-login.mjs's temporary password opens /v1/admin/setup/key and
@@ -13,7 +20,8 @@
 //                    top row), /v1/admin/summary?days=N (the rest) and /v1/admin/announcement (/remove takes one down).
 //
 // Nothing here stores IP addresses, and the app never sends its library, its downloads or anything that
-// identifies the console or the person. A nightly run (scheduled) drops what's past its keeping time.
+// identifies the console or the person: a game's launch comes under a token that can't be tied to the console or
+// to its other games. A nightly run (scheduled) drops what's past its keeping time.
 import { DASHBOARD } from "./dashboard.js";
 import { qrMatrix } from "../../app/ui/qr.js";
 import { EXO2_500, EXO2_700 } from "../../app/companion/fonts.js";
@@ -23,6 +31,7 @@ var DAY_MS = 864e5;
 var ONLINE_MS = 10 * 6e4;    // a console counts as online for ten minutes after a ping (the app pings every five)
 var PING_GAP_MS = 6e4;       // pings closer together than this are answered but not written again
 var CACHE_MS = 30e3;         // the count and the announcements, per isolate
+var COUNT_MS = 6e4;          // the count, for every isolate (the online table)
 var MAX_BODY = 4096;
 var EVENTS_PER_HOUR = 60;    // per address, in this isolate's memory only (never written anywhere)
 // Pings written from one address in five minutes, counted the same way: about as many consoles behind one address
@@ -30,11 +39,39 @@ var EVENTS_PER_HOUR = 60;    // per address, in this isolate's memory only (neve
 var PINGS_PER_ADDRESS = 40;
 var PING_SPAN_MS = 5 * 6e4;
 var LEVELS = new Set(["info", "warning"]);
+// What a phone did, counted by the app since its last ping (app/companion/usage.js).
+var COMPANION_COUNTS = ["minutes", "opens", "games", "homebrew", "downloads", "library", "remote", "feeds"];
 var MAX_NOTES = 5;           // announcements up at once
 var MAX_TEXT = 140;          // one line across the app's announcement bar
+// Game launches (0.5.4 on): what a report may say, and how many one address may send.
+var TITLE = /^[A-Z]{4}\d{5}$/;
+var TOKEN = /^[0-9a-f]{32}$/;
+var VERDICTS = { played: new Set(["ran"]), wontStart: new Set(["crashed", "notStarted", "mountFailed"]) };
+var FORMATS = new Set(["exfat", "ffpkg", "ffpfs", "ffpfsc", "folder", "other"]);
+var REPORTS_AT_ONCE = 20;    // a request's; the app sends no more (MAX_BODY holds them)
+var REPORTS_PER_HOUR = 200;  // per address, in this isolate's memory only: a console's first send brings its history
+var COMPAT_MS = 10 * 6e4;    // the players' numbers, per isolate
+var KEEP_LAUNCHES_MS = 365 * DAY_MS;
 
-var day = (ms) => new Date(ms).toISOString().slice(0, 10);
+// Days are Eastern time (New York), as the dashboard shows them, from midnight there on 2026-10-28. Days before it
+// were kept in UTC: that day began at midnight UTC and ran 28 hours, so nothing was lost or counted twice. Hours
+// stay UTC (the same hours anywhere; the dashboard shows them in Eastern time).
+var EASTERN_FROM = Date.parse("2026-10-28T04:00:00Z");
+var eastern = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+var day = (ms) => {
+  if (ms < EASTERN_FROM) return new Date(ms).toISOString().slice(0, 10);
+  const part = Object.fromEntries(eastern.formatToParts(ms).map(({ type, value }) => [type, value]));
+  return `${part.year}-${part.month}-${part.day}`;
+};
 var hour = (ms) => new Date(ms).toISOString().slice(0, 13);
+// When the day `ms` is in began (days start on a whole hour), and the same for a day by its name: noon UTC is in it.
+var dayStart = (ms) => {
+  const today = day(ms);
+  let at = Math.floor(ms / 36e5) * 36e5;
+  while (day(at - 36e5) === today) at -= 36e5;
+  return at;
+};
+var startOf = (name) => dayStart(Date.parse(`${name}T12:00:00Z`));
 // Short text from a client: printable, trimmed, cut to `max`.
 var clean = (value, max, drop = /[^\w .,:;'()+\-\/]/g) => String(value ?? "").replace(drop, "").replace(/\s+/g, " ").trim().slice(0, max);
 var json = (body, status = 200, cache = "no-store", extra = {}) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": cache, ...extra } });
@@ -47,6 +84,8 @@ let counted = { at: -Infinity, online: 0 };
 let posted = { at: -Infinity, rows: [] };
 var lastPing = new Map();
 var eventsFrom = new Map();
+var reportsFrom = new Map();
+let compatKept = { at: -Infinity, body: null };
 var pingsFrom = new Map();
 var wrongFrom = new Map();  // wrong dashboard passwords, by address
 
@@ -70,12 +109,29 @@ async function readJson(request) {
   }
 }
 
-async function onlineNow(db, now, fresh = false) {
-  if (fresh || now - counted.at > CACHE_MS) {
-    const row = await db.prepare("SELECT COUNT(*) AS n FROM consoles WHERE last_seen > ?").bind(now - ONLINE_MS).first();
-    counted = { at: now, online: row?.n ?? 0 };
+// How many are online. Counting reads a row for each console online and every console asks about once a minute, so
+// the count is kept in the online table for every isolate and made again at most every COUNT_MS (the count on every
+// ask used most of D1's daily reads). A console coming on (`cameOn`) adds one in between, so the day's and the hour's
+// peak include it. Without the table yet (schema.sql not applied), counted as before.
+async function onlineNow(db, now, cameOn = false) {
+  if (!cameOn && now - counted.at <= CACHE_MS) return counted.online;
+  let kept;
+  try {
+    kept = await db.prepare("SELECT at, n FROM online WHERE slot = 1").first();
+  } catch {
+    kept = undefined;
   }
-  return counted.online;
+  let online;
+  if (kept && now - kept.at <= COUNT_MS) {
+    online = cameOn ? (await db.prepare("UPDATE online SET n = n + 1 WHERE slot = 1 RETURNING n").first())?.n ?? kept.n + 1 : kept.n;
+  } else {
+    online = (await db.prepare("SELECT COUNT(*) AS n FROM consoles WHERE last_seen > ?").bind(now - ONLINE_MS).first())?.n ?? 0;
+    if (kept !== undefined) {
+      await db.prepare("INSERT INTO online (slot, at, n) VALUES (1, ?, ?) ON CONFLICT (slot) DO UPDATE SET at = excluded.at, n = excluded.n").bind(now, online).run();
+    }
+  }
+  counted = { at: now, online };
+  return online;
 }
 
 // The announcements up now, warnings first, then the newest: the order the app takes turns in.
@@ -88,6 +144,16 @@ async function announcements(db, now, fresh = false) {
 
 async function answer(db, now) {
   return { online: await onlineNow(db, now), announcements: await announcements(db, now) };
+}
+
+// The companion's part of a ping, or null without one (an app before 0.5.4). Counts are whole numbers, capped: a ping
+// missed while a download held the network carries more than five minutes, but never more than a day.
+function companionOf(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const count = (n, cap) => Number.isFinite(n) ? Math.min(cap, Math.max(0, Math.floor(n))) : 0;
+  const out = { enabled: value.on === true ? 1 : 0, away: value.on === true && value.away === true ? 1 : 0 };
+  for (const name of COMPANION_COUNTS) out[name] = count(value[name], name === "minutes" ? 1440 : 5000);
+  return out;
 }
 
 async function ping(request, db, now) {
@@ -104,6 +170,7 @@ async function ping(request, db, now) {
     // A session starts with a console's first ping after ten quiet minutes (or its first ever).
     const seen = await db.prepare("SELECT last_seen FROM consoles WHERE id = ?").bind(body.id).first();
     const starts = !seen || now - seen.last_seen > ONLINE_MS ? 1 : 0;
+    const companion = companionOf(body.companion);
     await db.batch([
       db.prepare(
         "INSERT INTO consoles (id, first_seen, last_seen, version, edition, firmware, language) VALUES (?, ?, ?, ?, ?, ?, ?) " +
@@ -112,8 +179,20 @@ async function ping(request, db, now) {
       ).bind(body.id, now, now, clean(body.version, 24) || "?", edition, clean(body.firmware, 12) || "?", clean(body.language, 12) || "?"),
       db.prepare("INSERT OR IGNORE INTO active (day, id) VALUES (?, ?)").bind(day(now), body.id)
     ]);
-    // Time in Jobee'sLair, from the pings alone: each stands for five minutes open. Counted again when a session
-    // starts, so the day's and the hour's peak include this console.
+    // On its own: a database without the table yet (schema.sql not applied) loses these counts, never the ping.
+    if (companion) {
+      try {
+        await db.prepare(
+          `INSERT INTO companion_days (day, id, enabled, away, ${COMPANION_COUNTS.join(", ")}) VALUES (?, ?, ?, ?${", ?".repeat(COMPANION_COUNTS.length)}) ` +
+            "ON CONFLICT (day, id) DO UPDATE SET enabled = MAX(enabled, excluded.enabled), away = MAX(away, excluded.away), " +
+            COMPANION_COUNTS.map((name) => `${name} = ${name} + excluded.${name}`).join(", ")
+        ).bind(day(now), body.id, companion.enabled, companion.away, ...COMPANION_COUNTS.map((name) => companion[name])).run();
+      } catch (error) {
+        console.log(`online: companion counts not kept: ${error?.message}`);
+      }
+    }
+    // Time in Jobee'sLair, from the pings alone: each stands for five minutes open. A session starting adds this
+    // console to the online count, so the day's and the hour's peak include it.
     const online = await onlineNow(db, now, starts === 1);
     await db.batch([
       db.prepare("INSERT INTO usage (day, pings, sessions, peak) VALUES (?, 1, ?, ?) ON CONFLICT (day) DO UPDATE SET " +
@@ -137,6 +216,66 @@ async function event(request, db, now) {
     .bind(now, day(now), app, ok ? 1 : 0, ok ? "" : clean(body.error, 200, /[\x00-\x1f\x7f]/g), clean(body.version, 24) || "?", clean(body.firmware, 12) || "?")
     .run();
   return new Response(null, { status: 204 });
+}
+
+// ---- Game launches (0.5.4 on) ------------------------------------------------------------------------------------
+// "13.590.001", as the console says it, as "13.59": the way the app shows firmware (app/state/firmware.js).
+function firmwareFamily(text) {
+  const match = /(\d+)\.(\d+)/.exec(String(text ?? ""));
+  return match ? `${Number(match[1])}.${match[2].padEnd(2, "0").slice(0, 2)}` : "?";
+}
+
+// A console's launch results: each written over that console's last one for the game (its token), with no console
+// ID. A report that doesn't hold together is left out; a request with none is refused.
+async function launchReports(request, db, now) {
+  const body = await readJson(request);
+  const reports = (Array.isArray(body?.reports) ? body.reports.slice(0, REPORTS_AT_ONCE) : [])
+    .filter((report) => report && TOKEN.test(String(report.token)) && TITLE.test(String(report.title)) && Object.hasOwn(VERDICTS, report.outcome) && VERDICTS[report.outcome].has(report.verdict));
+  if (!reports.length) return json({ error: "no launches" }, 400);
+  const recent = recentFrom(reportsFrom, addressOf(request), now, 36e5);
+  if (recent.length + reports.length > REPORTS_PER_HOUR) return json({ error: "slow down" }, 429);
+  for (let i = 0; i < reports.length; i++) recent.push(now);
+  const firmware = firmwareFamily(body.firmware), version = clean(body.version, 24) || "?";
+  await db.batch(reports.map((report) => db.prepare(
+    "INSERT INTO launches (token, title, firmware, outcome, verdict, format, fixed, backport, version, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+      "ON CONFLICT (token) DO UPDATE SET title = excluded.title, firmware = excluded.firmware, outcome = excluded.outcome, verdict = excluded.verdict, " +
+      "format = excluded.format, fixed = excluded.fixed, backport = excluded.backport, version = excluded.version, at = excluded.at"
+  ).bind(report.token, report.title, firmware, report.outcome, report.verdict, FORMATS.has(report.format) ? report.format : "other",
+    report.fixed === true ? 1 : 0, report.backport === true ? 1 : 0, version, now)));
+  return new Response(null, { status: 204 });
+}
+
+// Every game's numbers from the last year's reports, worked out at most every COMPAT_MS per isolate.
+async function compat(db, now) {
+  if (!compatKept.body || now - compatKept.at > COMPAT_MS) {
+    const list = await rows(db, "SELECT title, firmware, SUM(outcome = 'played') AS s, SUM(outcome = 'wontStart') AS f FROM launches WHERE at > ? GROUP BY title, firmware", now - KEEP_LAUNCHES_MS);
+    const titles = {};
+    for (const row of list) {
+      const game = titles[row.title] ?? (titles[row.title] = { s: 0, f: 0, fw: {} });
+      game.s += row.s;
+      game.f += row.f;
+      game.fw[row.firmware] = [row.s, row.f];
+    }
+    compatKept = { at: now, body: { at: now, titles } };
+  }
+  return compatKept.body;
+}
+
+// The dashboard's view of them: the totals, what Fix it got running, the games that won't start for the most
+// consoles (and why), and each format's and firmware's numbers.
+async function launchSummary(db, from) {
+  const tally = "SUM(outcome = 'played') AS played, SUM(outcome = 'wontStart') AS failed";
+  const [totals, recent, failing, formats, firmware] = await Promise.all([
+    db.prepare("SELECT COUNT(*) AS reports, COUNT(DISTINCT title) AS titles, COALESCE(SUM(outcome = 'played'), 0) AS played, " +
+      "COALESCE(SUM(outcome = 'wontStart'), 0) AS failed, COALESCE(SUM(fixed), 0) AS fixed, COALESCE(SUM(fixed = 1 AND outcome = 'played'), 0) AS fixedPlayed, " +
+      "COALESCE(SUM(backport), 0) AS backport FROM launches").first(),
+    count(db, "SELECT COUNT(*) AS n FROM launches WHERE at >= ?", startOf(from)),
+    rows(db, `SELECT title, ${tally}, SUM(verdict = 'crashed') AS crashed, SUM(verdict = 'notStarted') AS notStarted, SUM(verdict = 'mountFailed') AS mountFailed ` +
+      "FROM launches GROUP BY title HAVING failed > 0 ORDER BY failed DESC, played ASC, title LIMIT 25"),
+    rows(db, `SELECT format, ${tally} FROM launches GROUP BY format ORDER BY played + failed DESC`),
+    rows(db, `SELECT firmware, ${tally} FROM launches GROUP BY firmware ORDER BY played + failed DESC LIMIT 12`)
+  ]);
+  return { ...totals, recent, failing, formats, firmware };
 }
 
 // ---- The dashboard's sign-in ---------------------------------------------------------------------------------
@@ -341,7 +480,7 @@ var count = async (db, sql, ...values) => (await db.prepare(sql).bind(...values)
 // The dashboard's top row, asked for every 15 seconds: who's on now, today so far.
 async function live(db, now) {
   const [online, today, usage] = await Promise.all([
-    onlineNow(db, now, true),
+    onlineNow(db, now),
     count(db, "SELECT COUNT(*) AS n FROM active WHERE day = ?", day(now)),
     db.prepare("SELECT pings, sessions, peak FROM usage WHERE day = ?").bind(day(now)).first()
   ]);
@@ -353,16 +492,20 @@ async function summary(db, env, now, span) {
   const since = (days) => day(now - days * DAY_MS);
   const from = since(2 * span);
   const spread = (column) => rows(db, `SELECT ${column} AS name, COUNT(*) AS n FROM consoles WHERE last_seen > ? GROUP BY ${column} ORDER BY n DESC LIMIT 12`, now - span * DAY_MS);
-  const [week, month, consoles, fresh, daily, usage, hours, ever, versions, firmware, languages, editions, installDays, apps, failures, notes, github] = await Promise.all([
+  const [week, month, consoles, fresh, active, firstSeen, usage, hours, ever, versions, firmware, languages, editions, installDays, apps, failures, notes, github, companion] = await Promise.all([
     count(db, "SELECT COUNT(DISTINCT id) AS n FROM active WHERE day > ?", since(7)),
     count(db, "SELECT COUNT(DISTINCT id) AS n FROM active WHERE day > ?", since(30)),
     count(db, "SELECT COUNT(*) AS n FROM consoles"),
-    count(db, "SELECT COUNT(*) AS n FROM consoles WHERE first_seen >= ?", Date.parse(`${day(now)}T00:00:00Z`)),
-    // Each day's consoles, and how many of them were new that day.
-    rows(db, "SELECT a.day AS day, COUNT(*) AS active, SUM(CASE WHEN strftime('%Y-%m-%d', c.first_seen / 1000, 'unixepoch') = a.day THEN 1 ELSE 0 END) AS fresh " +
-      "FROM active a LEFT JOIN consoles c ON c.id = a.id WHERE a.day > ? GROUP BY a.day ORDER BY a.day", from),
+    count(db, "SELECT COUNT(*) AS n FROM consoles WHERE first_seen >= ?", dayStart(now)),
+    // Each day's consoles, and how many were new that day: first seen counted by the UTC hour here, and each hour
+    // given its day below (SQL can't tell Eastern days).
+    rows(db, "SELECT day, COUNT(*) AS active FROM active WHERE day > ? GROUP BY day ORDER BY day", from),
+    rows(db, "SELECT strftime('%Y-%m-%dT%H', first_seen / 1000, 'unixepoch') AS hour, COUNT(*) AS n FROM consoles WHERE first_seen >= ? GROUP BY hour",
+      startOf(from)),
     rows(db, "SELECT day, pings, sessions, peak FROM usage WHERE day > ? ORDER BY day", from),
-    rows(db, "SELECT hour, pings, peak FROM usage_hours WHERE hour >= ? ORDER BY hour", hour(now - 47 * 36e5)),
+    // The last two days' hours, back to the start of yesterday for "vs yesterday by now" (a day can run 25 hours,
+    // and the one Eastern days began on ran 28).
+    rows(db, "SELECT hour, pings, peak FROM usage_hours WHERE hour >= ? ORDER BY hour", hour(now - 52 * 36e5)),
     db.prepare("SELECT COALESCE(SUM(pings), 0) AS pings, COALESCE(SUM(sessions), 0) AS sessions, COALESCE(MAX(peak), 0) AS peak FROM usage").first(),
     spread("version"),
     spread("firmware"),
@@ -372,9 +515,37 @@ async function summary(db, env, now, span) {
     rows(db, "SELECT app, SUM(ok) AS ok, SUM(1 - ok) AS failed FROM installs WHERE day > ? GROUP BY app ORDER BY ok + failed DESC LIMIT 40", since(span)),
     rows(db, "SELECT at, app, error, version, firmware FROM installs WHERE ok = 0 ORDER BY at DESC LIMIT 25"),
     announcements(db, now, true),
-    githubNumbers(db, env, now)
+    githubNumbers(db, env, now),
+    // Null (shown as nothing yet) on a database without the table: the rest of the summary still answers.
+    companionSummary(db, since(span), since(2 * span)).catch((error) => (console.log(`online: companion summary: ${error?.message}`), null))
   ]);
-  return { ...(await live(db, now)), span, week, month, consoles, fresh, daily, usage, hours, ever, versions, firmware, languages, editions, installDays, apps, failures, announcements: notes, github };
+  const freshOn = {};
+  for (const row of firstSeen) {
+    const on = day(Date.parse(`${row.hour}:00:00Z`));
+    freshOn[on] = (freshOn[on] ?? 0) + row.n;
+  }
+  const daily = active.map((row) => ({ day: row.day, active: row.active, fresh: freshOn[row.day] ?? 0 }));
+  const launches = await launchSummary(db, since(span)).catch((error) => (console.log(`online: launch summary: ${error?.message}`), null));
+  return { ...(await live(db, now)), span, week, month, consoles, fresh, daily, usage, hours, ever, versions, firmware, languages, editions, installDays, apps, failures, announcements: notes, github, companion, launches };
+}
+
+// The phone companion over the range (`from`, a day) and the same span before it (`before`): of the consoles on
+// 0.5.4 or later, how many had it on, how many a phone used (opened it, or had it open, on a day), how many came back
+// to it on another day, what phones did, and each day's numbers. `first`: the day counting started.
+async function companionSummary(db, from, before) {
+  const used = "(minutes > 0 OR opens > 0)";
+  const totals = (where) => `SELECT COUNT(DISTINCT id) AS consoles, COUNT(DISTINCT CASE WHEN enabled = 1 THEN id END) AS enabled, ` +
+    `COUNT(DISTINCT CASE WHEN away = 1 THEN id END) AS away, COUNT(DISTINCT CASE WHEN ${used} THEN id END) AS used, ` +
+    COMPANION_COUNTS.map((name) => `COALESCE(SUM(${name}), 0) AS ${name}`).join(", ") + ` FROM companion_days WHERE ${where}`;
+  const [now, then, repeat, days, first] = await Promise.all([
+    db.prepare(totals("day > ?")).bind(from).first(),
+    db.prepare(totals("day > ? AND day <= ?")).bind(before, from).first(),
+    count(db, `SELECT COUNT(*) AS n FROM (SELECT id FROM companion_days WHERE day > ? AND ${used} GROUP BY id HAVING COUNT(*) >= 2)`, from),
+    rows(db, `SELECT day, COUNT(*) AS consoles, SUM(enabled) AS enabled, SUM(CASE WHEN ${used} THEN 1 ELSE 0 END) AS used, SUM(minutes) AS minutes ` +
+      "FROM companion_days WHERE day > ? GROUP BY day ORDER BY day", before),
+    db.prepare("SELECT MIN(day) AS day FROM companion_days").first()
+  ]);
+  return { ...now, repeat, before: then, days, first: first?.day ?? null };
 }
 
 // ---- GitHub's public numbers -----------------------------------------------------------------------------------
@@ -457,13 +628,49 @@ async function removeAnnouncement(request, db, now) {
 async function tidy(db, now) {
   await db.batch([
     db.prepare("DELETE FROM active WHERE day < ?").bind(day(now - 400 * DAY_MS)),
+    db.prepare("DELETE FROM companion_days WHERE day < ?").bind(day(now - 400 * DAY_MS)),
     db.prepare("DELETE FROM installs WHERE at < ?").bind(now - 180 * DAY_MS),
+    db.prepare("DELETE FROM launches WHERE at < ?").bind(now - KEEP_LAUNCHES_MS),
     db.prepare("DELETE FROM consoles WHERE last_seen < ?").bind(now - 365 * DAY_MS),
     db.prepare("DELETE FROM announcements WHERE until IS NOT NULL AND until < ?").bind(now),
     db.prepare("DELETE FROM admin_failures WHERE at < ?").bind(now - DAY_MS),
     db.prepare("DELETE FROM usage WHERE day < ?").bind(day(now - 400 * DAY_MS)),
     db.prepare("DELETE FROM usage_hours WHERE hour < ?").bind(hour(now - 30 * DAY_MS))
   ]);
+}
+
+// 0.5.4: pictures from Sony's servers for the PS4 app (app/state/picture-route.js): a jailbroken PS4's network
+// usually blocks Sony so that it cannot update, and most covers live there. Only these hosts, only https, only
+// pictures up to 8 MiB; Cloudflare keeps each a month, so Sony is asked once per picture and data centre. Nothing
+// about who asked is kept.
+const PICTURE_HOSTS = new Set(["image.api.playstation.com", "poseidon.dl.playstation.net"]);
+const PICTURE_MAX = 8 * 1024 * 1024;
+const PICTURE_DAYS = 30;
+
+async function picture(address) {
+  let source;
+  try {
+    source = new URL(address.searchParams.get("u") ?? "");
+  } catch {
+    return new Response("picture address needed", { status: 400 });
+  }
+  if (source.protocol !== "https:" || !PICTURE_HOSTS.has(source.hostname) || source.port || source.username || source.password) {
+    return new Response("not a picture host", { status: 403 });
+  }
+  const upstream = await fetch(source.href, { cf: { cacheEverything: true, cacheTtl: PICTURE_DAYS * DAY_MS / 1e3 } });
+  // A redirect off the listed hosts is not followed through.
+  if (!PICTURE_HOSTS.has(new URL(upstream.url || source.href).hostname)) return new Response(null, { status: 502 });
+  if (!upstream.ok) return new Response(null, { status: upstream.status === 404 ? 404 : 502 });
+  const type = upstream.headers.get("content-type") ?? "";
+  if (!type.startsWith("image/")) return new Response(null, { status: 502 });
+  const announced = Number(upstream.headers.get("content-length"));
+  if (announced > PICTURE_MAX) return new Response(null, { status: 502 });
+  // Without a length the bytes are counted here.
+  const body = announced ? upstream.body : await upstream.arrayBuffer();
+  if (!announced && body.byteLength > PICTURE_MAX) return new Response(null, { status: 502 });
+  const headers = { "content-type": type, "cache-control": `public, max-age=${PICTURE_DAYS * DAY_MS / 1e3}, immutable` };
+  if (announced) headers["content-length"] = String(announced);
+  return new Response(body, { headers });
 }
 
 export default {
@@ -476,6 +683,9 @@ export default {
       if (pathname === "/v1/ping" && method === "POST") return await ping(request, db, now);
       if (pathname === "/v1/status" && method === "GET") return json(await answer(db, now), 200, "public, max-age=30");
       if (pathname === "/v1/event" && method === "POST") return await event(request, db, now);
+      if (pathname === "/v1/launches" && method === "POST") return await launchReports(request, db, now);
+      if (pathname === "/v1/compat" && method === "GET") return json(await compat(db, now), 200, "public, max-age=600");
+      if (pathname === "/v1/picture" && method === "GET") return await picture(new URL(request.url));
       if ((pathname === "/" || pathname === "/dashboard") && method === "GET") {
         return new Response(DASHBOARD, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-frame-options": "DENY", "referrer-policy": "no-referrer" } });
       }
@@ -509,4 +719,4 @@ export default {
   }
 };
 
-export { base32, checkPassword, tidy, toBase32, totp };
+export { base32, checkPassword, companionOf, firmwareFamily, tidy, toBase32, totp };

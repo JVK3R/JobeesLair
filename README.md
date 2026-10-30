@@ -58,9 +58,12 @@ or disappear: anyone can read, build, fix and fork it.
   browser step.
 - **Library, play time and Make Room:** see what's installed and how long you played it, free up space
   safely, move games between drives, and find out **why a game won't start**.
-- **Phone companion:** a live dashboard, the queue, games and homebrew (install, update, run) and a remote,
-  from your phone. Off until you turn it on, and you choose its 6-digit PIN. Experimental: it can stay
+- **Phone companion:** a live dashboard, the queue, games and homebrew (install, update, run, remove), your
+  library with Fix it, and a remote, from your phone, in the console's language. Downloads and installs move on
+  the phone as they happen. Off until you turn it on, and you choose its 6-digit PIN. Experimental: it can stay
   reachable while Jobee'sLair is closed, to open the app or run a payload.
+- **Types on the PS5's own keyboard** for searches, links and keys, in your language (or the store's own keys,
+  with results as you type, if you prefer them).
 - **Updates from the app**, a **download speed limit**, six accent colors, DualSense light-bar status,
   and 13 languages.
 

@@ -67,7 +67,7 @@ struct Segment {
 };
 struct Job {
   explicit Job(Request value, std::uint32_t id) : request(std::move(value)) {
-    snapshot.id = id; snapshot.destination = request.destination;
+    snapshot.id = id; snapshot.destination = request.destination; snapshot.binary = request.binary;
   }
   ~Job() { if (root_fd >= 0) close(root_fd); }
   Request request;
@@ -123,6 +123,8 @@ struct Transfer {
   unsigned mirror = 0; // 0 is the primary URL, n is Job::mirrors[n-1]
   long status = 0;
   std::string etag, last_modified, encoding, error, content_type, html_prefix, sample;
+  // curl's own words for a failure (CURLOPT_ERRORBUFFER): which step, where its code alone says little.
+  char detail[CURL_ERROR_SIZE] = {};
   // A probe requests these bytes; only a sample check keeps them (in `sample`).
   std::uint64_t probe_from = 0, probe_length = 1;
   std::vector<std::pair<std::string, std::string>> response_headers;
@@ -196,6 +198,7 @@ bool accept_response(Transfer& t) {
 std::string describe(const Transfer& t) {
   if (!t.error.empty()) return t.error;
   if (t.status >= 400) return "server answered HTTP " + std::to_string(t.status);
+  if (t.detail[0]) return std::string(curl_easy_strerror(t.result)) + " (" + t.detail + ")";
   return curl_easy_strerror(t.result);
 }
 
@@ -992,6 +995,8 @@ bool Service::configure(Transfer& t) {
   const auto set = [&](CURLoption option, auto value) {
     if (curl_easy_setopt(t.curl, option, value) != CURLE_OK) ok = false;
   };
+  t.detail[0] = 0;
+  set(CURLOPT_ERRORBUFFER, t.detail);
   const auto add = [&](const std::string& text) {
     curl_slist* list = curl_slist_append(t.headers, text.c_str());
     if (!list) ok = false; else t.headers = list;

@@ -56,6 +56,19 @@ std::atomic<bool> stopping{false};
 bool running = false;
 WorkerThread worker;
 
+// Event streams (ABI v24), held by their own worker. Their list has its own lock, taken before `mutex` when
+// both are needed; the stream worker never waits on a socket while holding it (every write is non-blocking).
+struct Stream {
+  int fd = -1;
+  std::string backlog; // written as the socket takes it
+  Clock::time_point last_write{};
+};
+std::mutex streams_mutex;
+std::condition_variable streams_wake;
+std::deque<Stream> streams;
+bool streams_dirty = false;
+WorkerThread streamer;
+
 #ifdef MSG_NOSIGNAL
 constexpr int kNoSignal = MSG_NOSIGNAL; // a client that hung up must not end the title with SIGPIPE
 #else
@@ -396,32 +409,155 @@ void sign_in(int fd, const std::string& client, const std::string& body) {
         wait ? "Retry-After: " + std::to_string(wait) + "\r\n" : std::string());
 }
 
-void serve(int fd, const std::string& client) {
+void close_socket(int fd) {
+  ::shutdown(fd, SHUT_RDWR);
+  close(fd);
+}
+
+void count_streams() {
+  const std::size_t open = streams.size(); // streams_mutex is held
+  std::lock_guard lock(mutex);
+  current.streams = open;
+}
+
+// GET /api/events, signed in: the head, then the socket goes to the stream worker, which owns it from here.
+// A ninth stream closes the oldest: a phone that reloaded its page never waits for its old stream to time out.
+bool open_stream(int fd) {
+  static const std::string head =
+      "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream; charset=utf-8\r\nCache-Control: no-store\r\n"
+      "X-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\nConnection: close\r\n\r\n: open\n\n";
+  if (!send_all(fd, head.data(), head.size())) return false;
+  {
+    std::lock_guard lock(mutex);
+    ++current.served;
+  }
+  std::lock_guard lock(streams_mutex);
+  if (stopping) return false;
+  while (streams.size() >= kMaxStreams) {
+    close_socket(streams.front().fd);
+    streams.pop_front();
+  }
+  streams.push_back({fd, {}, Clock::now()});
+  count_streams();
+  streams_dirty = true;
+  streams_wake.notify_all();
+  return true;
+}
+
+// The stream worker: writes each stream's backlog as its socket takes it, adds a comment line to a stream
+// quiet for kKeepAliveMs (a phone gone without a word shows up as a failed write), and closes a stream whose
+// phone hung up, failed a write, or fell kMaxStreamBacklog behind. A push wakes it at once; otherwise it
+// looks every 50 ms while streams are open.
+void stream_loop() {
+  name_thread("http-events");
+  std::vector<pollfd> waiting;
+  while (!stopping) {
+    {
+      std::unique_lock lock(streams_mutex);
+      if (streams.empty()) {
+        streams_wake.wait_for(lock, std::chrono::milliseconds(kSliceMs), [] { return stopping.load() || streams_dirty; });
+        streams_dirty = false;
+        continue;
+      }
+      waiting.clear();
+      const auto now = Clock::now();
+      for (Stream& stream : streams) {
+        if (stream.backlog.empty() && now - stream.last_write >= std::chrono::milliseconds(kKeepAliveMs))
+          stream.backlog = ": keep-alive\n\n";
+        waiting.push_back({stream.fd, static_cast<short>(POLLIN | (stream.backlog.empty() ? 0 : POLLOUT)), 0});
+      }
+      streams_dirty = false;
+    }
+    // Sockets are only polled here; the list may change meanwhile (a new stream, a push), which the next turn sees.
+    if (::poll(waiting.data(), waiting.size(), 50) < 0 && errno != EINTR) ::poll(nullptr, 0, kSliceMs);
+    std::lock_guard lock(streams_mutex);
+    bool changed = false;
+    for (auto it = streams.begin(); it != streams.end();) {
+      const auto seen = std::find_if(waiting.begin(), waiting.end(), [&](const pollfd& p) { return p.fd == it->fd; });
+      bool drop = it->backlog.size() > kMaxStreamBacklog;
+      if (!drop && seen != waiting.end() && (seen->revents & (POLLIN | POLLHUP | POLLERR))) {
+        // A phone says nothing on a stream: anything readable is it hanging up (or noise, dropped).
+        char ignored[512];
+        const ssize_t got = ::recv(it->fd, ignored, sizeof ignored, kRecvFlags);
+        drop = got == 0 || (got < 0 && !would_block());
+      }
+      while (!drop && !it->backlog.empty()) {
+        const ssize_t sent = ::send(it->fd, it->backlog.data(), it->backlog.size(), kSendFlags);
+        if (sent < 0 && would_block()) break;
+        if (sent <= 0) {
+          drop = true;
+          break;
+        }
+        it->backlog.erase(0, static_cast<std::size_t>(sent));
+        it->last_write = Clock::now();
+      }
+      if (drop) {
+        close_socket(it->fd);
+        it = streams.erase(it);
+        changed = true;
+      } else {
+        ++it;
+      }
+    }
+    if (changed) count_streams();
+  }
+  std::lock_guard lock(streams_mutex);
+  if (streams.empty()) return; // start() may be joining this thread with `mutex` held: count only when needed
+  for (const Stream& stream : streams) close_socket(stream.fd);
+  streams.clear();
+  count_streams();
+}
+
+// One event in the text/event-stream format: CR, LF and CRLF all end a line, and each line is its own
+// "data:" field, so nothing in the data can end the event early or start another.
+std::string event_text(const std::string& name, const std::string& data) {
+  std::string out = "event: " + name + "\ndata: ";
+  out.reserve(data.size() + name.size() + 32);
+  for (std::size_t i = 0; i < data.size(); ++i) {
+    const char c = data[i];
+    if (c == '\r' || c == '\n') {
+      if (c == '\r' && i + 1 < data.size() && data[i + 1] == '\n') ++i;
+      out += "\ndata: ";
+    } else {
+      out += c;
+    }
+  }
+  out += "\n\n";
+  return out;
+}
+
+// Returns true when the socket went to the stream worker (the caller must not close it).
+bool serve(int fd, const std::string& client) {
   std::string method, target, body;
   std::map<std::string, std::string> headers;
-  if (!read_request(fd, method, target, headers, body)) return;
-  if (!literal_host(headers)) return reply_json_error(fd, 403, "open the console by its IP address");
+  if (!read_request(fd, method, target, headers, body)) return false;
+  if (!literal_host(headers)) return reply_json_error(fd, 403, "open the console by its IP address"), false;
   const std::size_t mark = target.find('?');
   const std::string path = target.substr(0, mark), query = mark == std::string::npos ? "" : target.substr(mark + 1);
   if (path == "/" || path == "/index.html") {
-    if (method != "GET" && method != "HEAD") return reply_json_error(fd, 405, "method not allowed");
+    if (method != "GET" && method != "HEAD") return reply_json_error(fd, 405, "method not allowed"), false;
     std::string copy;
     {
       std::lock_guard lock(mutex);
       copy = page;
     }
-    return reply(fd, 200, "text/html; charset=utf-8", method == "HEAD" ? std::string() : copy);
+    return reply(fd, 200, "text/html; charset=utf-8", method == "HEAD" ? std::string() : copy), false;
   }
-  if (path == "/favicon.ico") return reply(fd, 204, "", "");
+  if (path == "/favicon.ico") return reply(fd, 204, "", ""), false;
   if (path == "/auth") {
-    if (method != "POST") return reply_json_error(fd, 405, "method not allowed");
-    if (!own_page(headers)) return reply_json_error(fd, 403, "missing X-JBH header");
-    return sign_in(fd, client, body);
+    if (method != "POST") return reply_json_error(fd, 405, "method not allowed"), false;
+    if (!own_page(headers)) return reply_json_error(fd, 403, "missing X-JBH header"), false;
+    return sign_in(fd, client, body), false;
   }
-  if (path.rfind("/api/", 0) != 0) return reply_json_error(fd, 404, "not found");
-  if (method != "GET" && method != "POST" && method != "DELETE") return reply_json_error(fd, 405, "method not allowed");
-  if (!own_page(headers)) return reply_json_error(fd, 403, "missing X-JBH header");
-  if (!signed_in(cookie_session(headers))) return reply_json_error(fd, 401, "sign in with the PIN");
+  if (path.rfind("/api/", 0) != 0) return reply_json_error(fd, 404, "not found"), false;
+  if (method != "GET" && method != "POST" && method != "DELETE") return reply_json_error(fd, 405, "method not allowed"), false;
+  if (!own_page(headers)) return reply_json_error(fd, 403, "missing X-JBH header"), false;
+  if (!signed_in(cookie_session(headers))) return reply_json_error(fd, 401, "sign in with the PIN"), false;
+  // The stream is the server's own; the app only pushes to it (push()).
+  if (path == "/api/events") {
+    if (method != "GET") return reply_json_error(fd, 405, "method not allowed"), false;
+    return open_stream(fd);
+  }
   Request request;
   request.method = method;
   request.path = path;
@@ -429,6 +565,7 @@ void serve(int fd, const std::string& client) {
   request.body = std::move(body);
   request.client = client;
   ask_app(fd, std::move(request));
+  return false;
 }
 
 std::string port_name(std::uint16_t port) {
@@ -524,9 +661,7 @@ void run(std::vector<std::uint16_t> ports) {
 #endif
     char peer[INET_ADDRSTRLEN] = {};
     inet_ntop(AF_INET, &from.sin_addr, peer, sizeof peer);
-    serve(client, peer);
-    ::shutdown(client, SHUT_RDWR);
-    close(client);
+    if (!serve(client, peer)) close_socket(client);
   }
   close(listener);
 }
@@ -563,13 +698,36 @@ bool start(std::vector<std::uint16_t> ports, std::string code, std::string html,
   current = Status{};
   current.state = "starting"; // the worker reports 'listening' or 'failed' once it has tried the ports
   stopping = false;
+  if (!streamer.start(stream_loop, 128 * 1024)) {
+    current.state = "failed";
+    current.error = "could not start the event stream thread";
+    error = current.error;
+    return false;
+  }
   if (!worker.start([ports = std::move(ports)] { run(ports); }, 256 * 1024)) {
+    stopping = true;
+    streams_wake.notify_all();
+    streamer.join();
     current.state = "failed";
     current.error = "could not start the server thread";
     error = current.error;
     return false;
   }
   running = true;
+  return true;
+}
+
+bool set_page(std::string html, std::string& error) {
+  if (html.size() > kMaxPageBytes) {
+    error = "the page is larger than 512 KiB";
+    return false;
+  }
+  std::lock_guard lock(mutex);
+  if (!running) {
+    error = "the server is not running";
+    return false;
+  }
+  page = std::move(html);
   return true;
 }
 
@@ -581,6 +739,12 @@ void stop() {
   }
   answered.notify_all();
   worker.join();
+  {
+    std::lock_guard lock(streams_mutex);
+    streams_dirty = true;
+  }
+  streams_wake.notify_all();
+  streamer.join(); // closes every stream
   std::lock_guard lock(mutex);
   running = false;
   pending.clear();
@@ -625,6 +789,29 @@ bool respond(std::uint32_t id, int code, std::string content_type, std::string b
   }
   answered.notify_all();
   return true;
+}
+
+bool event_name(const std::string& name) {
+  return !name.empty() && name.size() <= kMaxEventName &&
+         name.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789-") == std::string::npos;
+}
+
+std::size_t push(const std::string& name, const std::string& data, bool& ok) {
+  ok = event_name(name) && data.size() <= kMaxEventBytes;
+  if (!ok) return 0;
+  std::size_t taken = 0;
+  {
+    std::lock_guard lock(streams_mutex);
+    if (streams.empty()) return 0;
+    const std::string text = event_text(name, data);
+    for (Stream& stream : streams) stream.backlog += text; // a stream past kMaxStreamBacklog is closed by its worker
+    taken = streams.size();
+    streams_dirty = true;
+  }
+  streams_wake.notify_all();
+  std::lock_guard lock(mutex);
+  ++current.pushed;
+  return taken;
 }
 
 std::string local_address() {

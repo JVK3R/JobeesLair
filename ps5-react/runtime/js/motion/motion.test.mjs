@@ -6,7 +6,7 @@ import {test} from 'node:test';
 import {nextPresence} from './presence-list.js';
 import {bindStyle, baseFromStyle} from './style.js';
 import {collectKeys, pick, resolve} from './targets.js';
-import {childDelay, engineConfig, repeatOf, transitionFor, transitions} from './transitions.js';
+import {childDelay, engineConfig, repeatOf, setLightMotion, transitionFor, transitions} from './transitions.js';
 import {MotionValues} from './values.js';
 
 /** Engine stand-in: animations run until settle() completes them. */
@@ -66,6 +66,22 @@ test('engine configs default by key and convert seconds', () => {
   assert.throws(() => engineConfig({type: 'inertia'}), /'spring' or 'tween'/);
   assert.deepEqual(transitionFor({duration: 1, x: {delay: 2}}, 'x').delay, 2);
   assert.equal(transitionFor({duration: 1, x: {delay: 2}}, 'x').duration, 1);
+});
+
+test('light motion makes every one-off animation a short ease-out and leaves repeats alone', () => {
+  setLightMotion(true);
+  try {
+    assert.deepEqual(engineConfig(transitions.focus, 'scale'), {type: 'timing', duration: 160, easing: 'easeOut', delay: 0});
+    assert.deepEqual(engineConfig(transitions.screen, 'y'),
+      {type: 'timing', duration: 160, easing: {x1: 0.22, y1: 1, x2: 0.36, y2: 1}, delay: 0});
+    assert.equal(engineConfig({duration: 0.1}, 'opacity').duration, 100, 'a shorter one keeps its length');
+    assert.equal(engineConfig({duration: 0.5, delay: 0.3}, 'x').delay, 100, 'a third of the wait');
+    assert.deepEqual(engineConfig({duration: 1.2, repeat: Infinity}, 'opacity'),
+      {type: 'timing', duration: 1200, easing: 'easeOut', delay: 0}, 'a spinner keeps its timing');
+  } finally {
+    setLightMotion(false);
+  }
+  assert.equal(engineConfig(transitions.focus, 'scale').type, 'spring', 'off again');
 });
 
 test('repeat and stagger plans', () => {

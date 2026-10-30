@@ -36,6 +36,9 @@ import { t } from '../i18n/core.js';
     [/SHA|hash|verification|mismatch|changed the resource|truncated/i, "damaged", "restartFromZero"]
   ];
   var PLAIN = /ShadowMount|from another source holds this name/;
+  // 0.5.4: refusals a retry only meets again (the same bytes give the same answer), so the way on is another
+  // source: the card and the game page offer that in place of Retry.
+  var FINAL = ["archiveTooLarge", "archivePassword", "missingParts"];
   function explainError(error2, set = false) {
     const message = cause(error2);
     if (PLAIN.test(message)) return { title: message, action: "" };
@@ -54,7 +57,8 @@ import { t } from '../i18n/core.js';
     }
     const known = CASES.find(([pattern, , , only]) => (!only || set) && pattern.test(message));
     if (!known) return { title: message, action: t("errors.action.retryOrOtherSource") };
-    return { title: t(`errors.${known[1]}`), action: t(`errors.action.${known[2]}`) };
+    return { title: t(`errors.${known[1]}`), action: t(`errors.action.${known[2]}`), final: FINAL.includes(known[1]) };
   }
+  var finalError = (error2, set = false) => Boolean(error2) && explainError(error2, set).final === true;
 
-export { INCOMPLETE_PART, STALE_PARTIAL, cause, explainError };
+export { INCOMPLETE_PART, STALE_PARTIAL, cause, explainError, finalError };

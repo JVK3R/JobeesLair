@@ -25,6 +25,7 @@ import { createTorBox, hostSupported, isMagnet, md5, validKey } from '../service
 import { createAllDebrid, hostSupported as allDebridHost, validKey as validAllDebridKey } from '../services/alldebrid.js';
 import { cancellation, sourceKind } from './download-sources.js';
 import { savedList } from './saved.js';
+import { formatDate2 } from '../i18n/core.js';
 import { log, logger } from '../services/logger.js';
 import { Http } from '@ps5-react/core';
 
@@ -139,7 +140,11 @@ import { Http } from '@ps5-react/core';
   };
   /** { configured, masked, account } as saved; re-renders when it changes. */
   function useDebrid() {
-    const all = saved().useList();
+    return debridView(saved().useList());
+  }
+  /** The same, read now (the phone companion's Settings, 0.5.4). */
+  var debridSnapshot = () => debridView(saved().get());
+  function debridView(all) {
     const torboxState = all.torbox ?? {};
     const allState = all.alldebrid ?? {};
     return {
@@ -149,6 +154,20 @@ import { Http } from '@ps5-react/core';
       allDebrid: { configured: Boolean(allState.key), masked: masked(allState.key), account: allState.account ?? null },
       active: torboxState.key ? "torbox" : allState.key ? "alldebrid" : null
     };
+  }
+  /**
+   * What an account looks like from its last connection test (`t2` the message function; Settings and the phone's
+   * Settings): its plan and how long it runs, or free; null before any test.
+   */
+  function debridStatus(t2, service, account) {
+    if (!account) return null;
+    if (service === "alldebrid") {
+      if (!account.premium) return t2("settings.alldebrid.free");
+      return account.expiresAt ? t2("settings.alldebrid.okUntil", { date: formatDate2(account.expiresAt.slice(0, 10)) }) : t2("settings.alldebrid.ok");
+    }
+    const plan = t2(`settings.debrid.plan.${account.planName}`);
+    if (!account.premium) return t2("settings.debrid.free");
+    return account.expiresAt ? t2("settings.debrid.okUntil", { plan, date: formatDate2(account.expiresAt.slice(0, 10)) }) : t2("settings.debrid.ok", { plan });
   }
 
   // The links of a release TorBox would fetch: its own, or each part's first source in a set.
@@ -274,4 +293,4 @@ import { Http } from '@ps5-react/core';
     }, [stale.join("\n")]);
   }
 
-export { activeService, askInstant as askTorBoxInstant, debridResolver, debridSource, debridSupports, heldByTorBox, masked, serviceName, setAllDebridClient, setAllDebridKey, setTorBoxClient, setTorBoxKey, testAllDebrid, testTorBox, useDebrid, useTorBoxInstant };
+export { activeService, askInstant as askTorBoxInstant, debridResolver, debridSnapshot, debridSource, debridStatus, debridSupports, heldByTorBox, masked, serviceName, setAllDebridClient, setAllDebridKey, setTorBoxClient, setTorBoxKey, testAllDebrid, testTorBox, useDebrid, useTorBoxInstant };

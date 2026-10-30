@@ -2,6 +2,7 @@
 // ready, Installed, Played, Won't start. The queue keeps its own states (paused, verifying, extracting...);
 // they show here only as the short note under a stage, and red is kept for what the gamer can act on.
 
+import { finalError } from '../downloads/errors.js';
 import { t } from '../i18n/core.js';
 
   var ICON = { downloading: "download", preparing: "settings", installed: "circleCheck", played: "play", wontStart: "alert" };
@@ -20,8 +21,9 @@ import { t } from '../i18n/core.js';
     if (!state) return null;
     const stage = (stage2, note = null, extra = {}) => ({ stage: stage2, icon: ICON[stage2], tone: TONE[stage2], note: note && `ready.note.${note}`, action: null, ...extra });
     if (state in DOWNLOADING) {
-      const note = DOWNLOADING[state];
-      return stage("downloading", note, note === "failed" ? { tone: "bad" } : {});
+      // 0.5.4: a refusal Retry would only meet again says to choose another source instead.
+      const note = state === "failed" && finalError(job2.error, Boolean(job2.release?.parts)) ? "refused" : DOWNLOADING[state];
+      return stage("downloading", note, note === "failed" || note === "refused" ? { tone: "bad" } : {});
     }
     if (state in PREPARING) return stage("preparing", PREPARING[state]);
     if (state === "attention") return stage("wontStart", "attention", { action: "checkAgain" });

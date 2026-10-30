@@ -51,4 +51,4 @@ import { log } from '../services/logger.js';
   /** Hands the saved limit to the engine; called once at launch. */
   var applySpeedLimit = apply;
 
-export { LIMITS, applySpeedLimit, setSpeedLimit, useSpeedLimit };
+export { LIMITS, applySpeedLimit, current as speedLimitNow, setSpeedLimit, useSpeedLimit };

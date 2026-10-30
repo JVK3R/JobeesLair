@@ -11,6 +11,9 @@
 // from the top menu while in that section it opens on Homebrew. Back from a result's page brings the page back
 // as it was left: its side, its chips, the keyboard down. It came back on Games with the chips cleared and the
 // keyboard up, so a homebrew search's results were gone.
+// MODIFIED (0.5.4): typing opens the PS5's own keyboard (state/system-keyboard.js), in the player's language; its
+// Search key searches. The sheet of keys is for consoles where it does not open, or players who pick it. While the
+// page is open, the phone companion can type the search too (state/phone-typing.js).
 
 import '../assets/Exo2.ttf';
 import { jsx, jsxs } from 'react/jsx-runtime';
@@ -27,6 +30,8 @@ import { HomebrewGrid } from '../homebrew/HomebrewScreen.jsx';
 import { hb } from '../homebrew/palette.js';
 import { FACETS, NO_FILTERS, activeCount, filterGames, optionLabel, sortGames } from '../state/catalog.js';
 import { searchApps } from '../state/homebrew-index.js';
+import { closeForPhone, systemKeyboardOn, typeOnSystemKeyboard } from '../state/system-keyboard.js';
+import { askPhone } from '../state/phone-typing.js';
 import { homebrew } from '../state/homebrew-store.js';
 import { useNavActions, useNavState } from '../state/nav.jsx';
 import { useStore, useStoreActions } from '../state/store.jsx';
@@ -39,6 +44,7 @@ import { colors, radius } from '../ui/colors.js';
 import { FocusScope, ScrollView, Text, View, motion } from '@ps5-react/core';
 
   var SETTLE_MS = 150;
+  var MAX_QUERY = 40;
   // 0.5.3: the page as it was left for a result's page ({side, before, only}), for when Back brings it back (a page
   // is mounted anew each time it is shown). Null once the page is closed.
   var kept = null;
@@ -76,16 +82,16 @@ import { FocusScope, ScrollView, Text, View, motion } from '@ps5-react/core';
     ] });
   }
   function SideTab({ id, label, icon, tone, selected, onPress }) {
-    return jsxs(View, { focusKey: `search:side:${id}`, onPress, style: (state) => [{ position: "relative", height: 64, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: radius.pill, paddingHorizontal: 24, backgroundColor: selected ? tone : colors.surface2 }, state.focused && !selected ? { backgroundColor: colors.surface3 } : null], children: [
-      jsx(FocusRing, { round: "full", color: tone }),
+    return jsxs(View, { focusKey: `search:side:${id}`, onPress, style: (state) => [{ position: "relative", height: 64, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: radius.md, paddingHorizontal: 24, backgroundColor: selected ? tone : colors.surface2 }, state.focused && !selected ? { backgroundColor: colors.surface3 } : null], children: [
+      jsx(FocusRing, { round: "md", color: tone }),
       jsx(Icon, { name: icon, size: 16, color: selected ? "#ffffff" : colors.fg }),
       jsx(Text, { style: text(21, selected ? "#ffffff" : colors.fg, { fontWeight: 600 }), children: label })
     ] });
   }
   // ---- Chips: 13.60 Ready, each kind of download, favorites, the filter sheet ---------------------------------
   function Chip({ id, label, icon, tone = colors.accent, selected, onPress, count }) {
-    return jsxs(View, { focusKey: `search:chip:${id}`, onPress, style: (state) => [{ position: "relative", height: 52, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: radius.pill, paddingHorizontal: 20, backgroundColor: selected ? tone : colors.surface2 }, state.focused && !selected ? { backgroundColor: colors.surface3 } : null], children: [
-      jsx(FocusRing, { round: "full", color: tone }),
+    return jsxs(View, { focusKey: `search:chip:${id}`, onPress, style: (state) => [{ position: "relative", height: 52, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: radius.md, paddingHorizontal: 20, backgroundColor: selected ? tone : colors.surface2 }, state.focused && !selected ? { backgroundColor: colors.surface3 } : null], children: [
+      jsx(FocusRing, { round: "md", color: tone }),
       icon ? jsx(Icon, { name: icon, size: 14, color: selected ? "#0b0f14" : colors.fg }) : null,
       jsx(Text, { style: text(20, selected ? "#0b0f14" : colors.fg, { fontWeight: 600 }), children: label }),
       count ? jsx(View, { style: { height: 28, minWidth: 28, alignItems: "center", justifyContent: "center", borderRadius: radius.xs, backgroundColor: colors.accent, paddingHorizontal: 8 }, children: jsx(Text, { style: text(17, "#ffffff", { fontWeight: 700 }), children: String(count) }) }) : null
@@ -118,8 +124,8 @@ import { FocusScope, ScrollView, Text, View, motion } from '@ps5-react/core';
       forgetSearch(term);
       focusLater("search:field");
       return true;
-    }, children: jsxs(View, { focusKey: `search:recent:${term}`, onPress: () => onSearch(term), style: (state) => [{ position: "relative", height: 48, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: radius.pill, paddingHorizontal: 18, backgroundColor: state.focused ? colors.surface3 : colors.surface }], children: [
-      jsx(FocusRing, { round: "full" }),
+    }, children: jsxs(View, { focusKey: `search:recent:${term}`, onPress: () => onSearch(term), style: (state) => [{ position: "relative", height: 48, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: radius.md, paddingHorizontal: 18, backgroundColor: state.focused ? colors.surface3 : colors.surface }], children: [
+      jsx(FocusRing, { round: "md" }),
       jsx(Icon, { name: "restart", size: 14, color: colors.muted }),
       jsx(Text, { style: text(19, colors.fg), children: term })
     ] }) }, term)) });
@@ -196,7 +202,8 @@ import { FocusScope, ScrollView, Text, View, motion } from '@ps5-react/core';
     const [returning] = useState(() => Boolean(top.from) && kept !== null);
     const [view] = useState(() => returning ? kept : kept = { side: top.side === "homebrew" ? "homebrew" : "games", before: store.filters ?? NO_FILTERS, only: top.only === "homebrew" });
     const [side, setSide] = useState(view.only ? "homebrew" : view.side);
-    const [typing, setTyping] = useState(!returning);
+    // The sheet of keys is up from the start only when the PS5 keyboard will not open (it opens on mount, below).
+    const [typing, setTyping] = useState(() => !returning && !systemKeyboardOn());
     const [drawer, setDrawer] = useState(false);
     const onFavorite = useFavoriteAction();
     useHints(side === "homebrew" && !typing ? APP_HINTS : null);
@@ -205,13 +212,41 @@ import { FocusScope, ScrollView, Text, View, motion } from '@ps5-react/core';
     // closes this page too, having just set filters of its own that must stay. Back from a result keeps the page's own.
     useEffect(() => {
       if (!returning) setFilters(NO_FILTERS);
+      // A new search opens the PS5 keyboard at once, as the sheet of keys came up at once.
+      if (!returning && systemKeyboardOn()) on.type();
     }, []);
     const current = useRef(store.query);
     current.current = store.query;
+    const sideNow = useRef(side);
+    sideNow.current = side;
     const [on] = useState(() => ({
-      type: () => {
+      keys: () => {
         setTyping(true);
         focusLater(FIRST_KEY);
+      },
+      type: () => {
+        if (!systemKeyboardOn()) return on.keys();
+        const title = sideNow.current === "homebrew" ? t2("homebrew.searchPlaceholder") : t2("search.placeholder");
+        void typeOnSystemKeyboard({ title, text: current.current ?? "", maxLength: MAX_QUERY, enter: "search" }).then((result) => {
+          if (!result) return on.keys();
+          // The phone typed the search while it was up (on.phone).
+          if (result.status === "phone") return;
+          if (result.status !== "done") return focusLater("search:field");
+          on.term(result.text);
+        });
+      },
+      term: (text) => {
+        const term = text.replace(/\s+/g, " ").trim().slice(0, MAX_QUERY);
+        setQuery(term);
+        rememberSearch(term);
+        focusLater(term ? "search:results" : "search:field");
+      },
+      // The phone companion's answer: the keyboard (either one) goes, and its search is the page's.
+      phone: (text) => {
+        closeForPhone();
+        setTyping(false);
+        on.term(text);
+        return "";
       },
       submit: () => {
         rememberSearch(current.current);
@@ -227,6 +262,7 @@ import { FocusScope, ScrollView, Text, View, motion } from '@ps5-react/core';
         focusLater("search:results");
       }
     }));
+    useEffect(() => askPhone({ title: side === "homebrew" ? t2("homebrew.searchPlaceholder") : t2("search.placeholder"), kind: "search", answer: on.phone }), [side]);
     const leave = () => {
       kept = null;
       setQuery("");

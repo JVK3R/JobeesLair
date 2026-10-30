@@ -14,7 +14,7 @@
 
 <p align="center">
   <strong>React interfaces. Controller navigation. Standalone PS5 homebrew.</strong><br>
-  Write JSX, preview natively on macOS, and build a fullscreen application for PS5.
+  Write JSX, preview natively on macOS, Linux or Windows (WSL 2), and build a fullscreen application for PS5.
 </p>
 
 <p align="center">
@@ -53,7 +53,9 @@ runtime. Use the supported primitives and native modules from `@ps5-react/core`.
 
 ### Prerequisites
 
-The supported development environment is **macOS on Apple Silicon**.
+Develop on **macOS** (Apple Silicon), **Linux** (Ubuntu 24.04 is what CI runs) or **Windows 11 through WSL 2**
+(Ubuntu 24.04 in WSL; the preview opens as an ordinary window through WSLg). The PS5 build is the same on all
+three.
 
 | Dependency | Purpose |
 | --- | --- |
@@ -64,11 +66,25 @@ The supported development environment is **macOS on Apple Silicon**.
 | libcurl 7.85+ development files | Native desktop HTTP and image transport |
 | libarchive 3.7+ development files | Streaming ZIP, TAR, 7z and RAR extraction |
 
-1. Install native tools:
+1. Install native tools.
+
+   macOS:
 
    ```sh
    brew install python node git cmake sdl2 llvm@18 curl libarchive openssl@3
    ```
+
+   Linux, and Windows inside WSL 2 (first `wsl --install -d Ubuntu-24.04` in an administrator PowerShell, then
+   open Ubuntu). Node.js 20 or later: Ubuntu's own is older, so take it from nodejs.org or nvm:
+
+   ```sh
+   sudo apt install python3 python3-venv git cmake clang-18 lld-18 llvm-18 nasm zstd unzip zip \
+     libsdl2-dev libcurl4-openssl-dev libarchive-dev liblzma-dev libssl-dev zlib1g-dev
+   ```
+
+   On Windows, clone inside WSL's own filesystem (`~/`), not under `/mnt/c`: builds there are many times
+   slower. The repository keeps LF line endings (`.gitattributes`), so a clone made on the Windows side still
+   builds, but slowly.
 
 2. Clone the project and install dependencies:
 
@@ -89,8 +105,13 @@ The supported development environment is **macOS on Apple Silicon**.
    ```
 
 Edit `apps/starter/index.jsx`. Saving JSX, assets or app configuration rebuilds
-and restarts the native preview. **State resets on restart; this is not Fast
-Refresh.** The first run fetches and builds pinned dependencies when needed.
+and restarts the native preview, and **the app picks up where it was**: every
+`useState` value that is plain data, and the focused element (by its
+`focusKey`), come back after the restart. It is not React Fast Refresh (the app
+restarts; refs, effects and module-level data start again), and adding or
+reordering a component's `useState` calls starts that component afresh.
+`PS5_REACT_KEEP_STATE=0 npm run dev` starts afresh on every save. The first run
+fetches and builds pinned dependencies when needed.
 
 ### Controls
 
@@ -409,6 +430,8 @@ downloads submit work to native workers.
 | `Controller`, `useGamepad`, `useController` | Feedback, analog state and raw input subscriptions |
 | `Notifications`, `Sound` | System notifications and short baked feedback sounds |
 | `Power`, `BackHandler`, `Linking` | Request awake behavior, exit the app and open an HTTP(S) URL |
+| `Keyboard` | Text input on the console's own on-screen keyboard, in the player's languages |
+| `LocalServer` | A companion page for a phone on the local network, with live updates (`push`) |
 
 Availability and hardware evidence vary by API. The [native API reference](docs/NATIVE-API.md)
 contains signatures, limits, error behavior and desktop equivalents.
@@ -562,6 +585,25 @@ function ControllerStatus() {
 Use raw input for analog controls and specialized interactions. Menus should
 use the focus navigation system.
 
+### Text input
+
+`Keyboard.open` shows the PS5's system keyboard over the app, in every language
+and input method the player has set up, and resolves with what was typed:
+
+```jsx
+import {Keyboard} from '@ps5-react/core';
+
+async function search(query, setQuery) {
+  const {status, text} = await Keyboard.open({title: 'Search', text: query, enter: 'search', maxLength: 64});
+  if (status === 'done') setQuery(text);
+}
+```
+
+While it is open the controller belongs to it. In the desktop preview you type
+into the preview window (Enter finishes, Esc cancels). Check
+`Keyboard.available` before offering it, and keep a fallback: it has not yet
+been validated on hardware.
+
 ## Images, fonts and sound
 
 Local imports are baked into the app at build time:
@@ -586,8 +628,9 @@ mappings. Literal font sizes are discovered during bundling when the font's
 `sizes` array is not pinned in `assets.config.js`. An explicit nonempty array
 replaces automatic discovery; include every physical size you use. Declare
 runtime-selected sizes and extra glyphs there as well, and resolve font-baker
-warnings before shipping. For text in other languages, see
-[International text](docs/TEXT.md).
+warnings before shipping. For text in other languages, symbols such as ✓ and ✕,
+and emoji, list the runtime fonts in app.json `textFonts` (`"symbols"`,
+`"emoji"`); see [International text](docs/TEXT.md).
 
 Remote images load through native workers and a bounded cache:
 
@@ -631,7 +674,7 @@ changes and new artifacts require their own hardware validation.
 apps/<app>/                 JSX, app.json, themes, assets and font configuration
 runtime/js/                 Public @ps5-react/core APIs, focus and motion
 native/shared/              Native bridge, workers and framebuffer presentation
-native/desktop/             macOS graphics, lifecycle and input
+native/desktop/             Desktop preview (macOS, Linux, WSL 2): graphics, lifecycle and input
 native/ps5/                 PS5 graphics, lifecycle, input and filesystem access
 tools/                     Bootstrap, bundling, styles, baking and builds
 docs/                      API references, architecture and hardware evidence
@@ -646,7 +689,7 @@ Software renderer
     ↓ ARGB framebuffer
 OpenGL presenter
     ↓
-Native macOS preview / fullscreen PS5 application
+Native desktop preview / fullscreen PS5 application
 ```
 
 OpenGL presents the software-rendered result; it does not directly render React
@@ -659,7 +702,7 @@ copied hosts or edits to C++.
 | --- | --- |
 | `npm ci` | Install locked JavaScript dependencies |
 | `npm run doctor` | Check the native development environment |
-| `npm run dev -- --app my-app` | Watch sources and rebuild/restart the preview |
+| `npm run dev -- --app my-app` | Watch sources and rebuild/restart the preview, keeping the app's state |
 | `npm run preview -- --app my-app` | Run one native preview |
 | `npm run preview -- --app my-app --resolution 1080p` | Preview the 1920×1080 layout of a `"resolution": "auto"` app (default 2160p) |
 | `npm test` | Run local runtime/compiler/transport tests and starter UI checks |

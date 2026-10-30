@@ -13,7 +13,7 @@ const CONFLICTS = {
 
 // Props that place a Text/Image in its parent, so they move to the fading wrapper View.
 const OUTER = ['flex', 'flexGrow', 'flexShrink', 'flexBasis', 'alignSelf', 'position', 'top', 'left',
-  'right', 'bottom', 'zIndex', 'margin', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight',
+  'right', 'bottom', 'start', 'end', 'zIndex', 'margin', 'marginTop', 'marginBottom', 'marginLeft', 'marginRight',
   'marginHorizontal', 'marginVertical', 'marginStart', 'marginEnd'];
 
 /** @returns {{[key: string]: unknown}} */

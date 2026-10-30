@@ -147,7 +147,7 @@ In arbitrary values `_` stands for a space: `bg-[rgb(14_165_233)]`.
 
 | Prefix | Style keys | Values |
 | --- | --- | --- |
-| `p`, `px`, `py`, `pt`, `pr`, `pb`, `pl`, `ps`, `pe` | `padding`, `paddingHorizontal`, `paddingVertical`, `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`, `paddingLeft`, `paddingRight` | spacing, arbitrary px/rem |
+| `p`, `px`, `py`, `pt`, `pr`, `pb`, `pl`, `ps`, `pe` | `padding`, `paddingHorizontal`, `paddingVertical`, `paddingTop`, `paddingRight`, `paddingBottom`, `paddingLeft`, `paddingStart`, `paddingEnd` | spacing, arbitrary px/rem |
 | `m`, `mx`, `my`, `mt`, `mr`, `mb`, `ml`, `ms`, `me` | `margin…` equivalents | spacing, arbitrary px/rem; **neg** |
 
 `ps`/`ms` map to left and `pe`/`me` to right (LTR only). Percentages and
@@ -171,7 +171,10 @@ In arbitrary values `_` stands for a space: `bg-[rgb(14_165_233)]`.
 | `inset` | `top`, `right`, `bottom`, `left` | spacing, **%**, arbitrary; **neg** |
 | `inset-x`, `inset-y` | `left`+`right`, `top`+`bottom` | same |
 | `top`, `right`, `bottom`, `left` | one edge | same |
-| `start`, `end` | `left`, `right` (LTR only) | same |
+| `start`, `end` | `start`, `end`: the left edge left to right and the right edge right to left (`direction`, inherited) | same |
+
+`ps`, `pe`, `ms`, `me`, `start` and `end` are logical: they follow the node's direction, so a
+right-to-left screen mirrors them with nothing else to change ([TEXT.md](TEXT.md#right-to-left-layout)).
 
 ### Colors
 

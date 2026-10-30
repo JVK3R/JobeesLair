@@ -8,7 +8,12 @@
 #include "app_config.hpp"
 #endif
 #if !defined(PROSPERO) || PS5_REACT_NETWORKING
+// PS5_REACT_SCE_HTTP (the PS4): Sony's HTTP client fetches, a blocking request per worker thread, in place of curl.
+#if PS5_REACT_SCE_HTTP
+#include "sce_http.hpp"
+#else
 #include <curl/curl.h>
+#endif
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -77,10 +82,15 @@ namespace {
 using Clock = std::chrono::steady_clock;
 // Five attempts, 0.5 + 1 + 2 + 4 s apart: a console that briefly cannot connect (Wi-Fi waking, a
 // burst of handshakes refused) recovers instead of failing every image on screen at once.
+#if PS5_REACT_SCE_HTTP
+// The PS4: a worker thread a connection, each blocked on its request.
+constexpr unsigned kConnections = 6, kAttempts = 5;
+#else
 constexpr unsigned kConnections = 32, kAttempts = 5;
 // IP literals, so the DoH request itself needs no DNS. A network that blocks the first gets the second.
 constexpr std::array<const char*, 2> kDohURLs = {"https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"};
 constexpr std::size_t kResolver = kDohURLs.size();
+#endif
 // A decode that ran out of heap is tried again 1 and 2 s later, from the cached bytes.
 constexpr unsigned kDecodeAttempts = 3;
 // A screen of evicted covers reloads from the disk cache at 8-10 ms of decode each on the PS5. Its
@@ -93,10 +103,14 @@ constexpr unsigned kDecoders = 4;
 constexpr std::size_t kDecodeBytesPerPixel = 8;
 constexpr std::size_t kDecodeBudget = kMaxSourcePixels * kDecodeBytesPerPixel;
 // While a download runs it holds up to 64 connections and their TLS state; images take fewer.
+#if PS5_REACT_SCE_HTTP
+constexpr unsigned kDownloadConnections = 3;
+#else
 constexpr unsigned kDownloadConnections = 8;
 // Per origin, on reused keep-alive connections (the console's curl has no HTTP/2): a grid of 30 Sony
 // covers opened 30 TLS handshakes to one host at once.
 constexpr long kHostConnections = 8;
+#endif
 // An element's image goes to the network only once it has been wanted this long, like a browser's
 // lazy loading: a held key scrolls a card past in about 50 ms and it is released before it fetches.
 // Images in the decoded, encoded or disk cache skip the wait.
@@ -172,17 +186,30 @@ std::string host_of(const std::string& url) {
 }
 
 void count_request(const std::string& url, const std::string& failure, std::uint64_t ms, std::size_t bytes) {
-  std::lock_guard lock(origins_mutex);
-  const std::string host = host_of(url);
-  auto it = std::find_if(origins.begin(), origins.end(), [&](const Origin& o) { return o.host == host; });
-  if (it == origins.end()) { origins.push_back({host, {}}); it = origins.end() - 1; }
-  ++it->requests; it->ms += ms; it->bytes += bytes;
-  if (!failure.empty()) { ++it->failures; it->last = failure; }
+  std::string first;
+  {
+    std::lock_guard lock(origins_mutex);
+    const std::string host = host_of(url);
+    auto it = std::find_if(origins.begin(), origins.end(), [&](const Origin& o) { return o.host == host; });
+    if (it == origins.end()) { origins.push_back({host, {}}); it = origins.end() - 1; }
+    ++it->requests; it->ms += ms; it->bytes += bytes;
+    if (!failure.empty()) { ++it->failures; it->last = failure; }
+#if PS5_REACT_SCE_HTTP
+    // The PS4's log: each host's first picture and first failure, which say whether its connections work at all.
+    if (failure.empty() ? it->requests - it->failures == 1 : it->failures == 1)
+      first = "images: " + host + (failure.empty() ? " answered in " + std::to_string(ms) + " ms" : " failed: " + failure);
+#endif
+  }
+  if (!first.empty()) network::platform_log(first.c_str());
 }
 constexpr std::uint64_t kDrawn = std::uint64_t{1} << 62;
 // Warming fills the disk cache in the background: a few connections, only while no load waits, and
 // only files small enough that many fit.
+#if PS5_REACT_SCE_HTTP
+constexpr unsigned kWarmConnections = 2;
+#else
 constexpr unsigned kWarmConnections = 4;
+#endif
 constexpr std::size_t kWarmMaxBytes = 512 * 1024;
 
 struct Entry {
@@ -221,7 +248,18 @@ using EntryPtr = std::shared_ptr<Entry>;
 
 // One request per URL: loads of the same URL for other boxes join it and decode its bytes.
 struct Transfer {
+#if PS5_REACT_SCE_HTTP
+  // From send() until the fetch thread takes it back from done_, an HTTP worker owns the body, the flags and these.
+  int status = 0;
+  bool failed = false, transient = false;
+  std::string reason;
+  // Set by the fetch thread once every load waiting for it is released: the worker stops reading.
+  std::atomic<bool> abandon{false};
+  // The body's limit: a warm transfer's, raised when a load joins it.
+  std::atomic<std::size_t> limit{0};
+#else
   CURL* curl = nullptr;
+#endif
   std::string url;
   Bytes body;
   std::vector<EntryPtr> entries;
@@ -229,9 +267,13 @@ struct Transfer {
   // Started by warm(): written to the disk cache; loads of its URL join it.
   bool warm = false;
   Clock::time_point started{};
+#if !PS5_REACT_SCE_HTTP
   // How it reached its host: the console's resolver (kResolver), kDohURLs[doh], or the address `pin`.
   std::size_t doh = 0;
   const curl_slist* pin = nullptr;
+  // curl's own words for a failure (CURLOPT_ERRORBUFFER).
+  char detail[CURL_ERROR_SIZE] = {};
+#endif
 };
 
 // Recently fetched encoded bytes by URL, so another box for the same image decodes without a fetch.
@@ -542,12 +584,20 @@ public:
     if (running_) return true;
     cache_directory_ = cache_directory;
     stopping_ = false;
+#if PS5_REACT_SCE_HTTP
+    http_stopping_ = false;
+    while (http_workers_ < kConnections &&
+           spawn(http_threads_[http_workers_], +[](void* p)->void* { static_cast<Service*>(p)->http_loop(); return nullptr; }, this))
+      ++http_workers_;
+    if (http_workers_ < kConnections) { stop(nullptr); return false; }
+#else
     multi_ = curl_multi_init();
     if (!multi_ || curl_multi_setopt(multi_, CURLMOPT_MAX_HOST_CONNECTIONS, kHostConnections) != CURLM_OK) {
       stop(nullptr);
       return false;
     }
     for (Transfer& t : transfers_) if (!(t.curl = curl_easy_init())) { stop(nullptr); return false; }
+#endif
     fetch_started_ = spawn(fetch_thread_, +[](void* p)->void* { static_cast<Service*>(p)->fetch_loop(); return nullptr; }, this);
     while (fetch_started_ && decoders_ < kDecoders &&
            spawn(decode_threads_[decoders_], +[](void* p)->void* { static_cast<Service*>(p)->decode_loop(); return nullptr; }, this))
@@ -560,10 +610,22 @@ public:
     for (const auto& [id, entry] : by_id_) if (entry->reported && entry->pixels) evict(id);
     { std::lock_guard lock(mutex_); stopping_ = true; }
     wake_.notify_all();
-    if (multi_) curl_multi_wakeup(multi_);
+    wakeup();
     if (fetch_started_) pthread_join(fetch_thread_, nullptr);
     for (unsigned i = 0; i < decoders_; ++i) pthread_join(decode_threads_[i], nullptr);
     fetch_started_ = false; decoders_ = 0;
+#if PS5_REACT_SCE_HTTP
+    for (Transfer& t : transfers_) t.abandon = true;
+    { std::lock_guard lock(http_mutex_); http_stopping_ = true; }
+    http_wake_.notify_all();
+    for (unsigned i = 0; i < http_workers_; ++i) pthread_join(http_threads_[i], nullptr);
+    http_workers_ = 0;
+    sending_.clear(); done_.clear();
+    for (Transfer& t : transfers_) {
+      t.status = 0; t.failed = t.transient = false; t.reason.clear(); t.abandon = false; t.limit = 0;
+      t.url.clear(); t.body.clear(); t.entries.clear(); t.overflow = t.out_of_memory = t.warm = false;
+    }
+#else
     for (Transfer& t : transfers_) {
       if (t.curl) curl_easy_cleanup(t.curl);
       t = Transfer{};
@@ -572,6 +634,7 @@ public:
     multi_ = nullptr;
     for (curl_slist* pin : doh_pins_) curl_slist_free_all(pin);
     doh_pins_.clear(); doh_hosts_.clear();
+#endif
     fetches_.clear(); decodes_.clear(); finished_.clear(); by_key_.clear(); by_id_.clear(); encoded_.clear();
     running_ = false;
   }
@@ -594,7 +657,7 @@ public:
       if (!prefetch) entry->dwell_until = entry->requested + kDwell;
       by_key_.emplace(key, entry); by_id_.emplace(entry->id, entry);
       { std::lock_guard lock(mutex_); fetches_.push_back(entry); }
-      curl_multi_wakeup(multi_);
+      wakeup();
     }
     ++entry->refs; entry->used = ++clock_;
     if (prefetch) entry->prefetched = clock_;
@@ -607,7 +670,7 @@ public:
   void warm(std::vector<std::string> urls) {
     if (!running_) return;
     { std::lock_guard lock(mutex_); warms_.assign(std::make_move_iterator(urls.begin()), std::make_move_iterator(urls.end())); }
-    curl_multi_wakeup(multi_);
+    wakeup();
   }
 
   void discard(std::uint32_t id, const std::string& reason) {
@@ -628,7 +691,7 @@ public:
     if (entry->reported && entry->pixels) { over_budget_ = true; return; }
     entry->cancelled = true;
     forget(*entry);
-    if (!entry->reported) { ++counters.cancelled; curl_multi_wakeup(multi_); }
+    if (!entry->reported) { ++counters.cancelled; wakeup(); }
   }
 
   std::vector<Result> poll(void (*evict)(std::uint32_t)) {
@@ -694,36 +757,44 @@ private:
     { std::lock_guard lock(mutex_); finished_.push_back(entry); }
   }
 
-  // Grows the body to the announced length at once when there is one, else by doubling, never
-  // past the limit.
-  static std::size_t body(char* data, std::size_t size, std::size_t count, void* opaque) {
-    auto& t = *static_cast<Transfer*>(opaque);
-    const std::size_t length = size * count;
-    const std::size_t limit = t.entries.empty() ? kWarmMaxBytes : kMaxEncodedBytes;
-    curl_off_t announced = -1;
-    curl_easy_getinfo(t.curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &announced);
-    if (length > limit - t.body.size || (announced > 0 && static_cast<std::uint64_t>(announced) > limit)) {
+  // Grows the body to the announced length (0 when unknown) at once when there is one, else by doubling, never
+  // past the limit. False when the body is over the limit or out of heap.
+  static bool take(Transfer& t, const char* data, std::size_t length, std::size_t limit, std::uint64_t announced) {
+    if (length > limit - t.body.size || announced > limit) {
       t.overflow = true;
-      return 0;
+      return false;
     }
     const std::size_t needed = t.body.size + length;
     if (needed > t.body.capacity) {
-      const std::size_t want = announced > 0 && static_cast<std::size_t>(announced) >= needed
-        ? static_cast<std::size_t>(announced) : std::max({needed, kMinBodyCapacity, t.body.capacity * 2});
-      if (!t.body.reserve(std::min(want, limit))) { t.out_of_memory = true; return 0; }
+      const std::size_t want = announced >= needed ? static_cast<std::size_t>(announced)
+                                                   : std::max({needed, kMinBodyCapacity, t.body.capacity * 2});
+      if (!t.body.reserve(std::min(want, limit))) { t.out_of_memory = true; return false; }
     }
     std::memcpy(t.body.data + t.body.size, data, length);
     t.body.size = needed;
-    return length;
+    return true;
   }
 
-  // Aborts a transfer once every load waiting for it has been released.
-  static int progress(void* opaque, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
-    const auto& t = *static_cast<Transfer*>(opaque);
+  // Every load waiting for the transfer has been released: it ends.
+  static bool abandoned(const Transfer& t) {
     const auto& entries = t.entries;
-    if (t.warm && entries.empty()) return 0;
-    return std::all_of(entries.begin(), entries.end(), [](const EntryPtr& e) { return e->cancelled.load(); }) ? 1 : 0;
+    if (t.warm && entries.empty()) return false;
+    return std::all_of(entries.begin(), entries.end(), [](const EntryPtr& e) { return e->cancelled.load(); });
   }
+
+#if !PS5_REACT_SCE_HTTP
+  static std::size_t body(char* data, std::size_t size, std::size_t count, void* opaque) {
+    auto& t = *static_cast<Transfer*>(opaque);
+    curl_off_t announced = -1;
+    curl_easy_getinfo(t.curl, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T, &announced);
+    const std::size_t limit = t.entries.empty() ? kWarmMaxBytes : kMaxEncodedBytes;
+    return take(t, data, size * count, limit, announced > 0 ? static_cast<std::uint64_t>(announced) : 0) ? size * count : 0;
+  }
+
+  static int progress(void* opaque, curl_off_t, curl_off_t, curl_off_t, curl_off_t) {
+    return abandoned(*static_cast<Transfer*>(opaque)) ? 1 : 0;
+  }
+#endif
 
   void fail(const EntryPtr& entry, const std::string& reason) {
     entry->error = message(*entry, reason);
@@ -779,9 +850,17 @@ private:
       decode_later({std::move(entry)}, body);
       return;
     }
-    for (Transfer& t : transfers_) if (busy(t) && t.url == entry->url) { t.entries.push_back(std::move(entry)); return; }
-    ++counters.fetches;
+    for (Transfer& t : transfers_) if (busy(t) && t.url == entry->url) {
+      t.entries.push_back(std::move(entry));
+#if PS5_REACT_SCE_HTTP
+      t.limit = kMaxEncodedBytes;
+#endif
+      return;
+    }
     Transfer* t = begin(entry->url, false);
+    // Every transfer is in use: the load waits its turn again.
+    if (!t) { std::lock_guard lock(mutex_); fetches_.push_back(std::move(entry)); return; }
+    ++counters.fetches;
     t->entries.push_back(std::move(entry));
     if (!send(*t)) {
       for (const EntryPtr& e : t->entries) fail(e, "could not configure the HTTP transport");
@@ -793,11 +872,14 @@ private:
 
   static bool busy(const Transfer& t) { return t.warm || !t.entries.empty(); }
 
+  // A free transfer for `url`, or null when every one is in use: a load counted as cached when it was picked,
+  // whose disk copy then proved unreadable, goes to the network beyond the connection count.
   Transfer* begin(const std::string& url, bool warm) {
-    Transfer* t = nullptr;
-    for (Transfer& candidate : transfers_) if (!busy(candidate)) { t = &candidate; break; }
-    t->url = url; t->body.clear(); t->overflow = t->out_of_memory = false; t->warm = warm;
-    return t;
+    for (Transfer& t : transfers_) if (!busy(t)) {
+      t.url = url; t.body.clear(); t.overflow = t.out_of_memory = false; t.warm = warm;
+      return &t;
+    }
+    return nullptr;
   }
 
   // Fetch thread: the next warm URL not already cached or in flight, on a connection of its own.
@@ -813,11 +895,75 @@ private:
       if (cached(url) || disk_.has(url) || std::any_of(transfers_.begin(), transfers_.end(),
           [&](const Transfer& t) { return busy(t) && t.url == url; })) continue;
       Transfer* t = begin(url, true);
+      if (!t) { std::lock_guard lock(mutex_); warms_.push_front(std::move(url)); return; }
       if (!send(*t)) { t->warm = false; return; }
       ++active; ++warming;
       return;
     }
   }
+
+#if PS5_REACT_SCE_HTTP
+  bool send(Transfer& t) {
+    t.status = 0; t.failed = t.transient = false; t.reason.clear(); t.abandon = false;
+    t.limit = t.entries.empty() ? kWarmMaxBytes : kMaxEncodedBytes;
+    t.started = Clock::now();
+    { std::lock_guard lock(http_mutex_); sending_.push_back(&t); }
+    http_wake_.notify_one();
+    return true;
+  }
+
+  // An HTTP worker: sends the transfers send() queues, one at a time, and hands each back to the fetch thread.
+  void http_loop() {
+    name_thread("img-http");
+    sce_http::Client client;
+    while (true) {
+      Transfer* t = nullptr;
+      {
+        std::unique_lock lock(http_mutex_);
+        http_wake_.wait(lock, [&] { return http_stopping_ || !sending_.empty(); });
+        if (http_stopping_) break;
+        t = sending_.front();
+        sending_.pop_front();
+      }
+      sce_http::Exchange x;
+      x.url = t->url;
+      const bool ok = client.perform(x, [&](const char* data, std::size_t size) {
+        return take(*t, data, size, t->limit.load(), x.length_known ? x.content_length : 0);
+      }, &t->abandon);
+      t->status = x.status;
+      t->failed = !ok;
+      t->transient = x.transient;
+      t->reason = x.error;
+      { std::lock_guard lock(http_mutex_); done_.push_back(t); }
+      done_wake_.notify_all();
+    }
+  }
+
+  void wakeup() {
+    { std::lock_guard lock(http_mutex_); woken_ = true; }
+    done_wake_.notify_all();
+  }
+
+  void complete(Transfer& t) {
+    const bool warm = t.warm;
+    t.warm = false;
+    std::vector<EntryPtr> entries;
+    entries.swap(t.entries);
+    std::erase_if(entries, [](const EntryPtr& e) { return e->cancelled.load(); });
+    const int status = t.status;
+    const bool aborted = t.abandon.load();
+    const bool transient = t.out_of_memory || (t.failed && t.transient) || status == 429 || status == 502 ||
+                           status == 503 || status == 504;
+    std::string reason;
+    if (t.overflow) reason = "response exceeds " + std::to_string(kMaxEncodedBytes >> 20) + " MiB";
+    else if (t.out_of_memory) reason = "out of memory for the response";
+    else if (aborted) reason = "aborted";
+    else if (t.failed) reason = t.reason;
+    else if (status != 200) reason = "HTTP " + std::to_string(status);
+    settle(t, warm, std::move(entries), reason, transient, aborted);
+  }
+#else
+  void wakeup() { if (multi_) curl_multi_wakeup(multi_); }
 
   bool send(Transfer& transfer) {
     Transfer* t = &transfer;
@@ -825,6 +971,8 @@ private:
     bool ok = network::configure_transport(t->curl, t->url, true);
     const auto set = [&](CURLoption option, auto value) { ok = ok && curl_easy_setopt(t->curl, option, value) == CURLE_OK; };
     set(CURLOPT_TIMEOUT, 30L);
+    t->detail[0] = 0;
+    set(CURLOPT_ERRORBUFFER, t->detail);
     t->doh = kResolver;
     t->pin = nullptr;
     if (const auto doh = doh_hosts_.find(host_of(t->url)); doh != doh_hosts_.end()) {
@@ -898,9 +1046,16 @@ private:
     std::string reason;
     if (t.overflow) reason = "response exceeds " + std::to_string(kMaxEncodedBytes >> 20) + " MiB";
     else if (t.out_of_memory) reason = "out of memory for the response";
-    else if (result != CURLE_OK) reason = curl_easy_strerror(result);
+    else if (result != CURLE_OK) reason = t.detail[0] ? std::string(curl_easy_strerror(result)) + " (" + t.detail + ")" : curl_easy_strerror(result);
     else if (status != 200) reason = "HTTP " + std::to_string(status);
-    if (result == CURLE_ABORTED_BY_CALLBACK) ++counters.aborted;
+    settle(t, warm, std::move(entries), reason, transient, result == CURLE_ABORTED_BY_CALLBACK);
+  }
+#endif
+
+  // Fetch thread: what a finished transfer's loads get: its bytes to decode (and the caches), another attempt, or
+  // the failure.
+  void settle(Transfer& t, bool warm, std::vector<EntryPtr> entries, const std::string& reason, bool transient, bool aborted) {
+    if (aborted) ++counters.aborted;
     // A warm response over its size limit is skipped, not failed.
     else count_request(t.url, warm && t.overflow ? std::string() : reason,
                        std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now() - t.started).count(), t.body.size);
@@ -967,6 +1122,27 @@ private:
         start_warm(active, warming);
         if (warming == before) break;
       }
+#if PS5_REACT_SCE_HTTP
+      // Loads released while their transfer runs: its worker stops reading.
+      for (Transfer& t : transfers_) if (busy(t) && abandoned(t)) t.abandon = true;
+      const auto wait = std::chrono::duration_cast<std::chrono::milliseconds>(due - Clock::now()).count();
+      std::vector<Transfer*> finished;
+      {
+        std::unique_lock lock(http_mutex_);
+        done_wake_.wait_for(lock, std::chrono::milliseconds(std::clamp<long long>(wait, 1, 100)),
+                            [&] { return !done_.empty() || woken_; });
+        woken_ = false;
+        finished.swap(done_);
+      }
+      for (Transfer* t : finished) {
+        if (t->warm) --warming;
+        complete(*t);
+        --active;
+      }
+    }
+    for (Transfer& t : transfers_) if (busy(t)) { t.abandon = true; t.entries.clear(); t.warm = false; }
+  }
+#else
       int running = 0;
       curl_multi_perform(multi_, &running);
       int left = 0;
@@ -983,6 +1159,7 @@ private:
     }
     for (Transfer& t : transfers_) if (busy(t)) { curl_multi_remove_handle(multi_, t.curl); t.entries.clear(); t.warm = false; }
   }
+#endif
 
   void decode_loop() {
     name_thread("img-decode");
@@ -1021,7 +1198,7 @@ private:
         else finished_.push_back(std::move(entry));
       }
       wake_.notify_all();
-      if (retry) curl_multi_wakeup(multi_);
+      if (retry) wakeup();
     }
   }
 
@@ -1035,6 +1212,16 @@ private:
   DiskCache disk_;
   std::vector<Encoded> encoded_;
   std::uint64_t fetch_clock_ = 0;
+#if PS5_REACT_SCE_HTTP
+  // The HTTP workers, and the transfers on their way to them (sending_) and back (done_).
+  std::mutex http_mutex_;
+  std::condition_variable http_wake_, done_wake_;
+  std::deque<Transfer*> sending_;
+  std::vector<Transfer*> done_;
+  std::array<pthread_t, kConnections> http_threads_{};
+  unsigned http_workers_ = 0;
+  bool http_stopping_ = false, woken_ = false;
+#else
   // Hosts the console's resolver sends nowhere: a DNS that blocks a vendor's domains (as consoles
   // running homebrew do, against system updates) also blocks its image CDN. These resolve over DoH,
   // through kDohURLs[server], until a load connects and pins its address.
@@ -1042,9 +1229,10 @@ private:
   std::map<std::string, Doh> doh_hosts_;
   // Every pin made, kept until stop(): a transfer in flight may still read a replaced one.
   std::vector<curl_slist*> doh_pins_;
+  CURLM* multi_ = nullptr;
+#endif
   // Decode costs of the images being decoded, guarded by the mutex.
   std::size_t decoding_ = 0;
-  CURLM* multi_ = nullptr;
   pthread_t fetch_thread_{};
   std::array<pthread_t, kDecoders> decode_threads_{};
   unsigned decoders_ = 0;

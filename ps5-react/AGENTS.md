@@ -41,7 +41,9 @@ npm run build
 ```
 
 See the README for native prerequisites and Python environment setup. The
-watcher rebuilds and restarts the app; state resets. It is not Fast Refresh.
+watcher rebuilds and restarts the app and keeps its `useState` values and focus
+(tools/keep-state.mjs, runtime/js/keep-state.js); it is not Fast Refresh. Development
+works on macOS, Linux and Windows through WSL 2; CI runs `npm test` on Linux.
 
 Use `npm run create -- --name my-app --title-id PPSA99054` to scaffold an app.
 Apps should not require copied hosts or edits to C++ for ordinary UI changes.

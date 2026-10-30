@@ -2,7 +2,7 @@
 // reconstructed from the esbuild bundle in eboot.bin
 
 import { createContext, createElement, useContext, useEffect, useState } from 'react';
-import { configure, getLocale, setLocale, subscribe, t } from './core.js';
+import { configure, getLocale, setLocale, subscribe, t, tWhole } from './core.js';
 import { SOURCE_LOCALE, isRTL, matchLocale } from './locales.js';
 import en from './locales/en.json';
 import { loadList, saveList } from '../state/saved.js';
@@ -46,4 +46,4 @@ import { FileSystem, Fonts } from '@ps5-react/core';
   var focusEnd = (rtl, key) => ({ [rtl ? "nextFocusLeft" : "nextFocusRight"]: key });
   var focusStart = (rtl, key) => ({ [rtl ? "nextFocusRight" : "nextFocusLeft"]: key });
 
-export { LATIN_IN_RTL, LocaleProvider, chooseLanguage, focusEnd, focusStart, languageChoice, latin, systemLocale, useLocale, useT };
+export { LATIN_IN_RTL, LocaleProvider, chooseLanguage, focusEnd, focusStart, languageChoice, latin, systemLocale, tWhole, useLocale, useT };

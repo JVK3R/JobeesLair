@@ -31,7 +31,7 @@ constexpr std::size_t kGlyphCacheBytes = 4u << 20;
 // about 1 KB each for a typical label.
 constexpr std::size_t kLayoutCacheEntries = 128;
 
-enum class Script : std::uint8_t { kOther, kHan, kKana, kDevanagari, kBengali, kArabic };
+enum class Script : std::uint8_t { kOther, kHan, kKana, kDevanagari, kBengali, kArabic, kSymbol, kEmoji };
 
 struct FaceSpec {
   const char* file;
@@ -48,6 +48,10 @@ constexpr FaceSpec kFaces[] = {
     {"NotoSansDevanagari-Regular.ttf", Script::kDevanagari, 1000, 450, true},
     {"NotoSansBengali-Regular.ttf", Script::kBengali, 1000, 450, true},
     {"NotoSansArabic-Regular.ttf", Script::kArabic, 1050, 500, true},
+    // textFonts "symbols" and "emoji": drawn in the em box, so a ✓ or an emoji never makes its line taller.
+    {"NotoSansSymbols2-Regular.ttf", Script::kSymbol, 880, 120, false},
+    {"NotoSansSymbols-Regular.ttf", Script::kSymbol, 880, 120, false},
+    {"NotoEmoji-Regular.ttf", Script::kEmoji, 880, 120, false},
 };
 constexpr int kFaceCount = sizeof kFaces / sizeof kFaces[0];
 constexpr int kJapanese = 0, kChinese = 1;
@@ -115,6 +119,9 @@ Script script_of(std::uint32_t c) {
       (c >= 0x3400 && c <= 0x4DBF) || (c >= 0x4E00 && c <= 0x9FFF) || (c >= 0xF900 && c <= 0xFAFF) ||
       (c >= 0xFE30 && c <= 0xFE4F) || (c >= 0xFF00 && c <= 0xFFEF) || (c >= 0x20000 && c <= 0x3FFFF))
     return Script::kHan;
+  // Emoji (the pictograph planes), then arrows, technical and geometric shapes, dingbats and enclosed numbers.
+  if (c >= 0x1F000 && c <= 0x1FAFF) return Script::kEmoji;
+  if (c >= 0x2190 && c <= 0x2BFF) return Script::kSymbol;
   return Script::kOther;
 }
 
@@ -231,6 +238,15 @@ int face_for(std::uint32_t cp, int previous) {
     const bool japanese = script == Script::kKana || state->prefer_japanese;
     order[count++] = japanese ? kJapanese : kChinese;
     order[count++] = japanese ? kChinese : kJapanese;
+  } else if (script == Script::kSymbol || script == Script::kEmoji) {
+    // Its own faces first (an emoji from the emoji font, a symbol from the symbol fonts), then the other kind,
+    // then any face that has it: an app without these fonts draws what it drew before.
+    const Script other = script == Script::kEmoji ? Script::kSymbol : Script::kEmoji;
+    for (const Script pick : {script, other})
+      for (int i = 0; i < kFaceCount; i++)
+        if (kFaces[i].script == pick) order[count++] = i;
+    for (int i = 0; i < kFaceCount; i++)
+      if (kFaces[i].script != script && kFaces[i].script != other) order[count++] = i;
   } else if (script != Script::kOther) {
     for (int i = 0; i < kFaceCount; i++)
       if (kFaces[i].script == script) order[count++] = i;
@@ -636,6 +652,9 @@ Style style_at(const ERTextRenderParams* params, const std::uint8_t* span_map, s
 }
 
 void draw_glyph(const Layout& layout, const Glyph& g, int x, int line_top, const ERRect& clip, const Style& style) {
+  // A zero-width character (a direction mark, a zero-width space) has nothing to draw: the baked font would draw
+  // the "?" it shows for a character it lacks.
+  if (g.face < 0 && (g.id == '\n' || ignorable(g.id))) return;
   for (int pass = 0; pass < (style.bold ? 2 : 1); pass++) {
     if (g.face < 0) {
       er_text_draw_glyph(layout.baked, g.id, x + pass, line_top + layout.ascent - layout.baked->baseline, &clip,
@@ -776,7 +795,10 @@ bool claims(const char* text, const char* family, std::uint8_t font_size, std::u
       continue;
     }
     const std::uint32_t cp = next_codepoint(text, length, at);
-    if (ignorable(cp)) continue;
+    // The bitmap renderer draws a character its font lacks as "?", invisible ones too: a direction mark (which
+    // keeps an English name's punctuation in place inside right-to-left text) or a zero-width space is the
+    // shaper's, which draws it as nothing.
+    if (ignorable(cp)) return true;
     if (needs_shaping(cp)) return true;
     if (!baked) baked = er_text_font(family, font_size);
     if (!baked_has(baked, cp)) return true;

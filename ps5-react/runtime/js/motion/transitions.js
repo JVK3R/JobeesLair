@@ -82,6 +82,17 @@ export function transitionFor(transition, key) {
   return own && typeof own === 'object' ? {...transition, ...own} : transition;
 }
 
+// Light motion, for consoles that draw slower (the PS4): every animation that runs once is a short ease-out of at
+// most LIGHT_MS, springs included, and waits a third as long; a repeating one (a spinner) keeps its own timing.
+// Each animated frame repaints what moves on the CPU, so fewer frames is the saving.
+const LIGHT_MS = 160;
+let light = false;
+
+/** Turns light motion on or off for every animation started after it. */
+export function setLightMotion(on) {
+  light = Boolean(on);
+}
+
 /**
  * Engine config for animating one value; `scale` converts logical velocity to physical units.
  * @param {Transition} transition
@@ -91,6 +102,12 @@ export function transitionFor(transition, key) {
  */
 export function engineConfig(transition, key, extraDelay = 0, scale = 1) {
   const delay = Math.round((seconds(transition, 'delay', 0) + extraDelay) * 1000);
+  if (light && !transition.repeat) {
+    const tween = typeOf(transition, key) === 'tween';
+    const duration = tween ? Math.min(LIGHT_MS, Math.round(seconds(transition, 'duration', 0.3) * 1000)) : LIGHT_MS;
+    return {type: 'timing', duration, easing: tween && transition.ease ? easing(transition.ease) : 'easeOut',
+      delay: Math.round(delay / 3)};
+  }
   if (typeOf(transition, key) === 'tween') {
     return {type: 'timing', duration: Math.round(seconds(transition, 'duration', 0.3) * 1000),
       easing: easing(transition.ease ?? 'easeOut'), delay};

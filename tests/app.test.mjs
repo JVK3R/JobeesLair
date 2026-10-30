@@ -2,7 +2,7 @@
 // a fake archive extractor and a fake ShadowMount+ API. Run: node --test queue.test.mjs <repo>
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
@@ -160,12 +160,12 @@ function shadowMount(state) {
   };
 }
 
-function queueWith({ fs, downloads, archives, http, firmware, packages = null }) {
+function queueWith({ fs, downloads, archives, http, firmware, packages = null, onLaunch }) {
   return createDownloadQueue({
     fs, downloads, http: http ?? shadowMount({ images: [], games: {} }), formats: DownloadFormats, dataDir: '/data/app', platform: 'ps5',
     notifications: { show() {} }, power: { keepAwake() {} }, linking: null,
     sources: { resolve: async (release) => ({ url: release.url }) }, archives, packages, wait: async () => {},
-    firmware: firmware ?? (() => '13.60'),
+    firmware: firmware ?? (() => '13.60'), onLaunch,
   });
 }
 
@@ -216,10 +216,14 @@ test('every image of an archive is tracked, base game first', async () => {
   const id = queue.enqueue(game, image('Game.zip', 500), '/data');
   const job = await settle(queue, id);
   assert.equal(job.state, 'downloaded', job.error);
-  const dir = '/data/homebrew/Game.zip-extracted';
+  // 0.5.4: straight into homebrew/, where ShadowMount's default scan finds images (GitHub issue #1).
+  const dir = '/data/homebrew';
   assert.deepEqual(job.artifact.images, [`${dir}/Game.exfat`, `${dir}/Game-Update-1.05.exfat`]);
   assert.equal(job.artifact.destination, `${dir}/Game.exfat`);
   assert.deepEqual(job.payload, [{ path: `${dir}/Game.exfat`, size: 900 }, { path: `${dir}/Game-Update-1.05.exfat`, size: 300 }]);
+  assert.ok(!fs.exists('/data/homebrew/Game.zip-extracted'), 'no folder one level down');
+  assert.ok(fs.exists('/data/downloads/extracted/Game.zip-extras/readme.txt'), 'the notes are kept outside the scan');
+  assert.equal(job.extras, '/data/downloads/extracted/Game.zip-extras');
 });
 
 test('an image missing from the extraction receipt fails before anything moves into homebrew', async () => {
@@ -231,6 +235,119 @@ test('an image missing from the extraction receipt fails before anything moves i
   assert.equal(job.state, 'failed');
   assert.match(job.error, /Game-Update\.exfat is not in the extraction receipt/);
   assert.ok(!fs.exists('/data/homebrew/Game.zip-extracted'));
+  assert.ok(!fs.exists('/data/homebrew/Game.exfat') && !fs.exists('/data/homebrew/Game-Update.exfat'));
+});
+
+// ---- 0.5.4, GitHub issue #1: images go straight into homebrew/, archives listed as images are unpacked, a host's
+// stand-in is refused, and too little room for the unpacked files stops the extraction at once.
+
+test('an image whose name is taken in homebrew/ is placed under the release id, the other file untouched', async () => {
+  const fs = memoryFs();
+  fs.file('/data/homebrew/Game.exfat', 50);
+  const queue = queueWith({ fs, downloads: engine(fs), archives: extractor(fs, { 'Game.exfat': 900 }) });
+  const job = await settle(queue, queue.enqueue(game, image('Game.zip', 500), '/data'));
+  assert.equal(job.state, 'downloaded', job.error);
+  assert.deepEqual(job.artifact.images, ['/data/homebrew/Game.zip-Game.exfat']);
+  assert.equal(fs.stat('/data/homebrew/Game.exfat').size, 50);
+});
+
+test('a file listed as an image whose first bytes say 7z is unpacked, never handed to ShadowMount', async () => {
+  const fs = memoryFs();
+  const base = extractor(fs, { 'PPSA01234.exfat': 900 });
+  const archives = { ...base, inspect: ([p]) => ({ kind: /\/downloads\/images\/Game\.exfat$/.test(p) ? '7z' : null }) };
+  const queue = queueWith({ fs, downloads: engine(fs), archives });
+  const job = await settle(queue, queue.enqueue(game, image('Game.exfat', 500), '/data'));
+  assert.equal(job.state, 'downloaded', job.error);
+  assert.deepEqual(job.artifact.images, ['/data/homebrew/PPSA01234.exfat']);
+  assert.ok(!fs.exists('/data/homebrew/Game.exfat'), 'the archive never went where ShadowMount mounts images');
+  assert.ok(!fs.exists('/data/downloads/images/Game.exfat'), 'it is deleted once unpacked');
+});
+
+test('a file far smaller than the game its listing names is refused as the host stand-in, and deleted', async () => {
+  const fs = memoryFs();
+  const queue = createDownloadQueue({
+    fs, downloads: engine(fs), http: shadowMount({ images: [], games: {} }), formats: DownloadFormats, dataDir: '/data/app', platform: 'ps5',
+    notifications: { show() {} }, power: { keepAwake() {} }, linking: null,
+    // The host's own size, as a resolver learns it from its answer: 989 bytes for a game listed at 74 GB.
+    sources: { resolve: async (release) => ({ url: release.url, expectedBytes: 989 }) },
+    archives: extractor(fs, { 'sce_sys/param.json': 0 }), packages: null, wait: async () => {},
+  });
+  // A host page (MediaFire), whose resolver reads the file's size from the host.
+  const page = { ...image('Game.zip', 74e9), url: 'https://www.mediafire.com/file/abc123/Game.zip/file', provider: 'MediaFire' };
+  const job = await settle(queue, queue.enqueue(game, page, '/data'));
+  assert.equal(job.state, 'failed');
+  assert.match(job.error, /Not a game file: the host sent something else/);
+  assert.ok(!fs.exists('/data/downloads/archives/Game.zip'), 'deleted, so a retry downloads it again');
+  assert.ok(!fs.exists('/data/downloads/extracted/Game.zip'), 'never unpacked');
+});
+
+test('too little room for what the files unpack to stops the extraction at once, saying how much', async () => {
+  const fs = memoryFs();
+  const base = extractor(fs, { 'Game.exfat': 900 });
+  const archives = { ...base, extract(options) {
+    const inner = base.extract(options);
+    return { ...inner, subscribe(listener) { listener({ state: 'running', written: 0, total: 2e12 }); return () => {}; } };
+  } };
+  const queue = queueWith({ fs, downloads: engine(fs), archives });
+  const job = await settle(queue, queue.enqueue(game, image('Game.zip', 500), '/data'));
+  assert.equal(job.state, 'failed');
+  assert.match(job.error, /^Not enough space on \/data: needs .+, .+ free$/);
+  const { explainError } = await load('app/downloads/errors.js');
+  assert.equal(explainError(job.error).action, en['errors.action.freeOrOtherDrive']);
+  assert.ok(fs.exists('/data/downloads/archives/Game.zip'), 'the archive stays for a retry once there is room');
+  assert.ok(!fs.exists('/data/homebrew/Game.exfat'));
+});
+
+test('images an earlier build left one folder down move up when the queue loads, only while they wait to install', () => {
+  const fs = memoryFs();
+  const old = '/data/homebrew/Game.zip-extracted';
+  const installedOld = '/data/homebrew/Other.zip-extracted';
+  fs.file(`${old}/Game.exfat`, 900);
+  fs.file(`${old}/Game-Update.exfat`, 300);
+  fs.file(`${old}/readme.txt`, 10);
+  fs.file(`${old}/.ps5-react-extraction`, 0, 'receipt');
+  fs.file(`${installedOld}/Other.exfat`, 500);
+  const job = (name, state, dir, names) => ({ id: `PPSA01234/${name}.zip`, gameId: 'PPSA01234', titleId: 'PPSA01234', title: name, release: image(`${name}.zip`),
+    root: '/data', state, written: 1, total: 1, error: '', output: dir, publishTo: dir,
+    artifact: { format: 'zip', directory: '/data/downloads/archives', destination: `${dir}/${names[0]}`, nextAction: 'shadowmount', images: names.map((item) => `${dir}/${item}`) },
+    payload: names.map((item) => ({ path: `${dir}/${item}`, size: fs.stat(`${dir}/${item}`).size })) });
+  fs.file('/data/app/JobeesLair/downloads.json', 0, JSON.stringify({ version: 1, jobs: [job('Game', 'downloaded', old, ['Game.exfat', 'Game-Update.exfat']), job('Other', 'installed', installedOld, ['Other.exfat'])] }));
+  const queue = queueWith({ fs, downloads: engine(fs) });
+  const [moved, kept] = queue.snapshot();
+  assert.deepEqual(moved.artifact.images, ['/data/homebrew/Game.exfat', '/data/homebrew/Game-Update.exfat']);
+  assert.equal(moved.artifact.destination, '/data/homebrew/Game.exfat');
+  assert.deepEqual(moved.payload, [{ path: '/data/homebrew/Game.exfat', size: 900 }, { path: '/data/homebrew/Game-Update.exfat', size: 300 }]);
+  assert.ok(!fs.exists(old), 'the folder is gone from homebrew/');
+  assert.ok(fs.exists('/data/downloads/extracted/Game.zip-extras/readme.txt'), 'its notes are kept outside the scan');
+  assert.equal(moved.extras, '/data/downloads/extracted/Game.zip-extras');
+  assert.equal(kept.artifact.images[0], `${installedOld}/Other.exfat`, 'one ShadowMount installed from there stays');
+  const saved = JSON.parse(fs.readFile('/data/app/JobeesLair/downloads.json'));
+  assert.deepEqual(saved.jobs[0].artifact.images, moved.artifact.images, 'saved at once');
+});
+
+test('an app closed while images moved into homebrew/ puts them back, checks the extraction and places them again', async () => {
+  const fs = memoryFs();
+  const out = '/data/downloads/extracted/Game.zip';
+  fs.file('/data/downloads/archives/Game.zip', 500);
+  fs.file('/data/downloads/archives/Game.zip.complete', 0, 'receipt');
+  fs.file(`${out}/Game-Update.exfat`, 300);
+  fs.file('/data/homebrew/Game.exfat', 900);
+  const info = fs.stat('/data');
+  const artifact = DownloadFormats.artifact(image('Game.zip', 500), '/data');
+  fs.file('/data/app/JobeesLair/downloads.json', 0, JSON.stringify({ version: 1, jobs: [{
+    id: 'PPSA01234/Game.zip', gameId: 'PPSA01234', titleId: 'PPSA01234', title: 'Test Game', release: image('Game.zip', 500),
+    root: '/data', rootIdentity: `${info.device}:${info.inode}`, artifact, downloadDestination: '/data/downloads/archives/Game.zip',
+    output: out, placing: [{ from: `${out}/Game.exfat`, to: '/data/homebrew/Game.exfat' }, { from: `${out}/Game-Update.exfat`, to: '/data/homebrew/Game-Update.exfat' }],
+    state: 'queued', written: 500, total: 500, error: '' }] }));
+  const base = extractor(fs, { 'Game.exfat': 900, 'Game-Update.exfat': 300 });
+  let putBack = null;
+  const archives = { ...base, extract(options) { putBack ??= fs.exists(`${options.destination}/Game.exfat`); return base.extract(options); } };
+  const queue = queueWith({ fs, downloads: engine(fs), archives });
+  const job = await settle(queue, 'PPSA01234/Game.zip');
+  assert.equal(putBack, true, 'the moved image went back before the extraction was checked');
+  assert.equal(job.state, 'downloaded', job.error);
+  assert.deepEqual(job.artifact.images, ['/data/homebrew/Game.exfat', '/data/homebrew/Game-Update.exfat']);
+  assert.equal(job.placing, undefined);
 });
 
 // An extractor whose game folder gets this param.json (and, optionally, files beside it).
@@ -395,7 +512,7 @@ test('an older ShadowMount that sends no source_available is not held to it', as
 
 test('a set counts as installed once every image is complete and registered, mapped through /api/v1/games', async () => {
   const state = { images: [], games: {} };
-  const dir = '/data/homebrew/Game.zip-extracted';
+  const dir = '/data/homebrew';
   const { queue, id } = await downloadedImage(state, { 'Game.exfat': 900, 'Game-DLC.exfat': 300 });
   state.games.PPSA01234 = atRest(`${dir}/Game.exfat`);
   // The add-on is not scanned yet: waiting.
@@ -419,7 +536,7 @@ test('a set counts as installed once every image is complete and registered, map
 
 test("an image of a set ShadowMount cannot reach needs attention; one it skipped (shared title ID) does not", async () => {
   const state = { images: [], games: {} };
-  const dir = '/data/homebrew/Game.zip-extracted';
+  const dir = '/data/homebrew';
   const { queue, id } = await downloadedImage(state, { 'Game.exfat': 900, 'Game-Update.exfat': 300 });
   state.games.PPSA01234 = atRest(`${dir}/Game.exfat`);
   state.images = [listed(`${dir}/Game.exfat`), listed(`${dir}/Game-Update.exfat`, { source_available: false })];
@@ -436,7 +553,7 @@ test("an image of a set ShadowMount cannot reach needs attention; one it skipped
 
 test('without list_games a set is checked by its first title only', async () => {
   const state = { images: [], games: {}, capabilities: ['game_info'] };
-  const dir = '/data/homebrew/Game.zip-extracted';
+  const dir = '/data/homebrew';
   const { http, queue, id } = await downloadedImage(state, { 'Game.exfat': 900, 'Game-Update.exfat': 300 });
   state.games.PPSA01234 = atRest(`${dir}/Game.exfat`);
   assert.equal(await queue.syncInstalls(id), true);
@@ -525,7 +642,22 @@ test('a complete split set extracts and tracks its image', async () => {
   const id = queue.enqueue(game, release, '/data');
   const job = await settle(queue, id);
   assert.equal(job.state, 'downloaded', job.error);
-  assert.deepEqual(job.artifact.images, ['/data/homebrew/Game-extracted/Game.exfat']);
+  assert.deepEqual(job.artifact.images, ['/data/homebrew/Game.exfat']);
+});
+
+test('a set whose first part is a whole image is that image: placed in homebrew/, the other parts never downloaded (0.5.4)', async () => {
+  const fs = memoryFs();
+  // As DREDGE's "exFAT v01.000 Base - Vikingfile part 1 / part 2": two copies of PPSA09076.exfat, numbered as parts.
+  const release = { id: 'set', provider: 'VikingFile', filename: 'Game', label: 'exFAT v01.000 Base', parts: [1, 2].map((number) => ({ number, sources: [{ url: `https://example.com/copy${number}`, sizeBytes: 900 }] })) };
+  const downloads = engine(fs);
+  const archives = { ...extractor(fs, {}), inspect: ([p]) => ({ kind: /part-1\.bin(\.part)?$/.test(p) ? 'exfat' : null }) };
+  const queue = queueWith({ fs, downloads, archives });
+  const job = await settle(queue, queue.enqueue(game, release, '/data'));
+  assert.equal(job.state, 'downloaded', job.error);
+  assert.deepEqual(job.artifact.images, ['/data/homebrew/PPSA01234.exfat']);
+  assert.deepEqual(job.payload, [{ path: '/data/homebrew/PPSA01234.exfat', size: 900 }]);
+  assert.deepEqual(downloads.requests.map((request) => request.url), ['https://example.com/copy1'], 'part 2 is never downloaded');
+  assert.ok(!fs.exists('/data/downloads/sets/Game'), 'the set folder goes');
 });
 
 test('a leftover staged image blocks a new download of the same name', () => {
@@ -564,7 +696,7 @@ test('an image published before the queue was saved is picked up in place, not d
 
 test('deleting a set also uninstalls its add-on title', async () => {
   const state = { images: [], games: {} };
-  const dir = '/data/homebrew/Game.zip-extracted';
+  const dir = '/data/homebrew';
   const { fs, http, queue, id } = await downloadedImage(state, { 'Game.exfat': 900, 'Game-DLC.exfat': 300 });
   state.images = [listed(`${dir}/Game.exfat`), listed(`${dir}/Game-DLC.exfat`)];
   state.games.PPSA01234 = atRest(`${dir}/Game.exfat`);
@@ -572,7 +704,8 @@ test('deleting a set also uninstalls its add-on title', async () => {
   assert.equal(await queue.syncInstalls(id), true);
   await queue.deleteFromDisk(id);
   assert.deepEqual(http.calls.filter((route) => route === 'games/uninstall').length, 2);
-  assert.ok(!fs.exists(dir));
+  assert.ok(!fs.exists(`${dir}/Game.exfat`) && !fs.exists(`${dir}/Game-DLC.exfat`));
+  assert.ok(fs.exists(dir), 'homebrew/ itself stays');
   assert.equal(queue.snapshot().length, 0);
 });
 
@@ -599,6 +732,17 @@ test('diagnosis: a game that started and then hit a module-load error', () => {
   const result = diagnoseLaunch({ title: 'PPSA99058', debug, kernel: '' });
   assert.equal(result.verdict.key, 'crashed');
   assert.match(result.verdict.text, /started, then failed: \[MDBG\] module load error: PPSA99058 pid=102 libSceAmpr\.sprx/);
+});
+
+test('diagnosis: a game that froze and was closed when the console paused it says so in plain words', () => {
+  const result = diagnoseLaunch({ title: 'PPSA32236', debug: fixture('froze'), kernel: '' });
+  assert.equal(result.verdict.key, 'crashed', 'still counted as a crash, for Fix it and the players\' numbers');
+  assert.match(result.verdict.text, /GPU_FAULT_SUSPENDPOINT_TIMEOUT_IN_SUSPEND_ASYNC/);
+  assert.equal(result.froze, true);
+  const other = `${fixture('started')}\n[01:40:14]   [MDBG] module load error: PPSA99058 pid=102 libSceAmpr.sprx (0x80020002)\n`;
+  assert.equal(diagnoseLaunch({ title: 'PPSA99058', debug: other, kernel: '' }).froze, false, 'another crash is not a freeze');
+  assert.equal(diagnoseLaunch({ title: 'PPSA99058', debug: fixture('started'), kernel: '' }).froze, false);
+  assert.equal(diagnoseLaunch({ title: 'PPSA00001', debug: fixture('froze'), kernel: '' }).froze, false, 'no launch of it, nothing to say');
 });
 
 test('diagnosis: a title ShadowMount could not register', () => {
@@ -638,7 +782,7 @@ const neverStarted = (time = '23:53:12') => fixture('notstarted').replaceAll('PP
 const fakelibRan = (time = '01:37:35') => fixture('fakelib').replaceAll('PPSA02530', 'PPSA01234').replaceAll('[01:37:35]', `[${time}]`);
 const fakelibCrash = (time) => `${fakelibRan(time)}\n[01:37:40]   [MDBG] game crashed: PPSA01234 pid=246 signal 11\n`;
 // An installed PPSA01234: a folder game (or an image) asking for system software `requires`, on a 13.60 console.
-function fixWorld({ folder = true, requires = '0x1300000000000000', backport = false, debugLog = '' } = {}) {
+function fixWorld({ folder = true, requires = '0x1300000000000000', backport = false, debugLog = '', onLaunch } = {}) {
   const fs = memoryFs();
   const opened = [];
   fs.chmod = (p) => opened.push(p);
@@ -653,7 +797,7 @@ function fixWorld({ folder = true, requires = '0x1300000000000000', backport = f
   const job = { id: 'PPSA01234/r', gameId: 'PPSA01234', titleId: 'PPSA01234', title: 'Test Game', release, root: '/data', state: 'installed', error: '', message: '', written: 1000, total: 1000, opened: true, artifact: { ...DownloadFormats.artifact(release, '/data'), destination, nextAction: 'shadowmount' } };
   fs.file('/data/app/JobeesLair/downloads.json', 0, JSON.stringify({ version: 1, jobs: [job] }));
   const state = { images: [], games: { PPSA01234: { title_id: 'PPSA01234', path: destination, fakelib_mode: 'full', fakelib_mode_override: 'default', can_toggle_fakelib: true } }, debugLog };
-  const queue = queueWith({ fs, downloads: engine(fs), http: shadowMount(state), firmware: () => '13.60' });
+  const queue = queueWith({ fs, downloads: engine(fs), http: shadowMount(state), firmware: () => '13.60', onLaunch });
   return { fs, opened, state, queue, id: job.id };
 }
 
@@ -802,6 +946,36 @@ test("the queue learns launches from ShadowMount's log, shows them on installed 
   state.debugLog = fixture('started').replaceAll('PPSA99058', 'PPSA01234');
   await queue.refreshLaunches();
   assert.equal(readinessOf(queue.snapshot()[0]).stage, 'played');
+});
+
+// 0.5.4: each launch learned goes to the players' numbers (state/online.js launched), with how the game is installed.
+test('each launch learned is told once, with how the game is installed; the history gives every one', async () => {
+  const told = [];
+  const fs = memoryFs();
+  const state = { images: [], games: {}, debugLog: '' };
+  const queue = queueWith({ fs, downloads: engine(fs), http: shadowMount(state), onLaunch: (title, report) => told.push([title, report]) });
+  const id = queue.enqueue(game, image('Game.exfat'), '/data');
+  assert.equal((await settle(queue, id)).state, 'downloaded');
+  state.games.PPSA01234 = atRest('/data/homebrew/Game.exfat');
+  await queue.syncInstalls(id);
+  state.debugLog = fixture('notstarted').replaceAll('PPSA24588', 'PPSA01234');
+  await queue.refreshLaunches();
+  await queue.refreshLaunches();
+  assert.deepEqual(told, [['PPSA01234', { outcome: 'wontStart', verdict: 'notStarted', format: 'exfat', fixed: false, backport: false }]], 'the same launch once');
+  state.debugLog = fixture('started').replaceAll('PPSA99058', 'PPSA01234');
+  await queue.refreshLaunches();
+  assert.deepEqual(told[1], ['PPSA01234', { outcome: 'played', verdict: 'ran', format: 'exfat', fixed: false, backport: false }]);
+  assert.deepEqual(queue.launchHistory(), [{ title: 'PPSA01234', outcome: 'played', verdict: 'ran', format: 'exfat', fixed: false, backport: false }]);
+});
+
+test('a launch after Fix it changed something says so, and a game folder is a folder', async () => {
+  const told = [];
+  const { state, queue, id } = fixWorld({ debugLog: fakelibCrash(), onLaunch: (title, report) => told.push(report) });
+  assert.equal((await queue.fixIt(id)).step, 'applied');
+  state.debugLog = fakelibRan('02:10:00');
+  await queue.refreshLaunches();
+  assert.deepEqual(told.map((report) => [report.outcome, report.verdict, report.format, report.fixed]), [['wontStart', 'crashed', 'folder', false], ['played', 'ran', 'folder', true]]);
+  assert.equal(queue.launchHistory()[0].fixed, false, "once it played, Fix it's rounds are over");
 });
 
 // A backport archive: a folder named for the title, which carries an eboot.bin and a param.json too.
@@ -1653,25 +1827,26 @@ test('a set of images unpacked into one folder moves image by image, and the emp
   const queue = queueWith({ fs, downloads: engine(fs), archives: extractor(fs, { 'Game-Update-1.05.exfat': 300, 'Game.exfat': 900 }), http });
   const id = queue.enqueue(game, image('Game.zip', 500), '/data');
   await settle(queue, id);
-  const dir = '/data/homebrew/Game.zip-extracted';
+  const dir = '/data/homebrew';
   state.games.PPSA01234 = atRest(`${dir}/Game.exfat`);
   state.images = [listed(`${dir}/Game.exfat`), listed(`${dir}/Game-Update-1.05.exfat`)];
   await queue.syncInstalls(id);
   assert.equal(queue.snapshot()[0].state, 'installed');
   await queue.relocate(id, '/mnt/usb0');
-  const usb = '/mnt/usb0/homebrew/Game.zip-extracted';
+  const usb = '/mnt/usb0/homebrew';
   assert.ok(fs.exists(`${usb}/Game.exfat`) && fs.exists(`${usb}/Game-Update-1.05.exfat`));
-  assert.ok(!fs.exists(dir), 'the emptied folder on internal storage is gone');
+  assert.ok(!fs.exists(`${dir}/Game.exfat`) && !fs.exists(`${dir}/Game-Update-1.05.exfat`), 'the originals are gone');
+  assert.ok(fs.exists(dir), 'homebrew/ itself stays');
   assert.deepEqual(queue.snapshot()[0].artifact.images, [`${usb}/Game.exfat`, `${usb}/Game-Update-1.05.exfat`]);
   assert.deepEqual(state.manual, [`${usb}/Game.exfat`, `${usb}/Game-Update-1.05.exfat`]);
 });
 
-test('versions: 0.2.0 is newer than every 0.1.1 beta and 0.1.1, and the app now reports 0.5.3', async () => {
+test('versions: 0.2.0 is newer than every 0.1.1 beta and 0.1.1, and the app now reports 0.5.4', async () => {
   assert.equal(newer('v0.2.0', '0.1.1-beta.4'), true);
   assert.equal(newer('v0.2.0', '0.1.1'), true);
   assert.equal(newer('0.1.1-beta.4', '0.2.0'), false);
   const { VERSION, VERSION_LABEL } = await load('app/version.js');
-  assert.deepEqual([VERSION, VERSION_LABEL], ['0.5.3', '0.5.3']);
+  assert.deepEqual([VERSION, VERSION_LABEL], ['0.5.4', '0.5.4']);
 });
 
 
@@ -1690,14 +1865,14 @@ const releaseJson = (overrides = {}) => ({
   ...overrides,
 });
 
-test('versions: 0.5.0 is newer than 0.4.1 and every 0.5.0 pre-release, and older than 0.5.1; 0.5.3 is newer than 0.5.2', () => {
-  assert.equal(VERSION, '0.5.3');
-  assert.equal(newer(VERSION, '0.5.2'), true, 'it is newer than 0.5.2');
-  assert.equal(newer('v0.5.2', VERSION), false, 'so 0.5.2 is not offered to it');
-  assert.equal(newer('v0.5.3', '0.5.3-pre.1'), true, '0.5.3 is offered to its testers');
-  assert.equal(newer('v0.5.3', VERSION), false, 'and not to itself');
-  assert.equal(newer('v0.5.4', VERSION), true, 'the next release will be offered');
-  assert.equal(contentVersionOf(VERSION), '01.005.003');
+test('versions: 0.5.0 is newer than 0.4.1 and every 0.5.0 pre-release, and older than 0.5.1; 0.5.4 is newer than 0.5.3', () => {
+  assert.equal(VERSION, '0.5.4');
+  assert.equal(newer(VERSION, '0.5.3'), true, 'it is newer than 0.5.3');
+  assert.equal(newer('v0.5.3', VERSION), false, 'so 0.5.3 is not offered to it');
+  assert.equal(newer('v0.5.3', '0.5.3-pre.1'), true, '0.5.3 was offered to its testers');
+  assert.equal(newer('v0.5.4', VERSION), false, 'not to itself');
+  assert.equal(newer('v0.5.4', '0.5.4-pre.1'), true, '0.5.4 is offered to its testers');
+  assert.equal(contentVersionOf(VERSION), '01.005.004', 'the package version leaves the pre-release part out');
   assert.equal(newer('v0.5.2', '0.5.2-pre.1'), true, '0.5.2 was offered to its pre-release testers');
   assert.equal(newer('0.5.2', '0.5.1'), true, 'and to 0.5.1');
   assert.equal(newer(VERSION, '0.5.0'), true, 'it is newer than 0.5.0');
@@ -2593,6 +2768,144 @@ test('errors: a set volume that is a copy of another part is named, to download 
   assert.equal(INCOMPLETE_PART.exec('Incomplete RAR archive or missing volume. Volume 4 of 10 is a copy of part 3.')[1], '4', 'the queue deletes volume 4');
 });
 
+// 0.5.4: a 7z keeps its file list at its end, so before it downloads the memory its unpacking needs is read off the
+// server: not found out after the whole file (a tester's 128 GB).
+const TOO_BIG = 'This archive needs more memory to extract than the console app can use.';
+// The engine's check on ranges, for a 1000-byte 7z: its start header, then its list at 900. Another file's first
+// bytes end it.
+function sevenZipEnd(refusal) {
+  return {
+    asked: [],
+    inspectRanges(ranges) {
+      this.asked.push(ranges.map((range) => [range.offset, range.bytes.length]));
+      if (!ranges.length) return { kind: '', refusal: '', size: null, need: { offset: 0, length: 32 } };
+      if (!ranges[0].bytes.startsWith('7z')) return { kind: '', refusal: '', size: null, need: null };
+      if (ranges.length === 1) return { kind: '7z', refusal: '', size: 1000, need: { offset: 900, length: 100 } };
+      return { kind: '7z', refusal, size: 1000, need: null };
+    },
+  };
+}
+// A file host answering ranges (206, with the file's size in Content-Range) or, with `whole`, the whole file
+// (200) as some do. A .7z link serves a 7z's bytes, any other a ZIP's. With `redirectPage`, example.com sends each
+// request on to cdn.example.com with a page of that many bytes, as VikingFile does. Every body counts against
+// maxBytes, as in the engine.
+function rangeServer({ whole = false, size = 1000, redirectPage = 0 } = {}) {
+  return {
+    calls: [],
+    async request(url, options) {
+      const range = /bytes=(\d+)-(\d+)/.exec(options.headers?.Range ?? '');
+      if (!range) return { ok: false, status: 404, headers: {}, json: async () => ({}) };
+      this.calls.push({ url, range: options.headers.Range, binary: options.binary });
+      const fits = (bytes) => { if (bytes > options.maxBytes) throw new Error('Http.request: response exceeds maxBytes'); };
+      if (redirectPage && url.startsWith('https://example.com/')) {
+        fits(redirectPage);
+        return { ok: false, status: 302, headers: { location: url.replace('https://example.com/', 'https://cdn.example.com/') }, bytes: async () => '<'.padEnd(redirectPage, 'x') };
+      }
+      const length = Number(range[2]) - Number(range[1]) + 1;
+      fits(whole ? size : length);
+      const fill = (/\.7z$/.test(url) ? '7z' : 'PK').padEnd(whole ? size : length, 'x');
+      return { ok: true, status: whole ? 200 : 206, headers: whole ? {} : { 'content-range': `bytes ${range[1]}-${range[2]}/${size}` }, bytes: async () => fill };
+    },
+  };
+}
+const archived = (fs, refusal) => {
+  const end = sevenZipEnd(refusal);
+  return { ...extractor(fs, { 'Game.exfat': 900 }), asked: end.asked, inspectRanges: end.inspectRanges };
+};
+
+test('7z: one that needs more memory than the console has is refused before it downloads, from its end', async () => {
+  const fs = memoryFs();
+  const downloads = engine(fs);
+  const http = rangeServer();
+  const queue = queueWith({ fs, downloads, archives: archived(fs, TOO_BIG), http });
+  const id = queue.enqueue(game, image('Game.7z'), '/data');
+  const job = await settle(queue, id);
+  assert.equal(job.state, 'failed');
+  assert.equal(job.error, TOO_BIG);
+  assert.equal(downloads.requests.length, 0, 'not a byte downloaded');
+  assert.deepEqual(http.calls.map((call) => [call.url, call.range, call.binary]),
+    [['https://example.com/Game.7z', 'bytes=0-31', true], ['https://example.com/Game.7z', 'bytes=900-999', true]]);
+  const { explainError, finalError } = await load('app/downloads/errors.js');
+  assert.equal(explainError(job.error).title, en['errors.archiveTooLarge']);
+  assert.ok(finalError(job.error), 'the card and the game page offer another source, not Retry');
+});
+
+test('7z: a host that redirects with a page of its own (VikingFile: a 302 and 2 KB of HTML) still has its end read', async () => {
+  const fs = memoryFs();
+  const downloads = engine(fs);
+  const http = rangeServer({ redirectPage: 2110 });
+  const queue = queueWith({ fs, downloads, archives: archived(fs, TOO_BIG), http });
+  const job = await settle(queue, queue.enqueue(game, image('Game.7z'), '/data'));
+  assert.equal(job.error, TOO_BIG);
+  assert.equal(downloads.requests.length, 0, 'not a byte downloaded');
+  assert.deepEqual(http.calls.map((call) => call.url), ['https://example.com/Game.7z', 'https://cdn.example.com/Game.7z', 'https://example.com/Game.7z', 'https://cdn.example.com/Game.7z']);
+});
+
+test('7z: refused before a byte, it fails over to the next source', async () => {
+  const fs = memoryFs();
+  const downloads = engine(fs);
+  const queue = queueWith({ fs, downloads, archives: archived(fs, TOO_BIG), http: rangeServer() });
+  const id = queue.enqueue(game, image('Game.7z'), '/data', [image('Game.zip')]);
+  const job = await settle(queue, id);
+  assert.equal(job.release.id, 'Game.zip');
+  assert.deepEqual(downloads.requests.map((request) => request.url), ['https://example.com/Game.zip']);
+  assert.notEqual(job.state, 'failed', job.error);
+});
+
+test('7z: one whose end fits downloads; another format, a server without ranges or a longer file are left to the extraction', async () => {
+  for (const [name, server, calls] of [['Game.7z', {}, 2], ['Game.zip', {}, 1], ['Game.7z', { whole: true }, 1], ['Game.7z', { size: 2000 }, 1]]) {
+    const fs = memoryFs();
+    const downloads = engine(fs);
+    const http = rangeServer(server);
+    const queue = queueWith({ fs, downloads, archives: archived(fs, ''), http });
+    const id = queue.enqueue(game, image(name), '/data');
+    const job = await settle(queue, id);
+    const label = `${name} ${JSON.stringify(server)}`;
+    assert.equal(downloads.requests.length, 1, label);
+    assert.equal(http.calls.length, calls, label);
+    assert.notEqual(job.state, 'failed', `${label}: ${job.error}`);
+    assert.equal(job.endChecked, 'https://example.com/' + name, `${label}: checked once for its link`);
+  }
+});
+
+test('errors: only refusals a retry meets again point to another source in place of Retry', async () => {
+  const { finalError } = await load('app/downloads/errors.js');
+  assert.ok(finalError(TOO_BIG));
+  assert.ok(finalError('download.zip / x: Missing archive password'));
+  assert.ok(finalError('Incomplete RAR archive or missing volume.', true));
+  for (const error of ['Incomplete RAR archive or missing volume.', 'HTTP 404', 'Not enough memory to extract.', 'Not enough space on the selected drive. Free space and retry.', 'transfer interrupted', ''])
+    assert.ok(!finalError(error), error);
+});
+
+test('extracting: the size shown is what the engine says the files unpack to, never the archive', async () => {
+  const fs = memoryFs();
+  const base = extractor(fs, { 'Game.exfat': 1500 });
+  // Progress before the engine knows the files' size, then once it does.
+  const archives = {
+    ...base,
+    extract(options) {
+      const inner = base.extract(options);
+      return { ...inner, subscribe(listener) {
+        listener({ state: 'running', written: 100, total: null });
+        listener({ state: 'running', written: 600, total: 1500 });
+        return () => {};
+      } };
+    },
+  };
+  const seen = [];
+  const queue = queueWith({ fs, downloads: engine(fs), archives });
+  queue.subscribe((jobs) => {
+    const job = jobs.find((item) => item.state === 'extracting');
+    if (job) seen.push([job.written, job.total]);
+  });
+  const id = queue.enqueue(game, image('Game.zip'), '/data');
+  await settle(queue, id);
+  // Once it ends, the download's own 1000 of 1000 comes back (100%) until the state moves on.
+  assert.deepEqual(seen.find(([written, total]) => total !== null && total !== 1500 && written < total), undefined, 'never the archive size (1000) as its total');
+  assert.ok(seen.some(([written, total]) => written === 100 && total === null), JSON.stringify(seen));
+  assert.ok(seen.some(([written, total]) => written === 600 && total === 1500), JSON.stringify(seen));
+});
+
 test('parts: "Wait" stops the countdown, and with the setting off nothing opens by itself', async () => {
   for (const [autoContinue, wait] of [[() => true, true], [() => false, false]]) {
     const fs = memoryFs();
@@ -2899,16 +3212,18 @@ test('0.5.3: right-to-left, the bottom bar\'s section name moves to the right (t
   assert.match(screen, /rtl \? LATIN_IN_RTL : null\], children: app\.description/);
 });
 
-test('what\'s new: shown until seen once for 0.5.3; a player who never saw 0.5.2\'s still learns the stats are on and where they turn off', async () => {
+test('what\'s new: shown until seen once for 0.5.4; a player who saw neither 0.5.2\'s nor 0.5.3\'s still learns the stats are on and where they turn off', async () => {
   const { WHATS_NEW } = await load('app/state/whats-new.js');
-  assert.equal(WHATS_NEW, '0.5.3');
-  assert.match(en['whatsNew.title'], /0\.5\.3/);
+  assert.equal(WHATS_NEW, '0.5.4');
+  assert.match(en['whatsNew.title'], /0\.5\.4/);
   const source = readFileSync(path.join(repo, 'app/ui/WhatsNew.jsx'), 'utf8');
   const shown = [...source.matchAll(/title: "(whatsNew\.\w+)", detail: "(whatsNew\.\w+)"/g)].flatMap((match) => [match[1], match[2]]);
-  assert.deepEqual(shown, ['whatsNew.packages', 'whatsNew.packagesDetail', 'whatsNew.hbSearch', 'whatsNew.hbSearchDetail', 'whatsNew.topGames', 'whatsNew.topGamesDetail', 'whatsNew.reopen', 'whatsNew.reopenDetail', 'whatsNew.online', 'whatsNew.onlineDetail']);
+  assert.deepEqual(shown, ['whatsNew.keyboard', 'whatsNew.keyboardDetail', 'whatsNew.phoneLive', 'whatsNew.phoneLiveDetail', 'whatsNew.players', 'whatsNew.playersDetail', 'whatsNew.focus', 'whatsNew.focusDetail', 'whatsNew.online', 'whatsNew.onlineDetail']);
   for (const key of [...shown, 'whatsNew.done', 'whatsNew.openHomebrew', 'saver.wake', 'settings.screenSaver', 'downloads.aheadReady']) assert.ok(en[key], key);
-  // 0.5.2's online card takes the last place for a player who did not see 0.5.2's panel (from 0.5.1, or a new install).
-  assert.match(source, /itemsFor = \(seen\) => seen === "0\.5\.2" \? ITEMS : \[\.\.\.ITEMS\.slice\(0, 3\), ONLINE\]/);
+  // 0.5.2's online card takes the last place for a player who saw neither 0.5.2's panel nor 0.5.3's (from 0.5.1, or a
+  // new install).
+  assert.match(source, /itemsFor = \(seen\) => seen === "0\.5\.2" \|\| seen === "0\.5\.3" \? ITEMS : \[\.\.\.ITEMS\.slice\(0, 3\), ONLINE\]/);
+  for (const item of ['keyboard', 'phone', 'play', 'focus']) assert.match(readFileSync(path.join(repo, 'app/ui/Icon.jsx'), 'utf8'), new RegExp(`^    ${item}: \\[`, 'm'), `the ${item} icon`);
   assert.match(source, /useState\(\(\) => itemsFor\(lastWhatsNewSeen\(\)\)\)/);
   assert.match(en['whatsNew.onlineDetail'], /anonymous stats/);
   assert.match(en['whatsNew.onlineDetail'], /Settings → About/);
@@ -3138,4 +3453,41 @@ test('an install cut off by closing the app waits on Install at the next launch,
   const job = await settle(next, id);
   assert.equal(job.state, 'installed', job.error);
   assert.deepEqual(packages.installed, ['/data/downloads/packages/Game.pkg']);
+});
+
+// 0.5.4: a Text node keeps 255 bytes (ps5-react docs/TEXT.md); a longer paragraph goes in pieces (ui/LongText.jsx).
+test('long text: split into pieces the engine keeps whole, at sentences, then clauses, then words, losing nothing', async () => {
+  const { splitBytes, byteLength } = await load('app/i18n/fit.js');
+  assert.deepEqual(splitBytes('Short.'), ['Short.']);
+  const english = 'First sentence is here, with a clause. Second one, version 0.5.4, stays whole! Third? '.repeat(4).trim();
+  const pieces = splitBytes(english, 100);
+  assert.ok(pieces.every((piece) => byteLength(piece) <= 100), pieces.join(' | '));
+  assert.ok(pieces.every((piece) => /[.!?]$/.test(piece)), 'whole sentences where they fit');
+  assert.ok(!pieces.some((piece) => /0\.$|^5\./.test(piece)), "a number's dot is no sentence end");
+  assert.equal(pieces.join(' '), english);
+  const word = 'x'.repeat(300);
+  assert.deepEqual(splitBytes(word).map(byteLength), [255, 45], 'one long word: by characters');
+  const dir = path.join(repo, 'app/i18n/locales');
+  let checked = 0;
+  for (const file of readdirSync(dir).filter((name) => name.endsWith('.json'))) for (const [key, text] of Object.entries(JSON.parse(readFileSync(path.join(dir, file), 'utf8')))) {
+    const code = file.slice(0, -5);
+    if (byteLength(text) <= 255) continue;
+    const parts = splitBytes(text);
+    assert.ok(parts.every((part) => byteLength(part) <= 255), `${code} ${key}`);
+    assert.equal(parts.join('').replace(/\s+/g, ''), text.replace(/\s+/g, ''), `${code} ${key}: nothing lost`);
+    assert.ok(parts.every((part) => !/^\p{M}/u.test(part)), `${code} ${key}: no piece starts with a mark`);
+    checked++;
+  }
+  assert.ok(checked > 100, `${checked} long messages`);
+});
+
+// 0.5.4: no PS4 game has a logo, so the carousel took none and the app stopped reading its first slide.
+test('the Discover carousel takes games with a banner alone when too few have a logo', async () => {
+  const { SLIDES, pickFeatured } = await load('app/browse/featured.js');
+  const game = (id, logo) => ({ id, title: id, developer: id, genres: [], art: { hero: `https://example.com/${id}.jpg`, ...logo ? { logo: `https://example.com/${id}.png` } : {} } });
+  const banners = Array.from({ length: 8 }, (_, i) => game(`CUSA0000${i}`, false));
+  assert.equal(pickFeatured(banners).length, SLIDES);
+  const logos = Array.from({ length: SLIDES }, (_, i) => game(`PPSA0000${i}`, true));
+  assert.ok(pickFeatured([...banners, ...logos]).every((picked) => picked.art.logo), 'enough logos: only those');
+  assert.deepEqual(pickFeatured(banners.map((picked) => ({ ...picked, art: {} }))), []);
 });

@@ -137,6 +137,16 @@ class LineBreaking(unittest.TestCase):
         _, _, _, lines = self.client.lines("क्ष", width=4)
         self.assertEqual(lines, ["क्ष"])
 
+    def test_invisible_marks_take_no_room(self):
+        # A direction mark after an English name in right-to-left text, a zero-width space, a word joiner: the
+        # shaper's, never the bitmap renderer's, which sized (and drew) each as a "?".
+        _, plain, _, _ = self.client.lines("PS5SX2")
+        for mark in ("‎", "‏", "​", "⁠"):
+            with self.subTest(mark=hex(ord(mark))):
+                _, widest, _, lines = self.client.lines("PS5SX2" + mark)
+                self.assertEqual(widest, plain)
+                self.assertEqual(lines, ["PS5SX2" + mark])
+
 
 class Clipping(unittest.TestCase):
     """er_utf8_clip, which Text, TextInput and span strings are copied through at 255 and 63 bytes."""

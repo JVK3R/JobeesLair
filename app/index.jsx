@@ -16,6 +16,8 @@ import { useEffect, useState } from 'react';
 import { AppRegistry, FocusScope, ReleaseImages, View, motion } from '@ps5-react/core';
 // First of the app's own imports: the earlier version's files are carried over before any module reads one.
 import { migrationLog } from './state/title-migration-run.js';
+// Second: light motion on the PS4 is set before anything animates.
+import { LIGHT } from './ui/light-motion.js';
 import { BrowsePage } from './browse/BrowsePage.jsx';
 import { DownloadsScreen } from './downloads/DownloadsScreen.jsx';
 import { FilesScreen } from './files/FilesScreen.jsx';
@@ -32,7 +34,7 @@ import { refreshFeeds } from './state/feeds.js';
 import { startCompanionIfEnabled } from './companion/service.js';
 import { startSandboxSweeper } from './state/sandbox-sweeper.js';
 import { refreshDrives } from './state/drives.js';
-import { downloadQueue } from './state/downloads.js';
+import { downloadQueue, reportPastLaunches } from './state/downloads.js';
 import { colors, useThemeEpoch } from './ui/colors.js';
 import { watchQueue } from './ui/lightBar.js';
 import { startInstaller, startUpdateChecks } from './state/update.js';
@@ -56,6 +58,7 @@ import { WhatsNew } from './ui/WhatsNew.jsx';
 import { AnnouncementBar, usePageGlide } from './ui/AnnouncementBar.jsx';
 import { useInterfaceHaptics } from './ui/haptics.js';
 import { useInterfaceSounds } from './ui/sounds.js';
+import './state/picture-route.js';
 
   function Screen({ screen: screen2 }) {
     const { openGame, pop, push } = useNavActions();
@@ -127,7 +130,11 @@ import { useInterfaceSounds } from './ui/sounds.js';
     // The Homebrew section's live index, fetched once a while after launch (state/homebrew-store.js).
     (0, useEffect)(() => startHomebrewRefresh(), []);
     // 0.5.2: the live count, announcements and (unless turned off) the anonymous stats (state/online.js).
-    (0, useEffect)(() => startOnline(() => downloadQueue().transferring?.() ?? false), []);
+    (0, useEffect)(() => {
+      // 0.5.4: launches known from before go to the players' numbers, once (state/downloads.js).
+      reportPastLaunches();
+      return startOnline(() => downloadQueue().transferring?.() ?? false);
+    }, []);
     const { top } = useNavState();
     const onBrowse = top.name === "browse";
     const key = top.name === "game" ? `game:${top.id}` : top.name === "homebrew-app" ? `homebrew-app:${top.id}` : top.name;
@@ -160,7 +167,8 @@ import { useInterfaceSounds } from './ui/sounds.js';
     // The intro starts leaving (it slides up) while the startup notice is already mounted under it.
     const [introLeaving, setIntroLeaving] = (0, useState)(false);
     const [booted, setBooted] = (0, useState)(false);
-    const [curtain, setCurtain] = (0, useState)(true);
+    // The PS4 skips the vortex (light-motion.js): the store comes up right after the startup notice.
+    const [curtain, setCurtain] = (0, useState)(!LIGHT);
     const theme = useThemeEpoch();
     // This build says it started right away (state/update.js startInstaller): after an update the updater
     // waits for that, and the startup notice below can stay up for as long as the player likes.

@@ -6,27 +6,29 @@ import '../assets/Exo2.ttf';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useRef, useState } from 'react';
 import { FocusScope, Text, View, motion, useIsFocused } from '@ps5-react/core';
-import { useT } from '../i18n/index.js';
+import { tWhole, useT } from '../i18n/index.js';
 import { useNavActions } from '../state/nav.jsx';
 import { lastWhatsNewSeen, markWhatsNewSeen, shouldShowWhatsNew } from '../state/whats-new.js';
 import { FocusRing } from './FocusRing.jsx';
 import { Icon } from './Icon.jsx';
 import { JLMark } from './JLMark.jsx';
+import { LongText } from './LongText.jsx';
 import { colors, radius } from './colors.js';
 
   // After the store's reveal (index.jsx CURTAIN_MS) has finished.
   var DELAY_MS = 4500;
-  // 0.5.3's. (0.5.2's: online, Fix it, Homebrew keeps your saves, backports.)
+  // 0.5.4's: the PS5 keyboard, the phone companion, whether a game starts for other players, focus. (0.5.3's: PS5
+  // packages, Homebrew search, top games, "Device busy". 0.5.2's: online, Fix it, Homebrew keeps your saves, backports.)
   var ITEMS = [
-    { icon: "package", tone: "#a78bfa", title: "whatsNew.packages", detail: "whatsNew.packagesDetail" },
-    { icon: "search", tone: "#38bdf8", title: "whatsNew.hbSearch", detail: "whatsNew.hbSearchDetail" },
-    { icon: "star", tone: "#facc15", title: "whatsNew.topGames", detail: "whatsNew.topGamesDetail" },
-    { icon: "restart", tone: "#4ade80", title: "whatsNew.reopen", detail: "whatsNew.reopenDetail" }
+    { icon: "keyboard", tone: "#38bdf8", title: "whatsNew.keyboard", detail: "whatsNew.keyboardDetail" },
+    { icon: "phone", tone: "#a78bfa", title: "whatsNew.phoneLive", detail: "whatsNew.phoneLiveDetail" },
+    { icon: "play", tone: "#facc15", title: "whatsNew.players", detail: "whatsNew.playersDetail" },
+    { icon: "focus", tone: "#4ade80", title: "whatsNew.focus", detail: "whatsNew.focusDetail" }
   ];
-  // A player who never saw 0.5.2's panel (an update from 0.5.1 or earlier, or a new install) still learns there that
-  // the anonymous stats are on and where they turn off: 0.5.2's online card takes the last place.
+  // A player who saw neither 0.5.2's panel nor 0.5.3's (an update from 0.5.1 or earlier, or a new install) still learns
+  // there that the anonymous stats are on and where they turn off: 0.5.2's online card takes the last place.
   var ONLINE = { icon: "globe", tone: "#38bdf8", title: "whatsNew.online", detail: "whatsNew.onlineDetail" };
-  var itemsFor = (seen) => seen === "0.5.2" ? ITEMS : [...ITEMS.slice(0, 3), ONLINE];
+  var itemsFor = (seen) => seen === "0.5.2" || seen === "0.5.3" ? ITEMS : [...ITEMS.slice(0, 3), ONLINE];
   var text = (size, color, extra) => ({ fontFamily: "Exo2", fontSize: size, lineHeight: Math.round(size * 1.35), color, ...extra });
   function ButtonFace({ label, primary }) {
     const focused = useIsFocused();
@@ -64,7 +66,7 @@ import { colors, radius } from './colors.js';
         jsx(View, { style: { width: 48, height: 48, alignItems: "center", justifyContent: "center", borderRadius: radius.sm, backgroundColor: colors.surface3 }, children: jsx(Icon, { name: item.icon, size: 22, color: item.tone }) }),
         jsxs(View, { style: { flex: 1, gap: 4 }, children: [
           jsx(Text, { style: text(23, colors.fg, { fontWeight: 600 }), children: t2(item.title) }),
-          jsx(Text, { style: text(19, colors.muted), children: t2(item.detail) })
+          jsx(LongText, { style: text(19, colors.muted), children: tWhole(item.detail) })
         ] })
       ] }, item.title)) }),
       jsxs(View, { style: { flexDirection: "row", justifyContent: "flex-end", gap: 16 }, children: [

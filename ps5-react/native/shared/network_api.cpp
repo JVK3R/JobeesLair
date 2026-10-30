@@ -166,8 +166,9 @@ JSValue begin(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv, bool d
     if (!string_option(ctx, options, "method", request.method, 16) ||
         !string_option(ctx, options, "body", request.body, 1024*1024) ||
         !number_option(ctx, options, "maxBytes", request.max_bytes, 1, 4*1024*1024) ||
-        !boolean_option(ctx, options, "followRedirects", request.follow_redirects))
-      return JS_ThrowTypeError(ctx, "%s: invalid method/body/maxBytes", call);
+        !boolean_option(ctx, options, "followRedirects", request.follow_redirects) ||
+        !boolean_option(ctx, options, "binary", request.binary))
+      return JS_ThrowTypeError(ctx, "%s: invalid method/body/maxBytes/binary", call);
     if (request.method != "GET" && request.method != "HEAD" && request.method != "POST" && request.method != "PUT" &&
         request.method != "PATCH" && request.method != "DELETE")
       return JS_ThrowTypeError(ctx, "%s: unsupported HTTP method", call);
@@ -195,7 +196,17 @@ JSValue poll(JSContext* ctx, JSValueConst, int, JSValueConst*) {
     const auto str = [&](const char* key, const std::string& value) { JS_SetPropertyStr(ctx, item, key, JS_NewStringLen(ctx, value.data(), value.size())); };
     const auto num = [&](const char* key, double value) { JS_SetPropertyStr(ctx, item, key, JS_NewFloat64(ctx, value)); };
     num("id", snapshot.id); str("state", snapshot.state); str("error", snapshot.error);
-    str("body", snapshot.body); str("destination", snapshot.destination);
+    if (snapshot.binary) {
+      // One character per byte: the runtime has no ArrayBuffer, and QuickJS keeps such a string at a byte each.
+      std::string encoded;
+      encoded.reserve(snapshot.body.size() * 2);
+      for (const unsigned char byte : snapshot.body) {
+        if (byte < 0x80) encoded += static_cast<char>(byte);
+        else { encoded += static_cast<char>(0xC0 | byte >> 6); encoded += static_cast<char>(0x80 | (byte & 0x3F)); }
+      }
+      str("body", encoded);
+    } else str("body", snapshot.body);
+    str("destination", snapshot.destination);
     str("url", snapshot.url);
     JSValue response_headers = JS_NewObject(ctx);
     for (const auto& [name, value] : snapshot.headers)

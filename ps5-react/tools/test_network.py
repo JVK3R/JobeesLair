@@ -13,6 +13,7 @@ import socket
 import ssl
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -69,8 +70,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             with self.guard:
                 first = ("refuse", self.headers["Range"]) not in self.retried
                 self.retried.add(("refuse", self.headers["Range"]))
-            # The first range's first answer is archive.org's HTML error page; it must not read as a web page.
-            if busy > 6 or (first and self.headers["Range"].startswith("bytes=0-")):
+            # The first three ranges' first answers are refusals, so each status is seen however fast the
+            # loopback serves the rest (on Linux concurrency rarely passes six): archive.org's HTML error page
+            # first, which must not read as a web page, then 503 and 429.
+            if busy > 6 or (first and len(self.refused) < 3):
                 status = (500, 503, 429)[len(self.refused) % 3]
                 self.refused.append(status)
                 body = b"<html><body>Internal Server Error</body></html>" if status == 500 else b""
@@ -267,7 +270,7 @@ def compile_client(directory):
     subprocess.run(["clang++", "-std=c++20", "-O2", "-Wall", "-Wextra", "-Werror", "-pthread",
                     "-I", str(ROOT / "native/shared"), str(ROOT / "tools/tests/network_client.cpp"),
                     str(ROOT / "native/shared/network.cpp"), str(ROOT / "tools/tests/network_test_platform.cpp"),
-                    "-lcurl", "-o", str(binary)], check=True)
+                    "-lcurl", *([] if sys.platform == "darwin" else ["-lcrypto"]), "-o", str(binary)], check=True)
     return binary
 
 

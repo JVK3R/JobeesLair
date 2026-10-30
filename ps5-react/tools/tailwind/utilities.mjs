@@ -60,7 +60,7 @@ const sides = (keys, value) => value === null ? null
 
 const box = {
   '': [''], x: ['Horizontal'], y: ['Vertical'], t: ['Top'], r: ['Right'], b: ['Bottom'],
-  l: ['Left'], s: ['Left'], e: ['Right'],
+  l: ['Left'], s: ['Start'], e: ['End'],
 };
 
 function spacingUtility(property, negatable) {
@@ -77,7 +77,7 @@ function spacingUtility(property, negatable) {
 const insets = {
   inset: ['top', 'right', 'bottom', 'left'], 'inset-x': ['left', 'right'],
   'inset-y': ['top', 'bottom'], top: ['top'], right: ['right'], bottom: ['bottom'],
-  left: ['left'], start: ['left'], end: ['right'],
+  left: ['left'], start: ['start'], end: ['end'],
 };
 
 const radii = {

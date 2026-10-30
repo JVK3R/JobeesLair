@@ -1,5 +1,54 @@
 # Changelog
 
+## Unreleased — the keyboard, live updates, symbols, right to left, Linux and keeping state
+
+Native ABI v24.
+
+- **The PS5's own keyboard** (`Keyboard`): `Keyboard.open({title, text, placeholder, maxLength, type, enter,
+  multiline, password})` shows the system keyboard (libSceImeDialog) over the app, in the player's languages and
+  input methods, and resolves with what was typed and how it closed. The host keeps the controller from the app
+  while it is up and lets go of the buttons it was given before handing it back, so the Cross that finished it
+  presses nothing. The module is loaded with `sceSysmoduleLoadModule` at startup, before filesystem elevation (a
+  title cannot `dlopen` it by name: tried on a PS5); a load that fails leaves `Keyboard.available` false. The desktop preview takes what is typed into its window, and
+  `ps5_drive.py type <text>` finishes it in a script. Not yet hardware-tested.
+- **Live updates for a companion page** (`LocalServer.push`): a page holds `GET /api/events` open and hears
+  what the app pushes as Server-Sent Events, at once, instead of asking every second. A second worker holds up
+  to 8 streams and writes them as their sockets take them, so requests never wait on a phone; a phone that
+  stops reading, or hangs up, is closed and reconnects. `status()` adds `streams` and `pushed`, and
+  `LocalServer.setPage(page)` swaps the page while it runs (a new language) without signing a phone out.
+  `tools/test_http_server.py` (new, part of npm test) runs it over real sockets; the test itself, which had not
+  compiled since `start` took a session, builds again.
+- **Symbols and emoji** (app.json `textFonts`: `"symbols"`, `"emoji"`): Noto Sans Symbols 2 and Noto Sans
+  Symbols (0.37 MB) and monochrome Noto Emoji (0.84 MB, its default instance) draw ✓ ✕ ★ ⚠ ① and emoji, with
+  skin tones and joined sequences, where a baked font drew `?`. Each draws in the em box, so no line grows.
+  `tools/font_subset.cpp` pins a variable font's axes and takes `*` for every character.
+- **A 7z refused before it downloads** (`Archives.inspectRanges`): a 7z keeps its directory, and so the memory
+  its decoders declare, at the end, so `inspect` had nothing to refuse until the whole file was in (an app's
+  player waited for 128 GB to hear it could not be extracted). `inspectRanges` runs the same preflight on byte
+  ranges an app fetches from the server: it names each range it reads next (the start header, the directory, a
+  compressed directory's packed bytes), usually two or three. `Http.request` takes `binary: true` for them: the
+  response's `bytes()` is a string of one character per byte, since the runtime has no `ArrayBuffer`.
+- **What an extraction unpacks to, from the start**: a 7z's or ZIP's `Archives.extract` progress carries `total`
+  from its directory before the first file is written, as a RAR's already did; other formats stay `null`.
+- **Invisible characters draw as nothing.** Text with a direction mark (which keeps an English name's punctuation in
+  place inside right-to-left text), a zero-width space or a word joiner went to the bitmap renderer when every
+  visible character was baked, and each was drawn, and sized, as `?`. The shaper takes that text now.
+- **Logical edges** (`start`, `end`, `marginStart`, `marginEnd`, `paddingStart`, `paddingEnd`): left in
+  left-to-right layout, right in right-to-left, by the node's inherited direction, resolved at every layout
+  (patches/embeddedReact-logical-edges.patch). The Tailwind classes `start-*`, `end-*`, `ms-*`, `me-*`, `ps-*`
+  and `pe-*` compile to them; they were left-to-right only.
+- **npm run dev keeps the app's state**: a Babel pass (tools/keep-state.mjs, after Embedded React's simulator
+  transform) turns the app's `useState` into `useKeptState`, which keeps plain-data values (keyed by call site
+  and `useId`, so list rows keep their own) and focus (by `focusKey`) across the restart a save makes.
+  `PS5_REACT_KEEP_STATE=0` starts afresh. Not Fast Refresh: the runtime starts again. Never in a PS5 build.
+- **Linux and Windows (WSL 2)**: every native test runs on Linux (the image test's allocator hooks use glibc's
+  entry points, the archive test takes the system's libraries, OpenSSL is linked where curl needs it, the video
+  test links FFmpeg's TLS, and the throttling test refuses its first three ranges, so 500, 503 and 429 are all
+  seen however fast the loopback is). `npm test` passes on Ubuntu 24.04 and in WSL 2, and a CI job runs it on
+  every push. The README has the apt line and WSL notes; `npm run doctor` says what to install per platform,
+  and the PS5 build finds LLVM 18 where Debian and Ubuntu put it. `.gitattributes` keeps LF line endings, so a
+  clone made on Windows applies its patches and runs its scripts.
+
 ## Unreleased — PS5 packages
 
 - `Packages.install` takes PS5 packages too, as docs/NATIVE-API.md already said. `pkg-installer.elf` accepted only

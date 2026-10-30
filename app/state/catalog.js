@@ -20,6 +20,7 @@ import { KINDS, gameFormats, ready1360 } from './formats.js';
 import { deviceFacts } from './device.js';
 import { consoleFirmware, firmwareText, ps5FakePackagesLaunch } from './firmware.js';
 import { FileSystem, Image } from '@ps5-react/core';
+import { PS4 } from './ps4.js';
 
   // 0.5.1: "Ready" is for this console's firmware. At 11.60 or lower PS5 fake packages start too, so a PS5 game
   // with one is ready there, and the label names that firmware ("Ready for 9.60"); above, it is 13.60's rule and
@@ -99,11 +100,19 @@ import { FileSystem, Image } from '@ps5-react/core';
   // Feed releases join the catalog game they name (the same id); a game the catalog lacks is listed with
   // the feed's details. Two feeds naming one new game add up on the first one's entry.
   var feedReleases = /* @__PURE__ */ new Map();
+  // The PS4 lists its own games only: every PS4 edition, a game the PS5 lists under its PS5 edition too, and no
+  // PS5 edition at all (state/ps4.js).
+  if (PS4) {
+    const own = [...games, ...twins].filter((game) => game.platform === "ps4");
+    games.splice(0, games.length, ...own);
+    twins.splice(0, twins.length);
+  }
   // The bundled titles as [id, direct] pairs, taken before any feed is merged in: the live game counter
   // (state/library-count.js) adds the feeds' own lists to these.
   var bundledIndex = games.map((game) => [game.id, game.direct ? 1 : 0]);
   var catalogIds = new Map([...games, ...twins].map((game) => [game.id, game]));
   for (const { game: feedGame, page, releases } of loadFeedGames()) {
+    if (PS4 && feedGame.platform !== "ps4") continue;
     feedReleases.set(feedGame.id, [...feedReleases.get(feedGame.id) ?? [], ...releases]);
     const known = catalogIds.get(feedGame.id);
     if (known) {
@@ -128,6 +137,8 @@ import { FileSystem, Image } from '@ps5-react/core';
     const fed = feedReleases.get(game.id);
     const fromFeed = fed?.length ? gameFormats(fed, game.platform) : [];
     game.formats = fromFeed.length ? KINDS.filter((kind) => bundled.includes(kind) || fromFeed.includes(kind)) : bundled;
+    // The PS4 installs packages; the disk images and folders are the PS5's ShadowMount's.
+    if (PS4) game.formats = game.formats.filter((kind) => kind === "fpkg");
   }
   var editionsByWork = /* @__PURE__ */ new Map();
   for (const game of entries) if (game.work) editionsByWork.set(game.work, [...editionsByWork.get(game.work) ?? [], game]);

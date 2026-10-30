@@ -13,6 +13,10 @@ extern "C" {
 // The bridge's default JS-heap allocator, counting the bytes it holds. Pass it as
 // ErRuntimeConfig.malloc_functions; everything else runs on the render thread.
 const JSMallocFunctions* js_heap_functions();
+// The bytes the script heap holds, and the size of the last allocation the system refused since the last call (0 for
+// none): QuickJS says only "out of memory" for that and for its own limit alike.
+std::size_t js_heap_live();
+std::size_t js_heap_take_failure();
 
 // ErRuntimeConfig.memory_limit on both hosts. 64 MiB of the title's 256 MiB heap: a store's catalog and
 // a long download's state stay under 25 MiB live, and the rest leaves a collection room to run.

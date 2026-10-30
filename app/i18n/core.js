@@ -50,6 +50,22 @@ import { SOURCE_LOCALE } from './locales.js';
     const found = entry(key);
     return found ? fitBytes(format(found.parts, params, found.code)) : key;
   }
+  // 0.5.4: the same, whole: t() cuts a message to what one Text node keeps (255 bytes); a paragraph drawn in pieces
+  // (ui/LongText.jsx) takes it whole.
+  function tWhole(key, params) {
+    const found = entry(key);
+    return found ? format(found.parts, params, found.code) : key;
+  }
+  // 0.5.4: the raw messages under `prefix` in the language in use, English where it has none: the phone companion's
+  // page carries them and formats them itself (companion/page.js).
+  function catalogFor(prefix) {
+    active ?? (active = locale === SOURCE_LOCALE ? source() : messages(locale));
+    const out = {};
+    for (const catalog of [source(), active]) {
+      for (const [key, text] of Object.entries(catalog)) if (key.startsWith(prefix) && typeof text === "string") out[key] = text;
+    }
+    return out;
+  }
   var getLocale = () => locale;
   function setLocale(code) {
     if (code === locale) return;
@@ -68,4 +84,4 @@ import { SOURCE_LOCALE } from './locales.js';
   var formatPercent2 = (percent) => formatPercent(locale, percent);
   var formatDate2 = (iso) => formatDate(locale, iso);
 
-export { configure, formatDate2, formatNumber2, formatPercent2, getLocale, setLocale, subscribe, t };
+export { catalogFor, configure, formatDate2, formatNumber2, formatPercent2, getLocale, setLocale, subscribe, t, tWhole };

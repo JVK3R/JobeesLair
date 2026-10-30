@@ -13,12 +13,15 @@ import { downloadQueue } from '../state/downloads.js';
 import { FileSystem } from '@ps5-react/core';
 
   var HOMEBREW = KINDS.filter((kind) => kind.key === "images").map((kind) => ({ ...kind, folders: ["homebrew"] }));
-  // The homebrew/ entries of every drive (backports included, marked), read when asked and after a change.
+  // The homebrew/ entries of every drive (backports included, marked). 0.5.4: shared with the phone's Library
+  // (companion/library.js), which reads them outside React.
+  function scanHomebrew(roots) {
+    const installed = installedTitles();
+    return roots.flatMap((root) => scanDrive(FileSystem, root, HOMEBREW).map((file) => ({ ...file, root, installed: Boolean(!file.backport && file.titleId && installed.has(file.titleId)) })));
+  }
+  // Read when asked and after a change.
   function useHomebrew(roots, version) {
-    return (0, useMemo)(() => {
-      const installed = installedTitles();
-      return roots.flatMap((root) => scanDrive(FileSystem, root, HOMEBREW).map((file) => ({ ...file, root, installed: Boolean(!file.backport && file.titleId && installed.has(file.titleId)) })));
-    }, [roots.join("\n"), version]);
+    return (0, useMemo)(() => scanHomebrew(roots), [roots.join("\n"), version]);
   }
   // A finished file's time, asked once per path: the job list redraws on every download tick.
   var modified = /* @__PURE__ */ new Map();
@@ -63,4 +66,4 @@ import { FileSystem } from '@ps5-react/core';
     return { jobs, files, entries, drives };
   }
 
-export { useHomebrew, useShelf };
+export { homebrewOf, scanHomebrew, titleLaunch, useHomebrew, useShelf };

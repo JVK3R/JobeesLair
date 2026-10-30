@@ -11,6 +11,7 @@ from pathlib import Path
 import shutil
 import shlex
 import subprocess
+import sys
 import tarfile
 import urllib.request
 import zipfile
@@ -41,7 +42,9 @@ def main():
     parser.add_argument("--ui-reference", type=Path, default=DEPS / "platform")
     parser.add_argument("--embedded-react", type=Path, default=DEPS / "embeddedReact")
     parser.add_argument("--payload-sdk", type=Path, default=DEPS / "sdk/ps5-payload-sdk")
-    parser.add_argument("--llvm", type=Path, default=Path("/opt/homebrew/opt/llvm@18/bin"))
+    # Homebrew's LLVM 18 on macOS; Debian and Ubuntu install llvm-18 under /usr/lib/llvm-18.
+    parser.add_argument("--llvm", type=Path, default=Path("/opt/homebrew/opt/llvm@18/bin") if sys.platform == "darwin"
+                        else Path("/usr/lib/llvm-18/bin"))
     parser.add_argument("--opengl-archive", type=Path)
     args = parser.parse_args()
     app_dir = args.app_dir.resolve() if args.app_dir else ROOT / "apps" / args.app
@@ -157,7 +160,7 @@ def main():
                ROOT / "native/ps5/filesystem_access.cpp",
                ROOT / "native/ps5/elevation_transport.cpp",
                ROOT / "native/shared/host_api.cpp", ROOT / "native/shared/removals.cpp", ROOT / "native/shared/copies.cpp", ROOT / "native/shared/disk_probes.cpp", ROOT / "native/shared/network.cpp",
-               ROOT / "native/shared/network_api.cpp", ROOT / "native/shared/archives.cpp", ROOT / "native/shared/archive_preflight.cpp", ROOT / "native/shared/rar5_password.cpp", ROOT / "native/shared/archive_writer.cpp", ROOT / "native/shared/archive_api.cpp", ROOT / "native/shared/browser_capture_api.cpp", ROOT / "native/shared/lan.cpp", ROOT / "native/shared/lan_api.cpp", ROOT / "native/shared/http_server.cpp", ROOT / "native/shared/http_server_api.cpp", ROOT / "native/ps5/browser_capture.cpp", ROOT / "native/shared/package_api.cpp", ROOT / "native/ps5/package_installer.cpp", ROOT / "native/ps5/payload_loader.cpp", ROOT / "native/ps5/relaunch.cpp", ROOT / "native/ps5/crash_log.cpp", ROOT / "native/ps5/utf8_locale.cpp", ROOT / "native/ps5/network_platform.cpp",
+               ROOT / "native/shared/network_api.cpp", ROOT / "native/shared/archives.cpp", ROOT / "native/shared/archive_preflight.cpp", ROOT / "native/shared/rar5_password.cpp", ROOT / "native/shared/archive_writer.cpp", ROOT / "native/shared/archive_api.cpp", ROOT / "native/shared/browser_capture_api.cpp", ROOT / "native/shared/lan.cpp", ROOT / "native/shared/lan_api.cpp", ROOT / "native/shared/http_server.cpp", ROOT / "native/shared/http_server_api.cpp", ROOT / "native/shared/keyboard_api.cpp", ROOT / "native/ps5/keyboard.cpp", ROOT / "native/ps5/browser_capture.cpp", ROOT / "native/shared/package_api.cpp", ROOT / "native/ps5/package_installer.cpp", ROOT / "native/ps5/payload_loader.cpp", ROOT / "native/ps5/relaunch.cpp", ROOT / "native/ps5/crash_log.cpp", ROOT / "native/ps5/utf8_locale.cpp", ROOT / "native/ps5/network_platform.cpp",
                ROOT / "native/shared/image_loader.cpp", ROOT / "native/shared/image_api.cpp",
                ROOT / "native/shared/sound_api.cpp", layout_dirs[0] / "sounds.generated.c",
                ROOT / "native/shared/audio_sink.cpp", ROOT / "native/shared/audio_output_api.cpp", ROOT / "native/ps5/bitstream_output.cpp",

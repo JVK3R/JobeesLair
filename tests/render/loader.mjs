@@ -41,6 +41,8 @@ export const useFocusActions = () => ({ focus() {}, blur() {} });
 export const Controller = { setLightBar() {}, resetLightBar() {} };
 export const AppRegistry = {}, Archives = {}, LayoutAnimation = {}, Linking = {}, LocalServer = {}, Notifications = { show() {} }, Packages = {}, Payloads = { send: () => ({ ok: false, error: 'desktop' }) }, Power = {}, Sound = {}, Users = {}, transitions = {};
 export const VirtualList = 'VirtualList', ReleaseImages = 'ReleaseImages';
+// 0.5.4: no console keyboard here, so search and the link dialog use the store's own keys.
+export const Keyboard = { available: false, isOpen: false, open: () => Promise.resolve(null), close() {} };
 export const useFocus = () => ({});
 export const useNavigationEvents = () => {};
 export default {};

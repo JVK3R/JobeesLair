@@ -15,7 +15,7 @@ import { Text, View } from '@ps5-react/core';
       { height: 60, flexDirection: "row", alignItems: "center", gap: 9, borderRadius: radius.md, backgroundColor: colors.accent },
       rtl ? { paddingRight: 24, paddingLeft: 18 } : { paddingLeft: 24, paddingRight: 18 }
     ], children: [
-      /* @__PURE__ */ (0, jsx)(FocusRing, { round: "full" }),
+      /* @__PURE__ */ (0, jsx)(FocusRing, { round: "md" }),
       /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 21, fontWeight: 600, color: "#ffffff", lineHeight: 30 }, children: label }),
       /* @__PURE__ */ (0, jsx)(Icon, { name: "x", size: 14, color: colors.canvas })
     ] });

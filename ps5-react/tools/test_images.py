@@ -101,7 +101,7 @@ def compile_client(directory):
                     "-I", str(ROOT / "native/shared"), "-I", str(stb_image()),
                     str(ROOT / "tools/tests/image_client.cpp"), str(ROOT / "native/shared/image_loader.cpp"),
                     str(ROOT / "native/shared/network.cpp"), str(ROOT / "native/desktop/network_platform.cpp"),
-                    "-lcurl", "-o", str(binary)], check=True)
+                    "-lcurl", *([] if sys.platform == "darwin" else ["-lcrypto"]), "-o", str(binary)], check=True)
     return binary
 
 

@@ -3,7 +3,9 @@
 #include "archive_preflight.hpp"
 #include <chrono>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <thread>
 // ARCHIVE_TRACE=1 prints the extraction steps, the throughput breakdown among them.
 void archives::trace(const char* step,const char* detail){if(std::getenv("ARCHIVE_TRACE"))std::cerr<<step<<" "<<detail<<"\n";}
@@ -29,6 +31,15 @@ int main(int argc,char** argv){
   if(argc>4&&std::string(argv[2])=="--budget"){archives::inspect_budget=std::chrono::milliseconds(std::stol(argv[3]));first=4;}
   const auto inspection=archives::inspect(std::vector<std::string>(argv+first,argv+argc));
   std::cout<<inspection.kind<<"\n"<<inspection.refusal<<"\n";return 0;}
+ // Hands inspect_ranges only the ranges it asks for, as the app fetches them from a server, then prints the
+ // kind, the refusal, the size and how many ranges it took ("beyond" when it asks past the file's end).
+ if(argc>2&&std::string(argv[1])=="ranges"){
+  std::ifstream file(argv[2],std::ios::binary);const std::string blob((std::istreambuf_iterator<char>(file)),std::istreambuf_iterator<char>());
+  std::vector<archives::Range> ranges;archives::RangeInspection found;
+  while((found=archives::inspect_ranges(ranges)).need_length&&ranges.size()<16){
+   if(found.need_offset>=blob.size()){std::cout<<"beyond\n";return 0;}
+   ranges.push_back({found.need_offset,blob.substr(found.need_offset,found.need_length)});}
+  std::cout<<found.kind<<"\n"<<found.refusal<<"\n"<<found.size<<"\n"<<ranges.size()<<"\n";return 0;}
  if(argc<4)return 2;
  archives::Request request;request.destination=argv[1];request.max_bytes=std::stoull(argv[2]);
  // --stream: later volumes may appear while it runs; --cancel-after <ms> cancels it then; --again <worker>

@@ -1,0 +1,446 @@
+Logical edges (React Native style start/end): start, end, marginStart, marginEnd, paddingStart and paddingEnd
+resolve to left or right by the node's inherited direction at every layout, so right-to-left layout mirrors them.
+Added by PS5 React (docs/TEXT.md, Right to left).
+
+--- a/engine/include/er_scene.h
++++ b/engine/include/er_scene.h
+@@ -315,6 +315,14 @@
+         ER_TEXT_ALIGN_END = 4,    /**< End of the paragraph: right, or left in right-to-left text. */
+     } ERTextAlign;
+ 
++    /** @brief Bits of ERProps.logical_edges: which logical edge fields a node sets. */
++#define ER_LOGICAL_START 0x01u
++#define ER_LOGICAL_END 0x02u
++#define ER_LOGICAL_MARGIN_START 0x04u
++#define ER_LOGICAL_MARGIN_END 0x08u
++#define ER_LOGICAL_PADDING_START 0x10u
++#define ER_LOGICAL_PADDING_END 0x20u
++
+     /**
+      * @brief Writing and layout direction (`direction` on any node, `writingDirection` on Text).
+      *
+@@ -721,6 +729,20 @@
+         /* A 0% inset is expressed as 0 in the pixel field above, not as 0.0 here: the two mean the same
+            pixel, and 0.0 is this field's "not set" sentinel. */
+ 
++        /* Logical edges (React Native's start/end): the left edge in left-to-right layout and the right edge in
++           right-to-left, by the node's own direction (inherited), resolved at every layout so a change of
++           direction moves them. Each wins over the physical edge it lands on. A field counts only when its
++           ER_LOGICAL_* bit is in logical_edges, so a zero-initialised ERProps sets none of them. */
++        int16_t start;         /**< Inset from the start edge. */
++        int16_t end;           /**< Inset from the end edge. */
++        float start_pct;       /**< start as a percentage of the containing block's width; 0.0 = not set. */
++        float end_pct;         /**< end as a percentage of the containing block's width; 0.0 = not set. */
++        int16_t margin_start;  /**< Margin on the start edge. */
++        int16_t margin_end;    /**< Margin on the end edge. */
++        int16_t padding_start; /**< Padding on the start edge. */
++        int16_t padding_end;   /**< Padding on the end edge. */
++        uint8_t logical_edges; /**< ER_LOGICAL_* bits: which of the logical fields above are set. */
++
+         /* --- View visual --- */
+         uint32_t background_color;          /**< ARGB8888; 0x00000000 = transparent. */
+         uint32_t border_color;              /**< ARGB8888 border color for all edges. */
+--- a/engine/scene/er_node_internal.h
++++ b/engine/scene/er_node_internal.h
+@@ -32,6 +32,9 @@
+  - Types: Private
+  ---------------------------------------------------------------------------------------------------------------------*/
+ 
++/** @brief Set once any node sets a logical edge (layout_engine.c); until then layout skips resolving directions. */
++extern bool er_layout_logical_edges_used;
++
+ /**
+  * @brief Internal Yoga layout specification stored per node.
+  *
+@@ -68,6 +71,11 @@
+     float top_pct;           /**< top as % of the containing block's height; 0.0 = not set. */
+     float right_pct;         /**< right as % of the containing block's width; 0.0 = not set. */
+     float bottom_pct;        /**< bottom as % of the containing block's height; 0.0 = not set. */
++    /* Logical edges (ERProps start/end), counted only where logical_edges has their ER_LOGICAL_* bit. */
++    int16_t start, end, margin_start, margin_end, padding_start, padding_end;
++    float start_pct, end_pct;
++    uint8_t logical_edges;
++    uint8_t resolved_rtl; /**< The node's inherited direction is right to left; set by each layout pass. */
+ } ERLayoutSpec;
+ 
+ /**
+@@ -128,6 +136,75 @@
+ }
+ 
+ /**
++ * @brief The physical edge a logical one lands on: `start` is the left edge left to right and the right edge
++ * right to left (resolved_rtl), `end` the other. A set logical edge wins over the physical one it lands on.
++ *
++ * @param[in] L         Layout spec.
++ * @param[in] physical  The physical field (ER_LAYOUT_AUTO when unset).
++ * @param[in] start     The logical start field, counted when `start_bit` is set.
++ * @param[in] end       The logical end field, counted when `end_bit` is set.
++ * @param[in] left      True for the left edge, false for the right.
++ *
++ * @return The value that edge takes.
++ */
++static inline int16_t er_layout_logical(const ERLayoutSpec* L, int16_t physical, int16_t start, uint8_t start_bit,
++                                        int16_t end, uint8_t end_bit, bool left)
++{
++    const bool start_side = left != (L->resolved_rtl != 0);
++    if (start_side && (L->logical_edges & start_bit))
++        return start;
++    if (!start_side && (L->logical_edges & end_bit))
++        return end;
++    return physical;
++}
++
++static inline int16_t er_layout_margin_left(const ERLayoutSpec* L)
++{
++    return er_layout_logical(L, L->margin_left, L->margin_start, ER_LOGICAL_MARGIN_START, L->margin_end,
++                             ER_LOGICAL_MARGIN_END, true);
++}
++
++static inline int16_t er_layout_margin_right(const ERLayoutSpec* L)
++{
++    return er_layout_logical(L, L->margin_right, L->margin_start, ER_LOGICAL_MARGIN_START, L->margin_end,
++                             ER_LOGICAL_MARGIN_END, false);
++}
++
++static inline int16_t er_layout_padding_left(const ERLayoutSpec* L)
++{
++    return er_layout_logical(L, L->padding_left, L->padding_start, ER_LOGICAL_PADDING_START, L->padding_end,
++                             ER_LOGICAL_PADDING_END, true);
++}
++
++static inline int16_t er_layout_padding_right(const ERLayoutSpec* L)
++{
++    return er_layout_logical(L, L->padding_right, L->padding_start, ER_LOGICAL_PADDING_START, L->padding_end,
++                             ER_LOGICAL_PADDING_END, false);
++}
++
++/**
++ * @brief A node's left or right inset with its logical ones resolved: the pixel and percentage fields together.
++ *
++ * @param[in]  L     Layout spec.
++ * @param[in]  left  True for the left inset, false for the right.
++ * @param[out] px    Pixel inset (ER_LAYOUT_AUTO when unset).
++ * @param[out] pct   Percentage inset (0.0 when unset).
++ */
++static inline void er_layout_inset_x(const ERLayoutSpec* L, bool left, int16_t* px, float* pct)
++{
++    const bool start_side = left != (L->resolved_rtl != 0);
++    const uint8_t bit = start_side ? ER_LOGICAL_START : ER_LOGICAL_END;
++    if (L->logical_edges & bit)
++    {
++        *px = start_side ? L->start : L->end;
++        *pct = start_side ? L->start_pct : L->end_pct;
++        return;
++    }
++    *px = left ? L->left : L->right;
++    *pct = left ? L->left_pct : L->right_pct;
++}
++
++/**
+  * @brief Resolves a node's padding box: per-edge value, else the shorthand, else 0.
+  *
+  * The single definition of "how wide is this node's padding", shared by everything that needs it —
+@@ -145,9 +222,9 @@
+ static inline ERPadding er_layout_padding(const ERLayoutSpec* L)
+ {
+     ERPadding p;
+-    p.left = er_layout_pad_edge(L->padding_left, L->padding, 0);
++    p.left = er_layout_pad_edge(er_layout_padding_left(L), L->padding, 0);
+     p.top = er_layout_pad_edge(L->padding_top, L->padding, 0);
+-    p.right = er_layout_pad_edge(L->padding_right, L->padding, 0);
++    p.right = er_layout_pad_edge(er_layout_padding_right(L), L->padding, 0);
+     p.bottom = er_layout_pad_edge(L->padding_bottom, L->padding, 0);
+     return p;
+ }
+--- a/engine/scene/compositor.c
++++ b/engine/scene/compositor.c
+@@ -282,6 +282,10 @@
+     L->width_pct = 0.0f;
+     L->height_pct = 0.0f;
+     L->left_pct = L->top_pct = L->right_pct = L->bottom_pct = 0.0f;
++    L->start = L->end = L->margin_start = L->margin_end = L->padding_start = L->padding_end = ER_LAYOUT_AUTO;
++    L->start_pct = L->end_pct = 0.0f;
++    L->logical_edges = 0;
++    L->resolved_rtl = 0;
+ }
+ 
+ /* Documented in er_node_internal.h — hit_test.c walks the same ordering the render pass paints. */
+@@ -3691,6 +3695,12 @@
+         &props->margin_vertical,
+         &props->padding_horizontal,
+         &props->padding_vertical,
++        &props->start,
++        &props->end,
++        &props->margin_start,
++        &props->margin_end,
++        &props->padding_start,
++        &props->padding_end,
+     };
+     for (size_t i = 0; i < sizeof(auto_fields) / sizeof(auto_fields[0]); i++)
+         *auto_fields[i] = ER_LAYOUT_AUTO;
+@@ -3849,6 +3859,17 @@
+     L->top_pct = props->top_pct;
+     L->right_pct = props->right_pct;
+     L->bottom_pct = props->bottom_pct;
++    L->start = props->start;
++    L->end = props->end;
++    L->start_pct = props->start_pct;
++    L->end_pct = props->end_pct;
++    L->margin_start = props->margin_start;
++    L->margin_end = props->margin_end;
++    L->padding_start = props->padding_start;
++    L->padding_end = props->padding_end;
++    L->logical_edges = props->logical_edges;
++    if (props->logical_edges)
++        er_layout_logical_edges_used = true;
+     node->z_index = props->z_index;
+     node->pointer_events = props->pointer_events;
+     node->hit_slop_left = props->hit_slop_left;
+--- a/engine/layout/layout_engine.c
++++ b/engine/layout/layout_engine.c
+@@ -527,7 +527,7 @@
+             int16_t cw = 0, ch = 0;
+             measure_content(ct, ER_LAYOUT_AUTO, &cw, &ch);
+             const int16_t basis = row_basis(cl, inner_w, cw);
+-            used += basis + edge_or(cl->margin_left, cl->margin) + edge_or(cl->margin_right, cl->margin);
++            used += basis + edge_or(er_layout_margin_left(cl), cl->margin) + edge_or(er_layout_margin_right(cl), cl->margin);
+             grow += cl->flex_grow > 0 ? cl->flex_grow : 0;
+             shrink += cl->flex_shrink > 0 ? (int32_t)cl->flex_shrink * basis : 0;
+             count++;
+@@ -736,7 +736,7 @@
+                 int16_t cw = 0, ch = 0;
+                 const ERLayoutSpec* cl = &c->layout;
+                 const int16_t margin_x =
+-                    (int16_t)(edge_or(cl->margin_left, cl->margin) + edge_or(cl->margin_right, cl->margin));
++                    (int16_t)(edge_or(er_layout_margin_left(cl), cl->margin) + edge_or(er_layout_margin_right(cl), cl->margin));
+                 const int16_t child_avail =
+                     bounds_children ? (int16_t)(inner_w > margin_x ? inner_w - margin_x : 0) : ER_LAYOUT_AUTO;
+                 measure_content(ct, inner_w == ER_LAYOUT_AUTO ? ER_LAYOUT_AUTO : child_avail, &cw, &ch);
+@@ -918,7 +918,7 @@
+             else if (!is_row && cl->width == ER_LAYOUT_AUTO)
+             {
+                 const int16_t margin_x =
+-                    (int16_t)(edge_or(cl->margin_left, cl->margin) + edge_or(cl->margin_right, cl->margin));
++                    (int16_t)(edge_or(er_layout_margin_left(cl), cl->margin) + edge_or(er_layout_margin_right(cl), cl->margin));
+                 avail_w = clamp_size(
+                     (int16_t)(cross_avail > margin_x ? cross_avail - margin_x : 0), cl->min_width, cl->max_width);
+             }
+@@ -1001,8 +1001,8 @@
+             }
+ 
+             /* Per-edge margins. */
+-            const int16_t ml = edge_or(cl->margin_left, cl->margin);
+-            const int16_t mr = edge_or(cl->margin_right, cl->margin);
++            const int16_t ml = edge_or(er_layout_margin_left(cl), cl->margin);
++            const int16_t mr = edge_or(er_layout_margin_right(cl), cl->margin);
+             const int16_t mt = edge_or(cl->margin_top, cl->margin);
+             const int16_t mb = edge_or(cl->margin_bottom, cl->margin);
+ 
+@@ -1514,9 +1514,13 @@
+          * this parent's CONTENT box, not the padding box an absolute's insets resolve against. */
+         const ERLayoutSpec* cl = &c->layout;
+         float d = 0.0f;
+-        if (inset_px(cl->left, cl->left_pct, content_w, &d))
++        int16_t left_px, right_px;
++        float left_pct, right_pct;
++        er_layout_inset_x(cl, true, &left_px, &left_pct);
++        er_layout_inset_x(cl, false, &right_px, &right_pct);
++        if (inset_px(left_px, left_pct, content_w, &d))
+             cx = round_px((float)cx + d);
+-        else if (inset_px(cl->right, cl->right_pct, content_w, &d))
++        else if (inset_px(right_px, right_pct, content_w, &d))
+             cx = round_px((float)cx - d);
+         if (inset_px(cl->top, cl->top_pct, content_h, &d))
+             cy = round_px((float)cy + d);
+@@ -1558,8 +1562,8 @@
+         if (c->layout.position == ER_POS_ABSOLUTE && c->layout.display != ER_DISPLAY_NONE)
+         {
+             const ERLayoutSpec* cl = &c->layout;
+-            const int16_t ml = edge_or(cl->margin_left, cl->margin);
+-            const int16_t mr = edge_or(cl->margin_right, cl->margin);
++            const int16_t ml = edge_or(er_layout_margin_left(cl), cl->margin);
++            const int16_t mr = edge_or(er_layout_margin_right(cl), cl->margin);
+             const int16_t mt = edge_or(cl->margin_top, cl->margin);
+             const int16_t mb = edge_or(cl->margin_bottom, cl->margin);
+ 
+@@ -1577,8 +1581,12 @@
+              * Insets and sizes stay FRACTIONAL through all of this. A percentage rarely lands on a whole
+              * pixel, and rounding one before it is combined with the rest would round twice. */
+             float il = 0.0f, ir = 0.0f, it = 0.0f, ib = 0.0f;
+-            const bool has_l = inset_px(cl->left, cl->left_pct, w, &il);
+-            const bool has_r = inset_px(cl->right, cl->right_pct, w, &ir);
++            int16_t left_px, right_px;
++            float left_pct, right_pct;
++            er_layout_inset_x(cl, true, &left_px, &left_pct);
++            er_layout_inset_x(cl, false, &right_px, &right_pct);
++            const bool has_l = inset_px(left_px, left_pct, w, &il);
++            const bool has_r = inset_px(right_px, right_pct, w, &ir);
+             const bool has_t = inset_px(cl->top, cl->top_pct, h, &it);
+             const bool has_b = inset_px(cl->bottom, cl->bottom_pct, h, &ib);
+ 
+@@ -1702,8 +1710,48 @@
+  - Functions: Public
+  ---------------------------------------------------------------------------------------------------------------------*/
+ 
++/**
++ * @brief Sets resolved_rtl on a node and everything under it: its own direction, else its parent's.
++ *
++ * Logical edges (start/end) read it. One walk per layout pass, and none until some node sets a logical edge.
++ *
++ * @param[in] tag         Node.
++ * @param[in] parent_rtl  The direction it inherits.
++ */
++static void resolve_directions(const uint16_t tag, const bool parent_rtl)
++{
++    ERNode* n = er_get_node(tag);
++    if (!n)
++        return;
++    const bool rtl = n->layout.direction == ER_DIRECTION_INHERIT ? parent_rtl : n->layout.direction == ER_DIRECTION_RTL;
++    n->layout.resolved_rtl = rtl;
++    for (uint16_t ct = n->first_child_tag; ct != ER_INVALID_TAG;)
++    {
++        const ERNode* c = er_get_node(ct);
++        if (!c)
++            break;
++        resolve_directions(ct, rtl);
++        ct = c->next_sibling_tag;
++    }
++}
++
++/* Whether any node has set a logical edge since startup: until one does, layout skips the direction walk. */
++bool er_layout_logical_edges_used = false;
++
+ void er_layout_compute(uint16_t root_tag, int16_t w, int16_t h)
+ {
++    if (er_layout_logical_edges_used)
++    {
++        const ERNode* root = er_get_node(root_tag);
++        bool parent_rtl = false;
++        for (const ERNode* a = root ? er_get_node(root->parent_tag) : NULL; a; a = er_get_node(a->parent_tag))
++            if (a->layout.direction != ER_DIRECTION_INHERIT)
++            {
++                parent_rtl = a->layout.direction == ER_DIRECTION_RTL;
++                break;
++            }
++        resolve_directions(root_tag, parent_rtl);
++    }
+     /* Advance the measure-cache generation so every measure_content() call this pass
+      * starts with a clean slate. gen 0 is reserved as "never valid" (a fresh
+      * s_measure_cache is zero-initialized), so skip it on wraparound; a wrap also means
+--- a/bridges/quickjs/native_ui_bridge.c
++++ b/bridges/quickjs/native_ui_bridge.c
+@@ -1097,6 +1097,8 @@
+     PROP_MARGIN_LEFT,
+     PROP_MARGIN_HORIZONTAL,
+     PROP_MARGIN_VERTICAL,
++    PROP_MARGIN_START,
++    PROP_MARGIN_END,
+     PROP_PADDING,
+     PROP_PADDING_TOP,
+     PROP_PADDING_RIGHT,
+@@ -1104,6 +1106,10 @@
+     PROP_PADDING_LEFT,
+     PROP_PADDING_HORIZONTAL,
+     PROP_PADDING_VERTICAL,
++    PROP_PADDING_START,
++    PROP_PADDING_END,
++    PROP_START,
++    PROP_END,
+     PROP_GAP,
+     PROP_ROW_GAP,
+     PROP_COLUMN_GAP,
+@@ -1232,6 +1238,8 @@
+     [PROP_MARGIN_LEFT] = "marginLeft",
+     [PROP_MARGIN_HORIZONTAL] = "marginHorizontal",
+     [PROP_MARGIN_VERTICAL] = "marginVertical",
++    [PROP_MARGIN_START] = "marginStart",
++    [PROP_MARGIN_END] = "marginEnd",
+     [PROP_PADDING] = "padding",
+     [PROP_PADDING_TOP] = "paddingTop",
+     [PROP_PADDING_RIGHT] = "paddingRight",
+@@ -1239,6 +1247,10 @@
+     [PROP_PADDING_LEFT] = "paddingLeft",
+     [PROP_PADDING_HORIZONTAL] = "paddingHorizontal",
+     [PROP_PADDING_VERTICAL] = "paddingVertical",
++    [PROP_PADDING_START] = "paddingStart",
++    [PROP_PADDING_END] = "paddingEnd",
++    [PROP_START] = "start",
++    [PROP_END] = "end",
+     [PROP_GAP] = "gap",
+     [PROP_ROW_GAP] = "rowGap",
+     [PROP_COLUMN_GAP] = "columnGap",
+@@ -2338,6 +2350,39 @@
+     ER_DIM(PROP_PADDING_LEFT, padding_left);
+     ER_DIM(PROP_PADDING_HORIZONTAL, padding_horizontal);
+     ER_DIM(PROP_PADDING_VERTICAL, padding_vertical);
++    /* Logical edges: each one given marks its bit, so an unset one never overrides its physical edge. */
++    {
++        const struct
++        {
++            int id;
++            int16_t* field;
++            float* pct;
++            uint8_t bit;
++        } logical[] = {
++            {PROP_START, &p.start, &p.start_pct, ER_LOGICAL_START},
++            {PROP_END, &p.end, &p.end_pct, ER_LOGICAL_END},
++            {PROP_MARGIN_START, &p.margin_start, NULL, ER_LOGICAL_MARGIN_START},
++            {PROP_MARGIN_END, &p.margin_end, NULL, ER_LOGICAL_MARGIN_END},
++            {PROP_PADDING_START, &p.padding_start, NULL, ER_LOGICAL_PADDING_START},
++            {PROP_PADDING_END, &p.padding_end, NULL, ER_LOGICAL_PADDING_END},
++        };
++        for (size_t li = 0; li < sizeof(logical) / sizeof(logical[0]); li++)
++        {
++            JSValueConst lv = s_prop_slots[logical[li].id];
++            if (JS_IsUndefined(lv))
++                continue;
++            if (logical[li].pct)
++                apply_dim_pct(ctx, lv, logical[li].field, logical[li].pct);
++            else
++            {
++                int16_t ld;
++                if (to_dim(ctx, lv, &ld))
++                    *logical[li].field = ld;
++            }
++            if (*logical[li].field != ER_LAYOUT_AUTO || (logical[li].pct && *logical[li].pct != 0.0f))
++                p.logical_edges |= logical[li].bit;
++        }
++    }
+     ER_DIM(PROP_GAP, gap);
+     ER_DIM(PROP_ROW_GAP, row_gap);
+     ER_DIM(PROP_COLUMN_GAP, column_gap);
+--- a/bridges/quickjs/js/src/embedded-react/index.d.ts
++++ b/bridges/quickjs/js/src/embedded-react/index.d.ts
+@@ -118,6 +118,10 @@
+   left?: DimensionValue;
+   right?: DimensionValue;
+   bottom?: DimensionValue;
++  /** The left inset left to right and the right inset right to left (by `direction`, inherited); wins over them. */
++  start?: DimensionValue;
++  /** The right inset left to right and the left inset right to left; wins over them. */
++  end?: DimensionValue;
+ 
+   // Margin.
+   margin?: number;
+@@ -127,6 +131,10 @@
+   marginLeft?: number;
+   marginHorizontal?: number;
+   marginVertical?: number;
++  /** marginLeft left to right, marginRight right to left; wins over them. */
++  marginStart?: number;
++  /** marginRight left to right, marginLeft right to left; wins over them. */
++  marginEnd?: number;
+ 
+   // Padding.
+   padding?: number;
+@@ -136,6 +144,10 @@
+   paddingLeft?: number;
+   paddingHorizontal?: number;
+   paddingVertical?: number;
++  /** paddingLeft left to right, paddingRight right to left; wins over them. */
++  paddingStart?: number;
++  /** paddingRight left to right, paddingLeft right to left; wins over them. */
++  paddingEnd?: number;
+ 
+   // Flex.
+   flex?: number;

@@ -20,8 +20,8 @@ const cases = {
   spacing: [
     ['p-4', {padding: 16}], ['px-2.5', {paddingHorizontal: 10}], ['py-px', {paddingVertical: 1}],
     ['pt-1 pr-2 pb-3 pl-0.5', {paddingTop: 4, paddingRight: 8, paddingBottom: 12, paddingLeft: 2}],
-    ['ps-1 pe-2', {paddingLeft: 4, paddingRight: 8}], ['m-96', {margin: 384}],
-    ['-mt-4 -mx-px', {marginTop: -16, marginHorizontal: -1}], ['ms-2 -me-2', {marginLeft: 8, marginRight: -8}],
+    ['ps-1 pe-2', {paddingStart: 4, paddingEnd: 8}], ['m-96', {margin: 384}],
+    ['-mt-4 -mx-px', {marginTop: -16, marginHorizontal: -1}], ['ms-2 -me-2', {marginStart: 8, marginEnd: -8}],
     ['m-[13px] p-[1.5rem]', {margin: 13, padding: 24}], ['-m-[3px]', {margin: -3}],
     ['gap-3 gap-x-[5px] gap-y-0', {gap: 12, columnGap: 5, rowGap: 0}],
   ],
@@ -36,7 +36,7 @@ const cases = {
   insets: [
     ['inset-0', {top: 0, right: 0, bottom: 0, left: 0}], ['inset-x-4', {left: 16, right: 16}],
     ['inset-y-1/2', {top: '50%', bottom: '50%'}], ['-top-2 left-full', {top: -8, left: '100%'}],
-    ['-left-1/2 start-1 end-[7px]', {left: 4, right: 7}], ['-bottom-1/4', {bottom: '-25%'}],
+    ['-left-1/2 start-1 end-[7px]', {left: '-50%', start: 4, end: 7}], ['-bottom-1/4', {bottom: '-25%'}],
     ['right-[12px]', {right: 12}],
   ],
   colors: [

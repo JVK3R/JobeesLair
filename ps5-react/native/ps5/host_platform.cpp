@@ -11,6 +11,7 @@
 #include "directory_records.hpp"
 #include <vector>
 #include "filesystem_access.hpp"
+#include "keyboard.hpp"
 #include "platform/ps5/audio_out.hpp"
 #include "platform/ps5/pad.hpp"
 #include "platform/ps5/system.hpp"
@@ -126,6 +127,7 @@ bool user_name(int id, char* name, std::size_t size) {
 void host_platform_set_pad(hui::ps5::Pad* pad) { active_pad = pad; }
 void host_platform_prepare_filesystem_access() {
   hw_model_name.get();
+  keyboard::preload(); // libSceImeDialog through the system module service: only before elevation, as Videodec2
 }
 
 namespace host {

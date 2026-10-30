@@ -41,7 +41,7 @@ import { colors, radius } from '../ui/colors.js';
     const focused = useIsFocused();
     const empty = count === 0 && !active2;
     return /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
-      /* @__PURE__ */ (0, jsx)(FocusRing, { round: "full" }),
+      /* @__PURE__ */ (0, jsx)(FocusRing, { round: "md" }),
       /* @__PURE__ */ (0, jsx)(Text, { style: active2 ? { fontFamily: "Exo2", fontSize: 21, fontWeight: 600, color: "#ffffff", lineHeight: 30 } : empty ? { fontFamily: "Exo2", fontSize: 21, color: `${colors.subtle}99`, lineHeight: 30 } : focused ? { fontFamily: "Exo2", fontSize: 21, color: colors.fg, lineHeight: 30 } : { fontFamily: "Exo2", fontSize: 21, color: colors.fg, lineHeight: 30 }, children: label }),
       /* @__PURE__ */ (0, jsx)(Text, { style: active2 ? { fontFamily: "Exo2", fontSize: 20, color: "#ffffff99" } : { fontFamily: "Exo2", fontSize: 20, color: colors.subtle }, children: formatNumber2(count) })
     ] });
@@ -58,7 +58,7 @@ import { colors, radius } from '../ui/colors.js';
     const t2 = useT();
     const focused = useIsFocused();
     return /* @__PURE__ */ (0, jsxs)(View, { onPress, style: (_state3) => [{ height: 60, flexDirection: "row", alignItems: "center", borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, paddingHorizontal: 24 }, _state3.focused ? { backgroundColor: colors.surface3 } : null], children: [
-      /* @__PURE__ */ (0, jsx)(FocusRing, { round: "full" }),
+      /* @__PURE__ */ (0, jsx)(FocusRing, { round: "md" }),
       /* @__PURE__ */ (0, jsx)(Text, { style: focused ? { fontFamily: "Exo2", fontSize: 21, color: colors.fg, lineHeight: 30 } : { fontFamily: "Exo2", fontSize: 21, color: colors.muted, lineHeight: 30 }, children: t2("filters.more", { count }) })
     ] });
   }

@@ -1,11 +1,13 @@
 // ../pub-game-store/native/ui/Menu.jsx
 // reconstructed from the esbuild bundle in eboot.bin
 // MODIFIED: `placement: "above"` opens it upward (Settings' language menu); graphite glass, square.
+// MODIFIED (0.5.4): the focused item gets the accent frame (FocusInset), not only a lighter row.
 
 import '../assets/Exo2.ttf';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { createContext, useContext } from 'react';
 import { useLocale } from '../i18n/index.js';
+import { FocusInset } from './FocusRing.jsx';
 import { Icon } from './Icon.jsx';
 import { colors, radius } from './colors.js';
 import { EASE_OUT } from './ease.js';
@@ -50,10 +52,13 @@ import { AnimatePresence, FocusScope, ScrollView, Text, View, motion, useIsFocus
   }
   function MenuItem({ label, checked = false, autoFocus = false, onSelect }) {
     const close = (0, useContext)(CloseContext);
-    return /* @__PURE__ */ (0, jsx)(View, { autoFocus: checked || autoFocus, onPress: () => {
+    return /* @__PURE__ */ (0, jsxs)(View, { autoFocus: checked || autoFocus, onPress: () => {
       onSelect();
       close();
-    }, style: (_state) => [{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 36, borderRadius: radius.sm, paddingHorizontal: 18, paddingVertical: 12 }, _state.focused ? { backgroundColor: colors.surface3 } : null], children: /* @__PURE__ */ (0, jsx)(ItemContent, { label, checked }) });
+    }, style: (_state) => [{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 36, borderRadius: radius.sm, paddingHorizontal: 18, paddingVertical: 12 }, _state.focused ? { backgroundColor: colors.surface3 } : null], children: [
+      /* @__PURE__ */ (0, jsx)(FocusInset, { radius: radius.sm }),
+      /* @__PURE__ */ (0, jsx)(ItemContent, { label, checked })
+    ] });
   }
   var MenuDivider = () => /* @__PURE__ */ (0, jsx)(View, { style: { marginVertical: 6, height: 2, backgroundColor: colors.line } });
 

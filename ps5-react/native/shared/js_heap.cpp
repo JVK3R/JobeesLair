@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <utility>
 
 extern "C" {
 #include "er_js_alloc.h"
@@ -13,14 +14,17 @@ extern "C" {
 namespace {
 const JSMallocFunctions* inner = nullptr;
 std::size_t live = 0;
+// The size of the last allocation the system refused (js_heap_take_failure).
+std::size_t refused = 0;
 
-void* counted(void* ptr) {
+void* counted(void* ptr, std::size_t size) {
   if (ptr) live += inner->js_malloc_usable_size(ptr);
+  else refused = size;
   return ptr;
 }
 
-void* js_calloc(void* opaque, std::size_t count, std::size_t size) { return counted(inner->js_calloc(opaque, count, size)); }
-void* js_malloc(void* opaque, std::size_t size) { return counted(inner->js_malloc(opaque, size)); }
+void* js_calloc(void* opaque, std::size_t count, std::size_t size) { return counted(inner->js_calloc(opaque, count, size), count * size); }
+void* js_malloc(void* opaque, std::size_t size) { return counted(inner->js_malloc(opaque, size), size); }
 
 void js_free(void* opaque, void* ptr) {
   if (ptr) live -= inner->js_malloc_usable_size(ptr);
@@ -32,6 +36,7 @@ void* js_realloc(void* opaque, void* ptr, std::size_t size) {
   void* moved = inner->js_realloc(opaque, ptr, size);
   // A failed realloc leaves the block as it was; a zero size frees it.
   if (moved || size == 0) live = live - before + (moved ? inner->js_malloc_usable_size(moved) : 0);
+  else refused = size;
   return moved;
 }
 
@@ -54,6 +59,10 @@ constexpr std::size_t kCeiling = kJsMemoryLimit - kJsMemoryLimit / 8;
 
 double mib(std::size_t bytes) { return bytes / (1024.0 * 1024.0); }
 } // namespace
+
+std::size_t js_heap_live() { return live; }
+
+std::size_t js_heap_take_failure() { return std::exchange(refused, 0); }
 
 const JSMallocFunctions* js_heap_functions() {
   inner = er_js_default_malloc_functions();

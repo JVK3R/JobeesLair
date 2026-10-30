@@ -30,6 +30,7 @@
 #include "input_script.hpp"
 #include "js_heap.hpp"
 #include "js_profiler.hpp"
+#include "keyboard.hpp"
 #include "payload_loader.hpp"
 #include "screenshot.hpp"
 #include "text_shaper.hpp"
@@ -473,6 +474,9 @@ bool run_proof() {
     InputScript script;
     load_input_script(script);
     bool touched = false;
+    // While the system keyboard is up the controller is the system's; after it closes, buttons still held from
+    // it (the Cross that confirmed it) are let go before the app hears the controller again (keyboard.hpp).
+    bool holding = false;
     VirtualPad virtual_pad;
     LiveCommands commands;
     commands.start();
@@ -538,17 +542,21 @@ bool run_proof() {
       }
       // Input and JavaScript commit layout only; the commit after them paints the frame once.
       er_set_raster_deferred(true);
+      keyboard::tick();
+      const bool typing = keyboard::is_open();
       const auto count = pad.read(samples);
       const auto input = tracker.update(std::span<const hui::PadSample>(samples, count), now);
       pad.tick(static_cast<float>(now - previous) / 1000000.0f);
       host_platform_tick(now);
-      if (const char* direction = nav_action(input.nav)) ok = dispatch(direction);
+      if (typing) holding = true;
+      else if (holding && !input.held && input.nav == hui::Direction::none) holding = false;
+      if (const char* direction = holding ? nullptr : nav_action(input.nav)) ok = dispatch(direction);
       for (const auto& [button, action] : kExtraActions) {
-        if (ok && input.is_pressed(button)) ok = dispatch(action_name(action));
+        if (ok && !holding && input.is_pressed(button)) ok = dispatch(action_name(action));
       }
-      // Each frame the finger is down, and once when it lifts.
+      // Each frame the finger is down, and once when it lifts (or when the keyboard takes the controller).
       float touch_x = 0, touch_y = 0;
-      const bool touch_down = host_platform_read_touch(&touch_x, &touch_y);
+      const bool touch_down = !holding && host_platform_read_touch(&touch_x, &touch_y);
       if (ok && (touch_down || touched)) ok = touch(touch_down, touch_x, touch_y);
       touched = touch_down;
       commands.poll(now, script);
@@ -570,6 +578,10 @@ bool run_proof() {
         }
       }
       GamepadState state = gamepad_state(input);
+      if (holding) {
+        state = GamepadState{};
+        state.connected = input.connected;
+      }
       // A scripted hold presses like the controller: the button's action, once.
       for (std::uint32_t pressed = virtual_pad.merge(state, static_cast<std::uint64_t>(now / 1000)), i = 0; ok && pressed;
            pressed >>= 1, ++i) {
@@ -605,8 +617,9 @@ bool run_proof() {
       video_layers::update(hui::sys::monotonic_us(), 1000000 / refresh_hz);
       // A frame that changed nothing is not presented: the screen keeps showing the last one, and the
       // loop sleeps to the next vblank instead of waiting in the driver, which costs CPU.
-      const bool still = first_present && presenter.unchanged(damage_tracker_rects(), damage_tracker_moves(),
-                                                              display.width(), display.height());
+      // While the system keyboard is up every frame is presented, as titles that show it do.
+      const bool still = !typing && first_present &&
+                         presenter.unchanged(damage_tracker_rects(), damage_tracker_moves(), display.width(), display.height());
       if (!still)
         ok = presenter.draw(er_software_framebuffer(), damage_tracker_rects(), damage_tracker_moves(),
                             display.width(), display.height());

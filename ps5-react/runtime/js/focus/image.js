@@ -10,6 +10,9 @@ import {FrameContext} from './runtime.js';
 
 const HostImage = createFocusable('Image');
 const FITS = {cover: 0, contain: 1, stretch: 2, center: 3, repeat: 3};
+// Image.setRouter's function, or null: the URL each remote image is fetched from.
+let router = null;
+const fetched = uri => router?.(uri) ?? uri;
 
 /** The URL of a remote `source`, or null for a bundled asset name. */
 function remoteUri(source) {
@@ -138,7 +141,7 @@ function useImageElement(props, uri, forwardedRef) {
           image.retaking = held;
           held = true;
           try {
-            release = acquireImage(uri, box.width, box.height, fit, false, image.loaded);
+            release = acquireImage(fetched(uri), box.width, box.height, fit, false, image.loaded);
           } catch (error) {
             image.loaded({state: 'failed', name: '', error: error.message});
           }
@@ -189,7 +192,7 @@ Image.displayName = 'Image';
  */
 Image.getColor = uri => new Promise((resolve, reject) => {
   let release = null, settled = false;
-  release = acquireImage(uri, 48, 72, FITS.cover, true, result => {
+  release = acquireImage(fetched(uri), 48, 72, FITS.cover, true, result => {
     if (result.state === 'loading') return;
     settled = true;
     release?.();
@@ -205,11 +208,21 @@ Image.getColor = uri => new Promise((resolve, reject) => {
  * decodes, from disk instead of the network. Each call replaces the previous list.
  * @param {string[]} uris
  */
-Image.warm = uris => warmImages(uris);
+Image.warm = uris => warmImages(uris.map(fetched));
+
+/**
+ * Fetches each remote image from `route(uri)`, or from the URL as given when it answers null: for an app that reaches
+ * some hosts another way, such as its own proxy where a network blocks them. `null` removes it; an image already
+ * loaded keeps the URL it came from.
+ * @param {((uri: string) => string | null) | null} route
+ */
+Image.setRouter = route => {
+  router = route;
+};
 
 Image.prefetch = (uri, {width, height, resizeMode = 'cover'}) => new Promise((resolve, reject) => {
   let release = null, settled = false;
-  release = acquireImage(uri, Math.round(width), Math.round(height), FITS[resizeMode] ?? 0, true, result => {
+  release = acquireImage(fetched(uri), Math.round(width), Math.round(height), FITS[resizeMode] ?? 0, true, result => {
     if (result.state === 'loading') return;
     settled = true;
     release?.();

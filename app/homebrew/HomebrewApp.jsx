@@ -51,7 +51,7 @@ import { AnimatePresence, FocusScope, Image, Linking, Platform, ScrollView, Text
   function Tag({ icon, text, tone }) {
     const color = tone === "accent" ? hb().fg : tone === "warn" ? "#1c1300" : colors.fg;
     const background = tone === "accent" ? hb().accent : tone === "warn" ? "#fbbf24" : `${colors.canvas}b3`;
-    return jsxs(View, { style: { height: 42, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: radius.pill, backgroundColor: background, paddingHorizontal: 16 }, children: [
+    return jsxs(View, { style: { height: 42, flexDirection: "row", alignItems: "center", gap: 8, borderRadius: radius.sm, backgroundColor: background, paddingHorizontal: 16 }, children: [
       icon ? jsx(Icon, { name: icon, size: 12, color }) : null,
       jsx(Text, { style: { fontFamily: "Exo2", fontSize: 19, fontWeight: 600, lineHeight: 26, color }, children: text })
     ] });

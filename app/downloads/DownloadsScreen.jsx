@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CARD_WIDTH, DownloadCard, primaryKey } from './DownloadCard.jsx';
 import { Telemetry } from './Telemetry.jsx';
 import { DiagnosisSheet } from '../game/DiagnosisSheet.jsx';
+import { finalError } from './errors.js';
 import { useJobs } from './useQueue.js';
 import { formatNumber2, t } from '../i18n/core.js';
 import { SPAN_MAX, fitBytes } from '../i18n/fit.js';
@@ -184,7 +185,8 @@ import { AnimatePresence, FocusScope, ScrollView, Text, View } from '@ps5-react/
       if (!job2) return false;
       if (action === "triangle") handlers.openGame(job2);
       else if (action === "square" && BUSY.includes(job2.state)) handlers.run(job2, "pause");
-      else if (action === "square" && ["paused", "failed"].includes(job2.state)) handlers.run(job2, "resume");
+      // 0.5.4: not a refusal a retry only meets again (its card offers another source instead).
+      else if (action === "square" && ["paused", "failed"].includes(job2.state) && !finalError(job2.error, Boolean(job2.release.parts))) handlers.run(job2, "resume");
       else
         return false;
       return true;

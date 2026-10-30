@@ -78,19 +78,27 @@ def desktop(app, test=False, target="ps5-react-preview", resolution=None):
         run(["python3", ROOT / "tools/test_video.py"], log=ROOT / ".build/video-test.log")
         run(["python3", ROOT / "tools/test_passthrough.py"], log=ROOT / ".build/passthrough-test.log")
         run(["python3", ROOT / "tools/test_browser_capture.py"], log=ROOT / ".build/browser-capture-test.log")
+        run(["python3", ROOT / "tools/test_http_server.py"], log=ROOT / ".build/http-server-test.log")
         command.append("--self-test")
     return command, build
 
 
 def doctor():
-    print("PS5 React 0.2 — macOS developer environment")
+    mac = sys.platform == "darwin"
+    print(f"PS5 React — {'macOS' if mac else 'Linux (or Windows through WSL 2)'} developer environment")
     missing = []
     for command in ("python3", "node", "npm", "cmake", "git", "clang++"):
         path = shutil.which(command)
         print(f"{'OK' if path else 'MISSING'} {command}: {path or 'install required'}")
         if not path: missing.append(command)
     print("PS5 toolchain: LLVM 18 and the pinned SDK are needed only for npm run build")
-    print("Preview: SDL2/OpenGL; install with brew install cmake sdl2 llvm@18")
+    if mac:
+        print("Preview: SDL2/OpenGL; install with brew install cmake sdl2 llvm@18 curl libarchive openssl@3")
+    else:
+        print("Preview: SDL2/OpenGL; on Ubuntu or Debian (and WSL 2): sudo apt install clang-18 lld-18 llvm-18 cmake "
+              "libsdl2-dev libcurl4-openssl-dev libarchive-dev liblzma-dev libssl-dev zlib1g-dev nasm (README, Quick start)")
+        if Path("/proc/version").exists() and "microsoft" in Path("/proc/version").read_text().lower():
+            print("WSL: keep the clone in the Linux filesystem (~/), not /mnt/c: builds there are many times slower")
     print("Assets: python3 -m pip install -r requirements.txt")
     if sys.version_info < (3, 12): missing.append("Python 3.12+")
     try:
@@ -124,9 +132,14 @@ def stop_preview(process):
 
 
 def watch(app, command, directory, resolution=None):
+    # Each npm run dev starts afresh; within it, a save keeps the state (runtime/js/keep-state.js).
+    (sandbox(app) / "temp0/.ps5-react-keep-state.json").unlink(missing_ok=True)
     process = subprocess.Popen([str(x) for x in command], cwd=directory, env=preview_env(app))
     stamp = source_stamp(app)
-    print("Watching JSX/assets/config. Save to rebuild; Esc closes; Ctrl+C stops.", flush=True)
+    keeping = os.environ.get("PS5_REACT_KEEP_STATE") == "1"
+    print("Watching JSX/assets/config. Save to rebuild; Esc closes; Ctrl+C stops." +
+          (" State and focus are kept across saves (PS5_REACT_KEEP_STATE=0 to start afresh each time)." if keeping else ""),
+          flush=True)
     try:
         while True:
             if process and process.poll() is not None:
@@ -147,7 +160,7 @@ def watch(app, command, directory, resolution=None):
                     fcntl.flock(lock, fcntl.LOCK_EX)
                     command, directory = desktop(app, resolution=resolution)
                 process = subprocess.Popen([str(x) for x in command], cwd=directory, env=preview_env(app))
-                print("Preview restarted.", flush=True)
+                print("Preview restarted" + (", where it was." if keeping else "."), flush=True)
             except (ValueError, RuntimeError, subprocess.CalledProcessError) as error:
                 print(f"{error}\nFix the source and save to retry.", flush=True)
     finally:
@@ -193,6 +206,8 @@ def main():
                         help='layout a "resolution": "auto" app previews (default: 2160p)')
     args = parser.parse_args()
     if args.command == "doctor": return doctor()
+    # npm run dev keeps the app's state when a file is saved, unless PS5_REACT_KEEP_STATE=0.
+    if args.watch and args.command == "preview": os.environ.setdefault("PS5_REACT_KEEP_STATE", "1")
     if args.command == "create":
         if not args.name or not args.title_id: raise ValueError("Use npm run create -- --name my-app --title-id PPSA99054")
         # Prevent traversals before creating directories.

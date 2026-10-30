@@ -60,7 +60,7 @@ import { hb } from '../homebrew/palette.js';
   // release, "v0.5.0 PRE 1" for a pre-release.
   var SHORT_VERSION = `v${VERSION.replace(/-pre\.(\d+)$/i, " PRE $1").replace(/-beta\.(\d+)$/i, " BETA $1")}`;
   function VersionTab() {
-    return /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", left: 0, right: 0, bottom: -(DOCK_HEIGHT - 60) / 2 - 15, alignItems: "center" }, children: /* @__PURE__ */ (0, jsx)(View, { style: { height: 26, justifyContent: "center", borderRadius: radius.pill, borderWidth: 1, borderColor: colors.glassEdge, backgroundColor: colors.surface, paddingHorizontal: 12 }, children: /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 14, lineHeight: 18, letterSpacing: 1.5, color: colors.muted }, children: SHORT_VERSION }) }) });
+    return /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", left: 0, right: 0, bottom: -(DOCK_HEIGHT - 60) / 2 - 15, alignItems: "center" }, children: /* @__PURE__ */ (0, jsx)(View, { style: { height: 26, justifyContent: "center", borderRadius: radius.xs, borderWidth: 1, borderColor: colors.glassEdge, backgroundColor: colors.surface, paddingHorizontal: 12 }, children: /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "JetBrainsMono-Regular", fontSize: 14, lineHeight: 18, letterSpacing: 1.5, color: colors.muted }, children: SHORT_VERSION }) }) });
   }
   // The Homebrew section's item: its name, and the number of installed apps with a newer release.
   function HomebrewNavItem({ item, onPress }) {

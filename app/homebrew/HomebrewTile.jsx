@@ -2,13 +2,15 @@
 // it is, and where it stands on this console: installed, an update out, or installing with its progress.
 // Focus lifts and grows it like the store's cards (sized so the engine scales it cheaply).
 // MODIFIED (0.5.0 Pre Release 2): focus and the update badge in the section's own color (palette.js).
+// MODIFIED (0.5.4): the focus frame is drawn inside the tile, over its art. Outside it, the engine's cached scale
+// cut it off, so a focused tile showed only its corners and players couldn't tell which one they were on.
 
 import '../assets/Exo2.ttf';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { latin, useLocale, useT } from '../i18n/index.js';
 import { useHomebrewStatus } from '../state/homebrew-store.js';
 import { roleOf } from '../state/homebrew-index.js';
-import { FocusRing } from '../ui/FocusRing.jsx';
+import { FocusInset } from '../ui/FocusRing.jsx';
 import { Icon } from '../ui/Icon.jsx';
 import { colors, radius } from '../ui/colors.js';
 import { EASE_OUT } from '../ui/ease.js';
@@ -50,7 +52,7 @@ import { Text, View, motion, useIsFocused } from '@ps5-react/core';
       color = "#4ade80";
     }
     if (!label) return null;
-    return jsxs(View, { style: { position: "absolute", left: 12, top: 12, height: 36, flexDirection: "row", alignItems: "center", gap: 6, borderRadius: radius.pill, backgroundColor: background, paddingHorizontal: 12 }, children: [
+    return jsxs(View, { style: { position: "absolute", left: 12, top: 12, height: 36, flexDirection: "row", alignItems: "center", gap: 6, borderRadius: radius.sm, backgroundColor: background, paddingHorizontal: 12 }, children: [
       jsx(Icon, { name: icon, size: 11, color }),
       jsx(Text, { style: { fontFamily: "Exo2", fontSize: 17, fontWeight: 600, lineHeight: 24, color }, children: label })
     ] });
@@ -62,9 +64,9 @@ import { Text, View, motion, useIsFocused } from '@ps5-react/core';
     const kind = roleOf(app.files[0]);
     return jsxs(Fragment, { children: [
       jsxs(motion.View, { initial: false, animate: SCALES ? focused ? lift : rest : { y: focused ? -6 : 0 }, transition: focusMotion, style: { width: TILE, height: TILE }, children: [
-        jsx(FocusRing, { round: "lg", color: hb().hi }),
         jsx(HomebrewArt, { app, size: TILE }),
-        jsx(StatusBadge, { id: app.id })
+        jsx(StatusBadge, { id: app.id }),
+        jsx(FocusInset, { radius: radius.lg, color: hb().hi })
       ] }),
       jsxs(View, { style: { marginTop: 14, width: TILE, gap: 2 }, children: [
         // 0.5.3: latin(): in a right-to-left language an English name's last punctuation went to its front.

@@ -771,12 +771,18 @@ void run(const std::shared_ptr<Job>& pointer) {
         std::none_of(request.sources.begin(), request.sources.end(), [](const std::string& path) { return path.find('\n') != std::string::npos; });
     return found.kind != "rar" || !lines ? std::string("Only a RAR set can be extracted while it downloads.") : found.refusal;
   };
-  if (const auto refusal = request.stream ? streamed() : preflight(request.sources); !refusal.empty()) {
+  std::uint64_t unpacked = 0;
+  if (const auto refusal = request.stream ? streamed() : preflight(request.sources, &unpacked); !refusal.empty()) {
     trace("preflight refused", refusal.c_str());
     fail(job, refusal);
     return;
   }
   trace("preflight ok");
+  // A 7z or ZIP says up front what it unpacks to; the RAR worker reports its own total.
+  if (unpacked) {
+    std::lock_guard lock(job.mutex);
+    job.snapshot.total = std::min(unpacked, request.max_bytes);
+  }
   if (!lstat(staging.c_str(), &st)) {
     std::string owner;
     // Empty staging with no ownership record is this task's own, left by a crash before it wrote one;

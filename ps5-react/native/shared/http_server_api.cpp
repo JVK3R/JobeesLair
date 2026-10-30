@@ -76,6 +76,16 @@ JSValue token(JSContext* ctx, JSValueConst, int, JSValueConst*) {
   return JS_NewString(ctx, value.c_str());
 }
 
+// ABI v24: the page `/` serves from now on (the app's language changed); phones and their streams stay.
+JSValue set_page(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
+  std::string page;
+  if (argc < 1 || !text(ctx, argv[0], http_server::kMaxPageBytes, page))
+    return JS_ThrowTypeError(ctx, "httpServer.setPage: expected a page of at most 512 KiB");
+  std::string error;
+  if (!http_server::set_page(std::move(page), error)) return JS_ThrowPlainError(ctx, "httpServer.setPage: %s", error.c_str());
+  return JS_UNDEFINED;
+}
+
 JSValue stop(JSContext*, JSValueConst, int, JSValueConst*) {
   http_server::stop();
   return JS_UNDEFINED;
@@ -92,7 +102,20 @@ JSValue status(JSContext* ctx, JSValueConst, int, JSValueConst*) {
   JS_SetPropertyStr(ctx, out, "failures", JS_NewInt32(ctx, current.failures));
   JS_SetPropertyStr(ctx, out, "locked", JS_NewBool(ctx, current.locked));
   JS_SetPropertyStr(ctx, out, "sessions", JS_NewUint32(ctx, static_cast<std::uint32_t>(current.sessions)));
+  JS_SetPropertyStr(ctx, out, "streams", JS_NewUint32(ctx, static_cast<std::uint32_t>(current.streams)));
+  JS_SetPropertyStr(ctx, out, "pushed", JS_NewFloat64(ctx, static_cast<double>(current.pushed)));
   return out;
+}
+
+// ABI v24: an event to every open event stream; the number of streams that took it.
+JSValue push(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
+  std::string name, data;
+  if (argc < 2 || !text(ctx, argv[0], http_server::kMaxEventName, name) || !http_server::event_name(name) ||
+      !text(ctx, argv[1], http_server::kMaxEventBytes, data))
+    return JS_ThrowTypeError(ctx, "httpServer.push: expected an event name of 1..32 of a-z, 0-9 and -, and data of at most 256 KiB");
+  bool ok = false;
+  const std::size_t taken = http_server::push(name, data, ok);
+  return JS_NewUint32(ctx, static_cast<std::uint32_t>(taken));
 }
 
 JSValue poll(JSContext* ctx, JSValueConst, int, JSValueConst*) {
@@ -132,10 +155,12 @@ JSValue ps5_react_http_server_api(JSContext* ctx) {
   JSValue api = JS_NewObject(ctx);
   JS_SetPropertyStr(ctx, api, "start", JS_NewCFunction(ctx, start, "start", 4));
   JS_SetPropertyStr(ctx, api, "token", JS_NewCFunction(ctx, token, "token", 0));
+  JS_SetPropertyStr(ctx, api, "setPage", JS_NewCFunction(ctx, set_page, "setPage", 1));
   JS_SetPropertyStr(ctx, api, "stop", JS_NewCFunction(ctx, stop, "stop", 0));
   JS_SetPropertyStr(ctx, api, "status", JS_NewCFunction(ctx, status, "status", 0));
   JS_SetPropertyStr(ctx, api, "poll", JS_NewCFunction(ctx, poll, "poll", 0));
   JS_SetPropertyStr(ctx, api, "respond", JS_NewCFunction(ctx, respond, "respond", 4));
+  JS_SetPropertyStr(ctx, api, "push", JS_NewCFunction(ctx, push, "push", 2));
   JS_SetPropertyStr(ctx, api, "address", JS_NewCFunction(ctx, address, "address", 0));
   return api;
 }

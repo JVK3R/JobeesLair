@@ -25,6 +25,8 @@ struct Request {
   bool follow_redirects = true, reject_html = false;
   // Exempt from set_rate_limit (an app's own update).
   bool unlimited = false;
+  // A request whose body reaches JavaScript byte for byte (one character per byte), not as UTF-8 text.
+  bool binary = false;
 };
 struct Snapshot {
   std::uint32_t id = 0;
@@ -35,7 +37,7 @@ struct Snapshot {
   double bytes_per_second = 0;
   unsigned connections = 0, retries = 0;
   int status = 0;
-  bool total_known = false;
+  bool total_known = false, binary = false;
 };
 // No JavaScript is accessed by either native worker. Only the caller polls JS.
 bool start();

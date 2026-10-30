@@ -1,7 +1,7 @@
 // Copyright (C) 2026 half144 and PS5 React contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Additional attribution term: see LICENSE-ATTRIBUTION.
-// Native API contract (ABI v23) between the hosts and `@ps5-react/core`. The input actions hosts
+// Native API contract (ABI v24) between the hosts and `@ps5-react/core`. The input actions hosts
 // pass to `__ps5ReactDispatch` are a separate contract with its own version (runtime/js/input.js).
 //
 // host_api.cpp (shared) installs `globalThis.__ps5ReactNative` through
@@ -69,7 +69,8 @@
 //              sha256, connections, adaptive, rangeBytes, resume, recoverCompleted, headers, rejectHtml,
 //              unlimited (ABI v21; exempt from setRateLimit)
 //   network.request(url, options)  task ID; queues bounded HTTP text I/O
-//     options: method, body, maxBytes, headers, followRedirects (default true)
+//     options: method, body, maxBytes, headers, followRedirects (default true),
+//              binary (ABI v24; body as one character per byte)
 //     terminal snapshots: status, body, effective url, allowlisted lowercase headers
 //   network.cancel(id)             requests cancellation
 //   network.setRateLimit(bytes)    ABI v21; bytes per second all file downloads share, 0 for no limit;
@@ -79,8 +80,11 @@
 //   archives.inspect(sources)      {kind, refusal, title}; file type from leading bytes (title: a PKG's own
 //                                  title id, ABI v21) and, for an archive,
 //                                  a decoder-memory refusal its headers so far justify; partial files ok
+//   archives.inspectRanges(ranges) ABI v24; {kind, refusal, size, need}: a 7z's preflight on fetched byte
+//                                  ranges [{offset, bytes}], or need {offset, length}, the range it reads next
 //   archives.cancel(id)            requests cancellation; source volumes remain intact
-//   archives.poll()                state/error/written/entries/artifacts; consumes terminal results
+//   archives.poll()                state/error/written/total/entries/artifacts; consumes terminal results;
+//                                  total is what the files unpack to once known (RAR, 7z, ZIP), else null
 //   browser.capture(prefix, suffix, timeoutSeconds, rejected, resume) ABI v7 (rejected, resume: v21); capture task bound to a filename, to any file when suffix is "/", or to a file link naming suffix's title id; rejected: up to six refused links scanned past
 //   browser.cancel(id)            stops the read-only payload by closing its connection
 //   browser.poll()                state/error/url; consumes terminal results
@@ -95,11 +99,16 @@
 //                                  `page` (≤512 KiB) at /, POST /auth trades the 6-digit `pin` for a session
 //                                  cookie (throttled; locks after 20 wrong), /api/… for the app needs it and
 //                                  X-JBH: 1; needs networking; throws when running or given bad arguments
+//   httpServer.setPage(page)       ABI v24; the page / serves from now on (≤512 KiB), keeping every session and
+//                                  stream; throws when not running
 //   httpServer.stop()              closes the listener, answers waiting requests 503, joins the worker
 //   httpServer.status()            {state: 'stopped' | 'starting' | 'listening' | 'failed', error, port, address,
-//                                  served, failures (wrong PINs), locked, sessions}
+//                                  served, failures (wrong PINs), locked, sessions, streams, pushed (ABI v24)}
 //   httpServer.poll()              [{id, method, path, query, body, client}] API requests to answer
 //   httpServer.respond(id, status, contentType, body) false when no longer waiting (each waits 5 s)
+//   httpServer.push(event, data)   ABI v24; the number of event streams (GET /api/events, signed in) that
+//                                  took it: Server-Sent Events written by a second worker; event 1..32 of
+//                                  [a-z0-9-], data ≤256 KiB, one data: line per line
 //   httpServer.address()           status().address: the worker's lookup; opens no socket on the caller
 //   packages.install(path, name)   task ID; installs a .pkg under /data, /mnt/usb or /mnt/ext through the
 //                                  console's install service (PS5 only, needs the payload loader on 9021)
@@ -147,6 +156,16 @@
 //                                  'buffering' | 'ended' | 'failed'
 //   text.setLanguage(tag)          ABI v6; BCP 47 language for runtime text (Han glyph forms,
 //                                  shaping); defaults to the system language
+//   keyboard.available()           ABI v24; whether the host has an on-screen keyboard (PS5: the system keyboard,
+//                                  libSceImeDialog, loaded; the desktop preview takes the computer's keyboard)
+//   keyboard.open(options)         ABI v24; opens it over the app: {title, placeholder (≤127 characters), text,
+//                                  maxLength (1..2048, default 255), type: 'default' | 'basic' | 'url' | 'mail' |
+//                                  'number', enter: 'default' | 'send' | 'search' | 'go', multiline, password};
+//                                  throws when one is open or the system refuses (keyboard.hpp)
+//   keyboard.poll()                null while open (or nothing to report), then once {status: 'done' | 'cancelled' |
+//                                  'aborted', text}; text is what was typed when done
+//   keyboard.close()               closes an open keyboard; it ends 'aborted'
+//   keyboard.isOpen()              whether one is open (hosts hold the controller from the app while it is)
 //   exit(relaunch)                 asks the host to close after this frame; with relaunch true it
 //                                  opens the app again once closed and returns true, or the reason
 //                                  it cannot (PS5: needs the payload loader on 127.0.0.1:9021)
@@ -315,3 +334,5 @@ JSValue ps5_react_http_server_api(JSContext* ctx);
 JSValue ps5_react_video_api(JSContext* ctx);
 // ABI v13: the connected sink's audio capabilities (audio_output_api.cpp).
 JSValue ps5_react_audio_output_api(JSContext* ctx);
+// ABI v24: the on-screen keyboard (keyboard.hpp, keyboard_api.cpp).
+JSValue ps5_react_keyboard_api(JSContext* ctx);

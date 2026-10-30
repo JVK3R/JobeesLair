@@ -6,7 +6,7 @@
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {gamepadSource} from './controller-events.js';
 import {normalizeDownloadManifest} from './download-formats.js';
-import {onFrameUnbatched} from './frame.js';
+import {onFrame, onFrameUnbatched} from './frame.js';
 
 function host() {
   const api = globalThis.__ps5ReactNative;
@@ -477,7 +477,9 @@ function networkTask(id, call, destination = '', backend = 'network') {
   });
 }
 
-/** Native HTTP subset for bounded text/JSON responses; does not require a browser. */
+/** Native HTTP subset for bounded text/JSON responses; does not require a browser.
+ * `binary: true` (ABI v24) keeps the body's bytes as they came: the response has `bytes()`, a string of one
+ * character per byte (0–255), in place of `text()`/`json()`. */
 export const Http = {
   async request(url, options = {}) {
     const signal = options.signal;
@@ -493,9 +495,10 @@ export const Http = {
     }
     try {
       const response = await task.done;
+      const read = options.binary === true ? {bytes: async () => response.body}
+        : {text: async () => response.body, json: async () => JSON.parse(response.body)};
       return Object.freeze({status: response.status, ok: response.status >= 200 && response.status < 300,
-        url: response.url || url, headers: Object.freeze({...response.headers}),
-        text: async () => response.body, json: async () => JSON.parse(response.body)});
+        url: response.url || url, headers: Object.freeze({...response.headers}), ...read});
     } finally {
       if (signal) signal.removeEventListener('abort', abort);
     }
@@ -538,6 +541,12 @@ export const Archives = Object.freeze({
    * Also works on a download's growing `.part` file.
    * @param {string[]} sources ordered volumes @returns {{kind: string, refusal: string}} */
   inspect: sources => host().archives.inspect(sources),
+  /** ABI v24: a 7z's preflight before it downloads, on byte ranges fetched from its server (`Http.request` with a
+   * Range header and `binary: true`). Ask with the ranges so far, starting from none: `need` is the range it reads
+   * next, null once `refusal` is the answer; `size` is the archive's length its first 32 bytes give.
+   * @param {Array<{offset: number, bytes: string}>} ranges at most 16, 16 MiB together; `bytes` as `bytes()` gives them
+   * @returns {{kind: string, refusal: string, size: number | null, need: {offset: number, length: number} | null}} */
+  inspectRanges: ranges => host().archives.inspectRanges(ranges),
   /** Whether `extract` takes `stream`. */
   streams: true,
 });
@@ -579,6 +588,49 @@ export const SelfUpdate = Object.freeze({
  * `{ok: false, error}` when the file or the loader is not there. It blocks for at most a few seconds: call it
  * from an event, not a render. On the desktop preview it opens a plain TCP connection, for a stand-in loader.
  */
+/**
+ * ABI v24: the console's on-screen keyboard. On the PS5 it is the system keyboard, drawn by the system over the app
+ * in the player's own languages and input methods; the desktop preview takes what
+ * is typed on the computer's keyboard into the window (Enter finishes, Esc cancels), or a tool's `type <text>`.
+ * While it is open the controller belongs to it: the app hears no presses, and none from buttons still held as it
+ * closes. One opens at a time.
+ */
+export const Keyboard = Object.freeze({
+  /** Whether this host can open one (PS5: the system keyboard's module loaded); check it before offering it. */
+  get available() { return host().keyboard.available(); },
+  /** Whether one is open now. */
+  get isOpen() { return host().keyboard.isOpen(); },
+  /**
+   * Opens it with `text` already typed, and resolves once it closes: `{status: 'done', text}` when the player
+   * finishes, `{status: 'cancelled', text: ''}` when they back out, `{status: 'aborted', text: ''}` when `close()` or
+   * the system closed it. Throws (synchronously, before any promise) when one is open or the system refuses.
+   * `title` and `placeholder` take up to 127 characters, `maxLength` 1–2048 (in UTF-16 units, as the system counts).
+   * `type`: 'default' (every language), 'basic' (Latin letters, digits and symbols), 'url', 'mail' or 'number';
+   * `enter` labels the finishing key: 'default', 'send', 'search' or 'go'. `password` hides the text (with type
+   * 'basic' or 'number'); `multiline` allows new lines (with type 'default' or 'basic').
+   * @param {{title?: string, text?: string, placeholder?: string, maxLength?: number,
+   *   type?: 'default' | 'basic' | 'url' | 'mail' | 'number', enter?: 'default' | 'send' | 'search' | 'go',
+   *   multiline?: boolean, password?: boolean}} [options]
+   * @returns {Promise<{status: 'done' | 'cancelled' | 'aborted', text: string}>}
+   */
+  open({title = '', text = '', placeholder = '', maxLength = 255, type = 'default', enter = 'default',
+    multiline = false, password = false} = {}) {
+    const keyboard = host().keyboard;
+    keyboard.open({title, text, placeholder, maxLength, type, enter, multiline, password});
+    return new Promise(resolve => {
+      // One native read a frame while it is open; the result arrives in the frame's batch.
+      const stop = onFrame(() => {
+        const result = keyboard.poll();
+        if (!result) return;
+        stop();
+        resolve(Object.freeze({status: result.status, text: result.text}));
+      });
+    });
+  },
+  /** Closes an open keyboard; its `open` resolves 'aborted'. */
+  close() { host().keyboard.close(); },
+});
+
 export const Payloads = Object.freeze({
   send(path, {port = 9021, request = '', answer = false} = {}) {
     if (typeof path !== 'string' || !path.startsWith('/') || /[\0\n\r]/.test(path) || path.includes('/../') || path.length > 900)
@@ -642,14 +694,30 @@ export const LocalServer = Object.freeze({
    * phones signed in across restarts. Make a new one with each new PIN.
    */
   token() { return host().httpServer.token(); },
+  /**
+   * ABI v24: the page `/` serves from now on, while the server runs (the app's language changed, say): no phone
+   * is signed out and no event stream is dropped. Throws when the server is not running.
+   */
+  setPage(page) { host().httpServer.setPage(page); },
   stop() { host().httpServer.stop(); },
   /** @returns {{state: 'stopped' | 'starting' | 'listening' | 'failed', error: string, port: number, address: string,
-   *   served: number, failures: number, locked: boolean, sessions: number}} */
+   *   served: number, failures: number, locked: boolean, sessions: number, streams: number, pushed: number}}
+   *   `streams` (ABI v24): event streams open now, so an app pushes only while a page listens. */
   status() { return host().httpServer.status(); },
   /** @returns {Array<{id: number, method: string, path: string, query: string, body: string, client: string}>} */
   poll() { return host().httpServer.poll(); },
   /** False when request `id` is no longer waiting. */
   respond(id, status, contentType, body) { return host().httpServer.respond(id, status, contentType, body); },
+  /**
+   * ABI v24: sends event `event` to every page listening on `GET /api/events` (Server-Sent Events, signed in like
+   * any API request) and returns how many streams took it; 0, at no cost, while none is open. `data` is a string,
+   * or anything else as JSON, at most 256 KiB; `event` is 1–32 of a–z, 0–9 and `-`. Events are written by the
+   * server's own stream worker, never waiting on a phone; one that stops reading is closed once it falls 1 MiB
+   * behind, and reconnects.
+   */
+  push(event, data) {
+    return host().httpServer.push(event, typeof data === 'string' ? data : JSON.stringify(data));
+  },
   /** This console's IPv4 address, as the server's worker last looked it up (while listening), or ''. */
   address() { return host().httpServer.address(); },
 });

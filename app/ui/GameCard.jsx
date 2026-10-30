@@ -106,7 +106,8 @@ import { Text, View, motion, transitions, useIsFocused } from '@ps5-react/core';
   function Details({ game, focused, box }) {
     const { rtl } = useLocale();
     return /* @__PURE__ */ (0, jsxs)(View, { style: [{ height: 144, paddingTop: 15 }, box.text], children: [
-      /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 20, color: colors.subtle, numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 24 }, children: game.genres[0] ? genreLabel(game.genres[0]) : game.platform.toUpperCase() }),
+      // 0.5.4: the focused card's genre line in the accent, as a wide card's line is.
+      /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 20, color: focused ? colors.accentHi : colors.subtle, numberOfLines: 1, ellipsizeMode: "tail", lineHeight: 24 }, children: game.genres[0] ? genreLabel(game.genres[0]) : game.platform.toUpperCase() }),
       /* @__PURE__ */ (0, jsx)(Text, { focused, style: [{ marginTop: 6, height: 60, paddingRight: 6, fontFamily: "Exo2", fontSize: 23, fontWeight: 600, color: colors.fg, numberOfLines: 2, ellipsizeMode: "tail", lineHeight: 30 }, focused ? { color: colors.fg } : null], children: latin(rtl, game.title) }),
       /* @__PURE__ */ (0, jsxs)(View, { style: { marginTop: 9, height: 30, flexDirection: "row", alignItems: "center", gap: 12 }, children: [
         // 0.5.1: the PlayStation Store star rating (state/catalog.js), shown once enough people rated it. The
@@ -145,7 +146,7 @@ import { Text, View, motion, transitions, useIsFocused } from '@ps5-react/core';
       ),
       caption ?? (detailed ? /* @__PURE__ */ (0, jsx)(Details, { game, focused, box }) : /* @__PURE__ */ (0, jsxs)(Fragment, { children: [
         /* @__PURE__ */ (0, jsx)(Text, { focused, style: [[{ marginTop: 18, fontFamily: "Exo2", fontSize: 23, color: colors.fg, numberOfLines: 1, ellipsizeMode: "tail" }, focused ? { color: colors.fg } : null], box.text], children: latin(rtl, game.title) }),
-        /* @__PURE__ */ (0, jsx)(Text, { style: [{ marginTop: 3, fontFamily: "Exo2", fontSize: 21, color: colors.subtle, numberOfLines: 1, ellipsizeMode: "tail" }, box.text], children: game.genres.slice(0, 2).map(genreLabel).join(" \xB7 ") })
+        /* @__PURE__ */ (0, jsx)(Text, { style: [{ marginTop: 3, fontFamily: "Exo2", fontSize: 21, color: focused ? colors.accentHi : colors.subtle, numberOfLines: 1, ellipsizeMode: "tail" }, box.text], children: game.genres.slice(0, 2).map(genreLabel).join(" \xB7 ") })
       ] }))
     ] });
   }

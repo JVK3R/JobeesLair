@@ -48,6 +48,8 @@ const nodeModules = resolve(here, 'node_modules');
 const distDir = resolve(process.argv[4]);
 // Added by PS5 React: Tailwind classes compile for this render size.
 const render = {width: Number(process.argv[5]), height: Number(process.argv[6])};
+// Added by PS5 React: npm run dev keeps the app's state across a restart on save (tools/keep-state.mjs).
+const keepState = process.env.PS5_REACT_KEEP_STATE === '1';
 
 const DEFAULT_DEMO = 'thermostat';
 const demoDir = resolve(process.argv[3]);
@@ -147,14 +149,14 @@ await build({
   nodePaths: [nodeModules],
   plugins: [
     // Added by PS5 React: build-time className/tw compilation for the app's sources.
-    tailwindEsbuildPlugin({appDir: demoDir, render, babel: {
+    tailwindEsbuildPlugin({appDir: demoDir, render, keepState, babel: {
       core: require('@babel/core'),
       syntaxJsx: require('@babel/plugin-syntax-jsx').default,
     }}),
     assetPlugin,
   ],
   // Production React: smaller and avoids dev-only warning machinery that needs more shims.
-  define: {'process.env.NODE_ENV': '"production"'},
+  define: {'process.env.NODE_ENV': '"production"', ...(keepState ? {'globalThis.__PS5_REACT_KEEP_STATE__': 'true'} : {})},
   legalComments: 'none',
   logLevel: 'info',
   // esbuild has already printed each error with its source location; skip Node's stack trace.

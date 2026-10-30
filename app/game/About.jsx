@@ -8,6 +8,7 @@ import { LayoutAnimation, Text, View, motion, useIsFocused } from '@ps5-react/co
 import { LATIN_IN_RTL, useLocale, useT } from '../i18n/index.js';
 import { FocusRing } from '../ui/FocusRing.jsx';
 import { colors, radius } from '../ui/colors.js';
+import { LIGHT } from '../ui/light-motion.js';
 
   var isHeading = (line) => line.length < 70 && line === line.toUpperCase() && line !== line.toLowerCase();
   function ToggleLabel({ expanded }) {
@@ -21,7 +22,7 @@ import { colors, radius } from '../ui/colors.js';
     const latin2 = rtl ? LATIN_IN_RTL : void 0;
     const [expanded, setExpanded] = (0, useState)(false);
     const toggle = () => {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      if (!LIGHT) LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setExpanded((value) => !value);
     };
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, children: [

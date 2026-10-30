@@ -17,6 +17,12 @@ NotoSansBengali-Regular.ttf (3.011)
 NotoSansArabic-Regular.ttf (2.013)
   Copyright 2022 The Noto Project Authors (https://github.com/notofonts/arabic)
 
+NotoSansSymbols2-Regular.ttf (2.008), NotoSansSymbols-Regular.ttf (2.003)
+  Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols)
+
+NotoEmoji-Regular.ttf (Noto Emoji 3.002, the default instance of NotoEmoji[wght].ttf)
+  Copyright 2013 Google LLC (https://github.com/googlefonts/noto-emoji)
+
 All are licensed under the SIL Open Font License, Version 1.1:
 
 This Font Software is licensed under the SIL Open Font License,

@@ -41,6 +41,15 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
   var baseName = (path) => path.slice(path.lastIndexOf("/") + 1);
   // A host's web page is kilobytes; a file this big with no known headers is the game itself.
   var WEB_PAGE_BYTES = 4 * 1024 ** 2;
+  // 0.5.4: how far back an extraction's speed looks (extract), and the largest range of a 7z's end asked of
+  // its server before it has downloaded (checkEnd); the engine answers at most 4 MiB.
+  var SPEED_WINDOW_MS = 30e3;
+  var END_RANGE_BYTES = 4 * 1024 ** 2;
+  // 0.5.4: the formats inspect() names that are unpacked, not mounted (a file listed as an image may be one), and
+  // the most a download listed as a game of 1 GB or more may hold and still be the host's stand-in (execute).
+  var ARCHIVE_KINDS = ["rar", "7z", "zip", "tar", "tar.gz", "tar.bz2", "tar.xz", "tar.zst"];
+  var IMAGE_KINDS = ["exfat", "ffpkg", "ffpfs", "ffpfsc"];
+  var STAND_IN_BYTES = 64 * 1024 ** 2;
   // What a release is for the game, by its catalog label: the game itself, an add-on, or a backport (files
   // ShadowMount lays over the game from homebrew/backports/<TITLE_ID>/ when it starts). The same tests as
   // the source picker's sections (game/sources.js).
@@ -148,6 +157,9 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     // itself (state/auto-continue.js, Settings), after AUTO_OPEN_MS with a countdown on its card.
     autoContinue = () => false,
     autoOpenMs = 10e3,
+    // 0.5.4: told each launch learned from ShadowMount's log, (title, {outcome, verdict, format, fixed, backport}),
+    // for the players' numbers (state/online.js launched).
+    onLaunch = () => {},
     wait = (ms) => new Promise((resolve2) => setTimeout(resolve2, ms))
   }) {
     // Builds before the rename kept the queue in "overdrive"; it is read from there until the first save here.
@@ -264,7 +276,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       change();
     }
     function scheduleAhead(job2, index) {
-      if (!browserCapture || !autoContinue() || aheads.has(job2.id)) return;
+      if (!browserCapture || !autoContinue() || aheads.has(job2.id) || IMAGE_KINDS.includes(job2.inspected)) return;
       const part = job2.parts?.[index];
       const source2 = part && job2.release.parts[index]?.sources?.[part.sourceIndex || 0];
       if (!part || part.completed || part.options || !needsBrowser(source2)) return;
@@ -491,6 +503,40 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         console.log(`[download-queue] queue not saved to ${file}: ${error2.message}`);
       }
     }
+    // 0.5.4: images an earlier build placed one folder down (homebrew/<name>-extracted/), where ShadowMount's default
+    // scan never looks, move up beside the others once, so a card waiting on "Install requested" installs at the
+    // next scan (imageTargets). Only while it waits: one ShadowMount already installed from there (a deeper scan)
+    // stays put. What the folder held besides them goes to downloads/extracted/<name>-extras; an empty one goes.
+    for (const job2 of jobs) {
+      try {
+        const images = job2.artifact?.images ?? [];
+        const folder = images[0]?.slice(0, images[0].lastIndexOf("/"));
+        if (job2.state !== "downloaded" || job2.artifact.nextAction !== "shadowmount" || !folder || folder !== `${job2.root}/homebrew/${baseName(folder)}` || !folder.endsWith("-extracted")) continue;
+        if (!images.every((path) => path.startsWith(`${folder}/`) && !path.slice(folder.length + 1).includes("/") && fs.exists(path))) continue;
+        const moves = imageTargets(job2, images);
+        for (const { from, to } of moves) fs.rename(from, to);
+        const moved = new Map(moves.map(({ from, to }) => [from, to]));
+        job2.artifact.images = images.map((path) => moved.get(path));
+        job2.artifact.destination = job2.artifact.images[0];
+        if (job2.payload) job2.payload = job2.payload.map((item) => ({ ...item, path: moved.get(item.path) ?? item.path }));
+        const left = fs.readDir(folder).filter((entry) => !entry.name.startsWith(".ps5-react-"));
+        const kept = `${job2.root}/downloads/extracted/${baseName(folder).replace(/-extracted$/, "")}-extras`;
+        if (!left.length) {
+          for (const entry of fs.readDir(folder)) fs.remove(`${folder}/${entry.name}`);
+          fs.remove(folder);
+        } else if (!fs.exists(kept)) {
+          fs.mkdir(`${job2.root}/downloads/extracted`, { recursive: true });
+          fs.rename(folder, kept);
+          job2.extras = kept;
+        }
+        if (job2.output === folder) delete job2.output;
+        if (job2.publishTo === folder) delete job2.publishTo;
+        save();
+        console.log(`[download-queue] ${job2.id}: its images moved up from ${folder} to ${job2.artifact.images.join(", ")}, where ShadowMount scans`);
+      } catch (error2) {
+        console.log(`[download-queue] ${job2.id}: images not moved up: ${error2.message}`);
+      }
+    }
     // (From Overdrive 1.0.6.) A finished download that stayed a ".binary" before its header check or its
     // name could say what it is is routed now, once at launch, as a new one would be: a game image to the
     // homebrew folder for ShadowMount+, a PKG to the packages folder to install. One still unknown, or an
@@ -527,6 +573,24 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     // downloads to downloads/images/ and moves into homebrew/ only once it passed its check (publishImage).
     const stagedPath = (artifact2, root2) => artifact2.nextAction === "shadowmount" ? `${root2}/downloads/images/${baseName(artifact2.destination)}` : artifact2.destination;
     // Moves a checked image from downloads/images/ into homebrew/, where ShadowMount finds it.
+    // 0.5.4: where the images an archive held go: straight into homebrew/, beside the downloaded ones. ShadowMount's
+    // default scan (scan_depth=1) lists the files of homebrew/ itself and takes its folders only as game folders, so
+    // an image published in homebrew/<name>-extracted/ was never installed and its card waited on "Install
+    // requested" for good (GitHub issue #1). An image keeps its name; one taken there, by a file or another task,
+    // gets the release's id before it. Returns [{ from, to }]; throws when both names are taken.
+    function imageTargets(job2, sources) {
+      const taken = new Set();
+      const owned2 = (path) => jobs.some((other) => other !== job2 && [other.artifact?.destination, other.downloadDestination, ...other.artifact?.images ?? []].includes(path));
+      const free = (path) => !taken.has(path) && !fs.exists(path) && !owned2(path);
+      return sources.map((from) => {
+        const name = baseName(from);
+        const plain = `${job2.root}/homebrew/${name}`;
+        const to = plain === from || free(plain) ? plain : `${job2.root}/homebrew/${String(job2.release.id).replace(/[^a-z0-9_.-]/gi, "_")}-${name}`;
+        if (to !== from && !free(to)) throw new Error(`${name} already exists in homebrew/; preserve it and inspect before retrying.`);
+        taken.add(to);
+        return { from, to };
+      });
+    }
     function publishImage(job2) {
       if (job2.downloadDestination === job2.artifact.destination) return;
       if (fs.exists(job2.artifact.destination)) throw new Error("Destination already exists. Choose another release or inspect the existing file.");
@@ -546,7 +610,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         job2.release = { ...next };
         job2.artifact = artifact2;
         job2.total = next.sizeBytes || null;
-        for (const key of ["options", "browserUrl", "directURL", "parts", "partIndex", "currentSource", "downloadDestination", "inspected", "adopted"]) delete job2[key];
+        for (const key of ["options", "browserUrl", "directURL", "parts", "partIndex", "currentSource", "downloadDestination", "inspected", "adopted", "endChecked"]) delete job2[key];
         job2.error = "";
         job2.state = "queued";
         return true;
@@ -664,6 +728,14 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         const held = Math.max(job2.written, fs.stat(`${job2.downloadDestination}.part`)?.size || 0);
         if (!fs.exists(job2.downloadDestination) && fs.diskUsage(job2.root).free < stillNeeded({ ...job2, written: held }) + MARGIN2)
           throw new Error("Not enough space on the selected drive. Free space and retry.");
+        // 0.5.4: a 7z's end, read before it downloads (checkEnd), once per file link. Refused before a byte was
+        // written, it fails over to the game's next source like a dead link.
+        if (job2.endChecked !== job2.options.url && (!job2.inspected || job2.inspected === "7z") && ["extraction-required", "downloaded", "shadowmount"].includes(job2.artifact.nextAction)) {
+          const refusal = await checkEnd(job2, signal);
+          if (job2.state === "pausing" || signal.aborted) return;
+          job2.endChecked = job2.options.url;
+          if (refusal) throw new Error(refusal);
+        }
         fs.mkdir(job2.artifact.directory, { recursive: true });
         fs.mkdir(job2.downloadDestination.slice(0, job2.downloadDestination.lastIndexOf("/")), { recursive: true });
         active2.transferring = true;
@@ -705,6 +777,27 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         });
         const transferred = await task.done;
         await checkTransfer(job2, transferred);
+        // 0.5.4: a file far smaller than the game its listing names (989 bytes for a large game, GitHub issue #1) is
+        // the host's stand-in, not the game: refused before it is unpacked or placed, and deleted, so a retry
+        // downloads it again and the queue may fail over to another source.
+        const listed = job2.release.sizeBytes || 0;
+        const arrived = fs.stat(job2.downloadDestination)?.size ?? 0;
+        if (listed >= 1e9 && arrived < Math.min(listed / 100, STAND_IN_BYTES)) {
+          console.log(`[download-queue] ${job2.id}: ${arrived} bytes arrived where the listing says ${listed}; not the game`);
+          await Promise.all(["", ".complete", ".resume"].map((suffix) => fs.removeAsync(job2.downloadDestination + suffix))).catch((error2) => console.log("[download-queue] stand-in not deleted:", error2.message));
+          job2.written = 0;
+          throw new Error("Not a game file: the host sent something else. Choose another source.");
+        }
+        // 0.5.4: a file listed as a disk image whose first bytes say archive (a 74 GB 7z saved as .exfat, GitHub
+        // issue #1) is unpacked as one, not handed to ShadowMount, which could only fail to mount it.
+        if (job2.artifact.nextAction === "shadowmount" && archives?.inspect) {
+          const { kind } = archives.inspect([job2.downloadDestination]);
+          if (ARCHIVE_KINDS.includes(kind)) {
+            console.log(`[download-queue] ${job2.id}: listed as ${job2.artifact.format}, but its first bytes say ${kind}; unpacking it`);
+            job2.artifact = { ...job2.artifact, format: kind, nextAction: "extraction-required" };
+            job2.inspected = kind;
+          }
+        }
         if (job2.artifact.nextAction === "downloaded") route(job2);
         // ShadowMount lays backports over a game only from a folder; a backport that came as a disk image
         // stays out of homebrew/, where it would register as a second copy of the game.
@@ -795,6 +888,67 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         job2.error = refusal;
         task.cancel();
       }
+    }
+    // 0.5.4: a 7z keeps its list of files, and with it the memory its unpacking needs, at its very end, so the
+    // check above has nothing to refuse until all of it is here (a tester's 128 GB, then "can't be extracted").
+    // So before an archive, or a file of no known format, downloads, its first 32 bytes are asked of the
+    // server, and for a 7z its end: two ranges more at most (the list, the list's packed bytes), read as the
+    // extraction's own check reads them. Before, not during: the runtime runs one network task at a time, and
+    // a download holds it. Returns the refusal, or "" when it fits or could not be read (the extraction checks
+    // it again then).
+    async function checkEnd(job2, signal) {
+      const options = job2.options;
+      if (!archives?.inspectRanges || !options?.url || options.pieces) return "";
+      const ranges = [];
+      let total = options.expectedBytes || null;
+      try {
+        for (let round = 0; round < 6; round++) {
+          const { kind, size, refusal, need } = archives.inspectRanges(ranges);
+          if (ranges.length && kind !== "7z") return "";
+          // A 7z ends where its list does: a file of another length is not that one archive alone.
+          if (size !== null && total && size !== total) {
+            console.log(`[download-queue] ${job2.id}: the 7z says ${size} bytes, the server ${total}; its end is checked once downloaded`);
+            return "";
+          }
+          if (!need) {
+            console.log(`[download-queue] ${job2.id}: the 7z's end, read from the server: ${refusal || "it can be extracted"}`);
+            // Only the memory it needs refuses it here: a list that reads as damaged may be the server's answer
+            // to a range, not the file, so the whole file still gets its say.
+            return /needs more memory to extract/i.test(refusal) ? refusal : "";
+          }
+          if (need.length > END_RANGE_BYTES || total && need.offset + need.length > total) return "";
+          const range = await rangeOf(options, need, signal);
+          // The server's own size for the file, over the listing's.
+          total = range.total || total;
+          ranges.push({ offset: need.offset, bytes: range.bytes });
+        }
+      } catch (error2) {
+        if (!signal?.aborted) console.log(`[download-queue] ${job2.id}: the archive's ${ranges.length ? "end" : "first bytes"} were not read from the server (${error2.message}); it is checked once downloaded`);
+      }
+      return "";
+    }
+    // One range of a download's file, byte for byte, and the file's size its answer gives. A request with
+    // headers follows no redirect by itself, so this does, up to five; the link's own headers (a cookie, say)
+    // stay with its host. maxBytes leaves room for a redirect's own page, which the engine counts too
+    // (VikingFile's 302 carries 2 KB of HTML: a 32-byte limit failed every VikingFile check).
+    async function rangeOf({ url, headers }, { offset, length }, signal) {
+      let target = url;
+      let sent = headers;
+      for (let hops = 0; hops <= 5; hops++) {
+        const response = await http.request(target, { headers: { ...sent, Range: `bytes=${offset}-${offset + length - 1}` }, binary: true, maxBytes: Math.max(length, 64 * 1024), followRedirects: false, signal });
+        const location2 = response.headers?.location;
+        if ([301, 302, 303, 307, 308].includes(response.status) && location2) {
+          const next = location2.startsWith("/") && !location2.startsWith("//") ? webURL(target).origin + location2 : location2;
+          if (webURL(next).origin !== webURL(target).origin) sent = void 0;
+          target = next;
+          continue;
+        }
+        const bytes = response.status === 206 ? await response.bytes() : "";
+        if (bytes.length !== length) throw new Error(`HTTP ${response.status}, ${bytes.length} of ${length} bytes`);
+        const total = Number(/\/(\d+)$/.exec(response.headers?.["content-range"] || "")?.[1]);
+        return { bytes, total: Number.isSafeInteger(total) && total > 0 ? total : null };
+      }
+      throw new Error("more than five redirects");
     }
     function route(job2) {
       if (!archives?.inspect) return;
@@ -932,6 +1086,14 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       return true;
     }
     async function extract(job2, files, streamed) {
+      // 0.5.4: the app closed while this extraction's images moved into homebrew/ (imageTargets): they go back, so
+      // the extraction is found whole, checked and placed again.
+      if (job2.placing) {
+        for (const { from, to } of job2.placing) if (!fs.exists(from) && fs.exists(to)) fs.rename(to, from);
+        console.log(`[download-queue] ${job2.id}: images put back after a placing that was cut off`);
+        delete job2.placing;
+        change();
+      }
       const options = extraction(job2, files);
       const downloaded = { written: job2.written, total: job2.total };
       let estimate = files.reduce((sum, path) => sum + (fs.stat(path)?.size || 0), 0) || null;
@@ -940,22 +1102,50 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       console.log(`[download-queue] ${job2.id}: extracting ${files.length} file${files.length === 1 ? "" : "s"} (${estimate ?? "?"} bytes) to ${job2.output}${streamed ? ", while it downloads" : ""}`);
       job2.state = "extracting";
       job2.written = 0;
-      job2.total = estimate;
+      // 0.5.4: only the size the files unpack to, once the engine says it (a RAR, 7z or ZIP does, before the
+      // first file). The archive's own size stood in for it before: an archive that unpacks bigger sat at 99%
+      // with "a few seconds left" that kept growing.
+      job2.total = null;
       job2.bytesPerSecond = 0;
       change();
-      let sample = { at: Date.now(), bytes: 0 };
+      // The speed over the last half minute: each file's sync to disk stalls the count for a moment, which
+      // one-second samples read as the time left jumping up.
+      let samples = [{ at: Date.now(), bytes: 0 }];
       const report = (bytes) => {
         const now = Date.now();
-        job2.written = estimate ? Math.min(bytes, estimate * 0.99) : bytes;
-        if (now - sample.at >= 1e3) {
-          const speed = (bytes - sample.bytes) * 1e3 / (now - sample.at);
-          job2.bytesPerSecond = job2.bytesPerSecond ? job2.bytesPerSecond * 0.7 + speed * 0.3 : speed;
-          sample = { at: now, bytes };
+        job2.written = job2.total ? Math.min(bytes, job2.total * 0.99) : bytes;
+        if (now - samples[samples.length - 1].at >= 1e3) {
+          const kept = samples.filter((sample) => now - sample.at <= SPEED_WINDOW_MS);
+          const first = kept[0] ?? samples[samples.length - 1];
+          job2.bytesPerSecond = Math.max(0, (bytes - first.bytes) * 1e3 / (now - first.at));
+          samples = [...kept, { at: now, bytes }];
         }
         emit2();
       };
+      // 0.5.4: the room the files need, checked as soon as the engine says their size (a RAR, 7z or ZIP does, before
+      // the first file): too little stops it now, not hours in. A tester's game, listed near 210 GB, unpacked to
+      // 379 GB, ran out with 278 GB free and lost the work (GitHub issue #1).
+      let roomChecked = false;
+      let noRoom = "";
+      const checkRoom = (total, written) => {
+        if (roomChecked) return;
+        roomChecked = true;
+        let free;
+        try {
+          free = fs.diskUsage(job2.root).free;
+        } catch {
+          return;
+        }
+        noRoom = spaceShortfall(job2.root, Math.max(0, total - written), free, []);
+        if (!noRoom) return;
+        console.log(`[download-queue] ${job2.id}: ${noRoom}; the extraction stops before it fills the drive`);
+        active2?.task?.cancel();
+      };
       const follow = (progress) => {
-        if (progress.total && progress.total !== estimate) job2.total = estimate = progress.total;
+        if (progress.total && progress.total !== job2.total) {
+          job2.total = estimate = progress.total;
+          checkRoom(progress.total, progress.written || 0);
+        }
         if (progress.phase !== "finishing") {
           report(progress.written || 0);
           return;
@@ -970,11 +1160,12 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       try {
         if (streamed) {
           active2.task = streamed.task;
-          sample = { at: Date.now(), bytes: streamed.written };
+          samples = [{ at: Date.now(), bytes: streamed.written }];
           report(streamed.written);
           const off = streamed.task.subscribe(follow);
           const outcome = await streamed.done;
           off();
+          if (noRoom) throw new Error(noRoom);
           if (outcome.error && (job2.state === "pausing" || job2.cancelling)) throw outcome.error;
           // A password the stream couldn't use gets the known ones below, once every volume is here.
           if (outcome.error && !STREAM_FAILURE.test(cause(outcome.error.message)) && !PASSWORD_FAILURE.test(cause(outcome.error.message))) throw outcome.error;
@@ -982,7 +1173,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
             console.log("[download-queue] extraction during download stopped, extracting again:", outcome.error.message);
             job2.written = 0;
             delete job2.phase;
-            sample = { at: Date.now(), bytes: 0 };
+            samples = [{ at: Date.now(), bytes: 0 }];
             emit2();
           }
           result = outcome.result;
@@ -1003,14 +1194,15 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
               if (last || job2.state === "pausing" || job2.cancelling || !PASSWORD_FAILURE.test(cause(error2.message))) throw error2;
               console.log(`[download-queue] archive password ${index + 1} of ${passwords.length} did not open it, trying the next`);
               job2.written = 0;
-              sample = { at: Date.now(), bytes: 0 };
+              samples = [{ at: Date.now(), bytes: 0 }];
               emit2();
             } finally {
               off();
             }
           }
         }
-      } catch (error2) {
+      } catch (caught) {
+        const error2 = noRoom && !job2.cancelling && job2.state !== "pausing" ? new Error(noRoom) : caught;
         console.log(`[download-queue] ${job2.id}: extraction stopped after ${Math.round((Date.now() - began) / 1e3)} s${job2.cancelling ? " (cancelled)" : job2.state === "pausing" ? " (paused)" : ""}: ${error2.message}`);
         if (await forgetPart(job2, error2)) downloaded.written = job2.parts.reduce((sum, part) => sum + part.written, 0);
         throw error2;
@@ -1028,20 +1220,23 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         // tracked: a set's update or add-on image mounts with its base, and both must be up to count.
         const checked = verifyImages(job2, images);
         if (images.length > 1) console.log(`[download-queue] ${job2.id}: ${images.length} images, base first: ${images.join(", ")}`);
-        const destination = `${job2.root}/homebrew/${job2.release.filename.replace(/[^a-z0-9_.-]/gi, "_")}-extracted`;
         fs.mkdir(`${job2.root}/homebrew`, { recursive: true });
-        job2.publishTo = destination;
+        storageIdentity(job2);
+        const moves = imageTargets(job2, images.map((path) => `${job2.output}/${path}`));
+        // Saved before the first one moves: an app closed half-way puts them back (extract) and places them again.
+        job2.placing = moves;
         change();
-        if (job2.output !== destination) {
-          if (fs.exists(destination)) throw new Error("Extracted destination already exists; preserve it and inspect before retrying.");
-          storageIdentity(job2);
-          fs.rename(job2.output, destination);
-          job2.output = destination;
-        }
+        for (const { from, to } of moves) fs.rename(from, to);
+        const sizes = new Map(checked.map(({ path, size }) => [`${job2.output}/${path}`, size]));
         job2.artifact.nextAction = "shadowmount";
-        job2.artifact.images = images.map((path) => `${job2.output}/${path}`);
+        job2.artifact.images = moves.map(({ to }) => to);
         job2.artifact.destination = job2.artifact.images[0];
-        job2.payload = checked.map(({ path, size }) => ({ path: `${job2.output}/${path}`, size }));
+        job2.payload = moves.map(({ from, to }) => ({ path: to, size: sizes.get(from) }));
+        delete job2.placing;
+        console.log(`[download-queue] ${job2.id}: ${moves.map(({ to }) => to).join(", ")} placed in homebrew/`);
+        // What the archive held beside the images (notes) stays outside the scan as <name>-extras, deleted with the job.
+        await keepExtras(job2);
+        delete job2.output;
         job2.state = "downloaded";
         job2.message = t("downloads.extractedReady", { parts: job2.parts ? "all" : "one" });
       } else {
@@ -1114,6 +1309,29 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       return streamed;
     }
     const setDirectory = (job2) => `${job2.root}/downloads/sets/${job2.release.filename}`;
+    // 0.5.4: a "set" whose first part is a whole disk image lists images, not an archive's volumes: one catalog numbers
+    // each copy of a game's .exfat as a part (DREDGE's "part 1" and "part 2" are the same PPSA09076.exfat, Cult of the
+    // Lamb's are its two regions'). Unpacking them as one archive could only fail, after downloading every one. The
+    // first is the game: placed in homebrew/ as an image, under the game's title id; the others are not downloaded.
+    async function placeImagePart(job2, part, kind) {
+      const name = `${String(job2.titleId || job2.gameId).replace(/[^a-z0-9_.-]/gi, "_")}.${kind}`;
+      fs.mkdir(`${job2.root}/homebrew`, { recursive: true });
+      storageIdentity(job2);
+      const [{ to }] = imageTargets(job2, [`${setDirectory(job2)}/${name}`]);
+      fs.rename(part.destination, to);
+      if (fs.exists(`${part.destination}.complete`)) fs.rename(`${part.destination}.complete`, `${to}.complete`);
+      const size = fs.stat(to)?.size ?? part.written;
+      endAhead(job2, null);
+      delete job2.message;
+      job2.artifact = { ...job2.artifact, format: kind, directory: `${job2.root}/homebrew`, destination: to, images: [to], nextAction: "shadowmount" };
+      job2.payload = [{ path: to, size }];
+      job2.written = job2.total = size;
+      job2.state = "downloaded";
+      console.log(`[download-queue] ${job2.id}: part 1 is a whole ${kind} image, placed as ${to}; the other ${job2.parts.length - 1} part(s), copies of the game, are not downloaded`);
+      change();
+      await fs.removeAsync(setDirectory(job2)).catch((error2) => console.log("[download-queue] set folder not deleted:", error2.message));
+      notifications.show(t("downloads.notice.complete"), job2.title);
+    }
     function setNeed(job2, extracted = 0) {
       const sizes = job2.parts.map((item) => item.total ?? item.options?.expectedBytes ?? null);
       const largest = Math.max(0, ...sizes.filter(Boolean));
@@ -1240,6 +1458,8 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
                 task.cancel();
               }
               if (index === 0) checkHeaders(job2, `${part.destination}.part`, task);
+              // A first part that is a whole image needs no other part (placeImagePart): no browser for the next.
+              if (index === 0 && IMAGE_KINDS.includes(job2.inspected)) endAhead(job2, null);
             }
             emit2();
           });
@@ -1264,8 +1484,12 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
           job2.written = job2.parts.reduce((sum, item) => sum + item.written, 0);
           part.completed = true;
           change();
-          const refusal = index === 0 && archives?.inspect([part.destination]).refusal;
-          if (refusal) throw new Error(refusal);
+          const inspection = index === 0 && archives?.inspect ? archives.inspect([part.destination]) : null;
+          if (inspection?.refusal) throw new Error(inspection.refusal);
+          if (IMAGE_KINDS.includes(inspection?.kind)) {
+            await placeImagePart(job2, part, inspection.kind);
+            return;
+          }
         }
       } finally {
         delete active2.streamed;
@@ -1737,6 +1961,15 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         console.log(`[download-queue] launch history not saved: ${error2.message}`);
       }
     }
+    // 0.5.4: how a title is on the console, for a launch's report: its image's format, a game folder, or "other" (one
+    // no download here put there), whether a backport went with it, and whether Fix it had changed something.
+    function launchFacts(title) {
+      const own = jobs.filter((job2) => titleOf(job2) === title && job2.state === "installed");
+      const game = own.find((job2) => job2.role !== "backport" && job2.artifact?.nextAction === "shadowmount");
+      const image = game?.artifact.images?.[0] ?? game?.artifact.destination ?? "";
+      const format = !game ? "other" : /\.(exfat|ffpkg|ffpfsc|ffpfs)$/i.exec(image)?.[1].toLowerCase() ?? "folder";
+      return { format, fixed: Boolean(fixes[title]), backport: own.some((job2) => job2.role === "backport") };
+    }
     // Takes what ShadowMount's log says about launches into the history; true when something changed.
     function learnLaunches(outcomes) {
       let learned = false, fixed = false;
@@ -1748,6 +1981,12 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         launches = { ...launches, [title]: { outcome, verdict, mark, at: Date.now() } };
         learned = true;
         console.log(`[download-queue] last launch of ${title}: ${outcome} (${verdict})`);
+        // Before Fix it's record of it is let go below: whether it had changed something counts in the report.
+        try {
+          onLaunch(title, { outcome, verdict, ...launchFacts(title) });
+        } catch (error2) {
+          console.log(`[download-queue] launch of ${title} not reported: ${error2?.message}`);
+        }
         // 0.5.2: a game Fix it worked on started: what it changed stays, its rounds start over.
         if (outcome === "played" && fixes[title]) {
           fixes = Object.fromEntries(Object.entries(fixes).filter(([key]) => key !== title));
@@ -2231,6 +2470,11 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       /** A title's last launch and what Fix it did (0.5.2), for a game or app no download put on the console. */
       titleLaunch(title) {
         return { launch: launches[title]?.outcome ? launches[title] : null, fixIt: fixes[title] ?? null };
+      },
+      /** 0.5.4: every title's last launch as a report says it ({title, outcome, verdict, format, fixed, backport}). */
+      launchHistory() {
+        return Object.entries(launches).filter(([, launch]) => launch?.outcome && launch.verdict && !("forgotten" in launch))
+          .map(([title, { outcome, verdict }]) => ({ title, outcome, verdict, ...launchFacts(title) }));
       },
       /**
        * 0.5.2: "Fix it", for a game or app that won't start: the two fixes the app had only by hand, in one

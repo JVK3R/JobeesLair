@@ -4,7 +4,9 @@
 // One sample per script the framework renders (docs/TEXT.md): wrapping, truncation and mixed runs.
 // The right column wraps Overdrive's downloads notes as its 280 px text-sm boxes do at 1.5× (the
 // layouts tools/test_text.py checks): lines break at spaces, CJK between characters.
-import {AppRegistry, View, Text} from '@ps5-react/core';
+// The bottom row opens the on-screen keyboard (Keyboard, docs/NATIVE-API.md) and shows what came back.
+import {useState} from 'react';
+import {AppRegistry, FocusScope, Keyboard, Pressable, View, Text} from '@ps5-react/core';
 import Inter from '../starter/assets/Inter-Regular.ttf';
 
 const SAMPLES = [
@@ -21,6 +23,8 @@ const SAMPLES = [
   ['ur', 'اردو: ڈاؤن لوڈ مکمل ہو گیا ہے۔ قیمت ۲۴٫۲ GB'],
   ['de', 'Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich.'],
   ['ja', 'いろはにほへと ちりぬるを。ダウンロード完了「日本語」、漢字かな交じり文。'],
+  // textFonts "symbols" and "emoji": drawn from Noto Sans Symbols 2 / Symbols and Noto Emoji, not as "?".
+  ['sym', 'Done ✓ Failed ✕ ★★★☆ ⚠ ⏸ ▶ ← → ↑ ↓ ① ② △ ○ □ · Emoji 🎮 🚀 ✨ 👍🏽 ❤️ 👨‍👩‍👧'],
 ];
 
 const NOTES = [
@@ -38,6 +42,29 @@ const NOTES = [
 const label = {fontFamily: Inter, fontSize: 20, color: '#7f93a3', width: 90};
 const sample = {fontFamily: Inter, fontSize: 26, color: '#f1f5f9', flexShrink: 1};
 const note = {fontFamily: Inter, fontSize: 21, lineHeight: 30, color: '#f1f5f9', width: 420};
+
+// Opens the keyboard with the last text typed; shows how it closed.
+function TypeBox() {
+  const [result, setResult] = useState({status: '', text: 'Press Cross to type'});
+  const type = () => {
+    try {
+      Keyboard.open({title: 'Type anything', text: result.status === 'done' ? result.text : '', maxLength: 80, enter: 'go'})
+        .then(setResult);
+    } catch (error) {
+      setResult({status: 'failed', text: error.message});
+    }
+  };
+  return (
+    <View style={{flexDirection: 'row', gap: 16, alignItems: 'center'}}>
+      <Pressable focusKey="type" onPress={type}
+        style={({focused}) => ({backgroundColor: focused ? '#4cc9f0' : '#294559', paddingHorizontal: 20, paddingVertical: 8})}>
+        <Text style={{...label, width: undefined, color: '#101820'}}>Type</Text>
+      </Pressable>
+      <Text style={label}>{result.status || 'idle'}</Text>
+      <Text style={sample}>{result.text}</Text>
+    </View>
+  );
+}
 
 function App() {
   return (
@@ -61,7 +88,9 @@ function App() {
           </Text>
         </View>
         <View style={{flexDirection: 'row', gap: 40}}>
-          <View style={{direction: 'rtl', width: 560, gap: 8, backgroundColor: '#182630', padding: 8}}>
+          <View style={{direction: 'rtl', width: 560, gap: 8, backgroundColor: '#182630', padding: 8, paddingStart: 40}}>
+            {/* Logical edges: `end` is the left edge here, and paddingStart (40) is on the right. */}
+            <View style={{position: 'absolute', top: 8, end: 8, width: 16, height: 16, backgroundColor: '#4cc9f0'}} />
             <Text style={sample}>مكتبة الألعاب (٣) — PS5 تحميل 24.2 GB</Text>
             <View style={{flexDirection: 'row', gap: 8}}>
               {['١', '٢', '٣'].map(n => (
@@ -72,13 +101,17 @@ function App() {
             </View>
             <Text numberOfLines={1} style={sample}>هذا نص عربي طويل جدا يجب أن ينتهي بعلامة حذف في نهايته اليسرى</Text>
           </View>
-          <Text style={{...sample, width: 560, backgroundColor: '#182630'}}>
-            Mixed: PS5 تحميل 24.2 GB, हिन्दी and বাংলা in one line.
-          </Text>
+          <View style={{width: 560, backgroundColor: '#182630', paddingStart: 40}}>
+            <View style={{position: 'absolute', top: 8, end: 8, width: 16, height: 16, backgroundColor: '#4cc9f0'}} />
+            <Text style={sample}>Mixed: PS5 تحميل 24.2 GB, हिन्दी and বাংলা in one line.</Text>
+          </View>
         </View>
       </View>
       <View style={{width: 420, gap: 12}}>
         {NOTES.map(text => <Text key={text} style={note}>{text}</Text>)}
+        <FocusScope autoFocus>
+          <TypeBox />
+        </FocusScope>
       </View>
     </View>
   );

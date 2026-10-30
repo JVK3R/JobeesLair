@@ -16,6 +16,14 @@
 // PIN): every phone that signs in gets it, the server accepts it from launch, and the helper is given it too.
 // A phone stays signed in when Jobee'sLair restarts and when it closes and the helper takes over (and back);
 // a new PIN makes a new one, which signs every phone out.
+// MODIFIED (0.5.4): the page comes in the console's language (a new one swaps it in place, and open pages load it
+// again), and a phone with it open hears what changes as it happens (GET /api/events): the queue, the Homebrew
+// section's progress, announcements, and how Fix it, Remove and the rest went (companion/live.js: at most twice a
+// second, and only while a phone listens). companion/usage.js counts how much a phone uses it, for the stats ping.
+// MODIFIED (0.5.4, later): what took typing on a controller or digging through Settings: a box on the console that
+// asks for text is answered from the phone (state/phone-typing.js, pushed as `typing`); the debrid keys (set from the
+// phone, never sent back but as their last four characters), the speed limit, parts and the app's update are the
+// phone's Settings; a download waiting on the browser takes the file link the phone found.
 
 import { useEffect, useState } from 'react';
 import { describeSource } from '../game/sources.js';
@@ -29,18 +37,31 @@ import { loadList, saveList } from '../state/saved.js';
 import { CREATOR, TITLE_ID, VERSION_LABEL } from '../version.js';
 import { FileSystem, LocalServer, Payloads, Platform } from '@ps5-react/core';
 import { PAYLOAD_DIR } from '../state/homebrew-store.js';
-import { createCompanionApi } from './api.js';
+import { companionEvents, createCompanionApi } from './api.js';
 import { logger } from '../services/logger.js';
-import { PAGE } from './page.js';
+import { pageFor } from './page.js';
 import { pressRemote, runShortcut } from './remote.js';
-import { startRemoteDownload } from './remote-download.js';
+import { startRemoteDownload, throughDebrid } from './remote-download.js';
 import { homebrew } from '../state/homebrew-store.js';
+import { catalogFor, getLocale, subscribe as onLanguage, t } from '../i18n/core.js';
+import { activeService, debridSnapshot, debridStatus, serviceName, setAllDebridKey, setTorBoxKey, testAllDebrid, testTorBox } from '../state/debrid.js';
+import { answerFromPhone, onPhoneAsking, phoneAsking } from '../state/phone-typing.js';
+import { playersOf } from '../state/compat.js';
+import { LIMITS as SPEED_LIMITS, setSpeedLimit, speedLimitNow } from '../state/speed-limit.js';
+import { autoContinueParts, setAutoContinueParts } from '../state/auto-continue.js';
+import { canInstall, checkForUpdate, downloadUpdate, restartToApply, setAutoInstall, updateDetail, updateSnapshot } from '../state/update.js';
+import { isRTL } from '../i18n/locales.js';
+import { online } from '../state/online.js';
+import { fixEntry, forgetLibrary, libraryList } from './library.js';
+import { countMinute, countRequest, trackCompanion } from './usage.js';
+import { createLive } from './live.js';
 
   // Tried in order; 0 lets the system pick any free port. Settings shows the one it got.
   var PORTS = [34177, 8080, 0];
   var PUMP_MS = 100;
   var SETTINGS = "settings.json";
-  var handle = createCompanionApi({
+  // What the companion reads and does on the console: api.js answers phones from it and builds the live events.
+  var deps = {
     catalog: {
       search: (query) => sortGames(filterGames({ filters: NO_FILTERS, query, wishlist: [] }), "relevance"),
       getGame
@@ -49,6 +70,14 @@ import { homebrew } from '../state/homebrew-store.js';
     releasesOf: (game) => linkHealth().overlay(game.releases),
     download: startRemoteDownload,
     queue: () => downloadQueue().snapshot().filter((job) => !job.cleared),
+    // 0.5.4: the console's Library, and announcements as the bar under its top menu shows them.
+    library: { list: libraryList, fix: fixEntry },
+    notes: () => online().snapshot().announcements,
+    // How something slow went (Fix it, Remove, Cancel all), to every phone with the page open.
+    notify: (payload) => {
+      forgetLibrary();
+      push("notice", payload);
+    },
     control: {
       pause: (id) => downloadQueue().pause(id),
       resume: (id) => downloadQueue().resume(id),
@@ -60,7 +89,43 @@ import { homebrew } from '../state/homebrew-store.js';
         else queue.remove(id);
       },
       // 0.5.0 Pre Release 3: a part waiting on the browser opens it on the console, from the phone.
-      browser: (id) => downloadQueue().openBrowser(id)
+      browser: (id) => downloadQueue().openBrowser(id),
+      // 0.5.4: the Downloads page's Clear finished and Cancel all.
+      clearFinished: () => downloadQueue().clearFinished(),
+      cancelAll: () => downloadQueue().cancelAll(),
+      // The file link the phone found for a download waiting on the browser, as if typed on the console.
+      link: (id, url) => downloadQueue().continueWithURL(id, url)
+    },
+    // The phone's Close: the box goes as Circle would close it (the PS5 keyboard with it, or the store's own keys).
+    typing: {
+      asking: phoneAsking,
+      answer: answerFromPhone,
+      close: (id) => {
+        if (phoneAsking()?.id !== id) throw new Error("The console isn't asking for that any more.");
+        pressRemote("back");
+      }
+    },
+    debridOf: (release) => throughDebrid(release) ? serviceName(activeService()) : null,
+    playersOf,
+    settings: {
+      read: settingsNow,
+      debridKey: (service, key) => service === "alldebrid" ? setAllDebridKey(key) : setTorBoxKey(key),
+      // A test the player asked for pauses a running download meanwhile, as Settings' does.
+      debridTest: async (service) => {
+        const quiet = (reason, work) => downloadQueue().quietNetwork ? downloadQueue().quietNetwork(reason, work) : work();
+        const account = await (service === "alldebrid" ? testAllDebrid : testTorBox)({ quiet });
+        return `${serviceName(service)}: ${debridStatus(t, service, account)}`;
+      },
+      speed: setSpeedLimit,
+      parts: setAutoContinueParts,
+      checkUpdate: async () => {
+        await checkForUpdate();
+        const { update, install } = updateSnapshot();
+        return updateDetail(t, update, install);
+      },
+      installUpdate: downloadUpdate,
+      restart: restartToApply,
+      autoUpdate: setAutoInstall
     },
     storage: drives,
     feeds: { list: () => feedsSnapshot(), add: addFeed, edit: replaceFeed, remove: removeFeed, refresh: refreshFeeds, addMirror, removeMirror },
@@ -69,7 +134,8 @@ import { homebrew } from '../state/homebrew-store.js';
       if (action === "refresh") void refreshFeeds();
       else runShortcut(action);
     },
-    info: () => ({ app: "Jobee'sLair", version: VERSION_LABEL, creator: CREATOR }),
+    // `language`: a page in another one loads again (it changed while the page was asleep).
+    info: () => ({ app: "Jobee'sLair", version: VERSION_LABEL, creator: CREATOR, language: getLocale() }),
     // The last 512 KB of the debug log, for "Report a problem" on the phone (0.5.0 Pre Release 4).
     logs: () => logger().tail(512 * 1024),
     // The Homebrew section, read only when a phone first asks for it.
@@ -83,9 +149,39 @@ import { homebrew } from '../state/homebrew-store.js';
       installedApps: () => homebrew().installedApps(),
       install: (id, file) => homebrew().install(id, file),
       run: (id) => homebrew().run(id),
-      cancel: (id) => homebrew().cancel(id)
+      cancel: (id) => homebrew().cancel(id),
+      remove: (id, options) => homebrew().remove(id, options),
+      savedData: (id) => homebrew().savedData(id),
+      runHelper: (id) => homebrew().runHelper(id)
     }
-  });
+  };
+  // The phone's Settings: what the console's Settings shows of these, with its names for them (`labels`, in the
+  // console's language as the page is). A debrid key is only ever its last four characters here.
+  function settingsNow() {
+    const debrid = debridSnapshot();
+    const { update, install, auto } = updateSnapshot();
+    const account = (service, state) => ({ set: state.configured, masked: state.masked, status: debridStatus(t, service, state.account) || "" });
+    const latest = update.update?.version ?? null;
+    return {
+      debrid: { active: debrid.active, torbox: account("torbox", debrid), alldebrid: account("alldebrid", debrid.allDebrid) },
+      speed: { limit: speedLimitNow(), choices: SPEED_LIMITS.map((value) => ({ value, label: value ? t("units.speed", { n: String(value) }) : t("settings.speedUnlimited") })) },
+      parts: autoContinueParts(),
+      update: { version: VERSION_LABEL, status: updateDetail(t, update, install), latest, checking: update.checking, canInstall, phase: latest && install.version === latest ? install.phase : "idle", error: install.error || "", auto },
+      labels: {
+        debrid: t("settings.card.debrid"), torbox: t("settings.debrid.key"), alldebrid: t("settings.alldebrid.key"),
+        torboxStored: t("settings.debrid.stored"), alldebridStored: t("settings.alldebrid.stored"), both: t("settings.alldebrid.both"),
+        test: t("settings.debrid.test"), remove: t("settings.debrid.remove"),
+        downloads: t("settings.card.downloads"), speed: t("settings.speedLimit"), speedDetail: t("settings.speedLimitDetail"),
+        parts: t("settings.autoParts"), partsDetail: t("settings.autoPartsDetail"),
+        check: t("settings.update.row"), install: t("update.install.download"), restart: t("update.install.restart"), restartDetail: t("update.install.readyDetail"),
+        auto: t("settings.update.auto"), autoDetail: t("settings.update.autoDetail")
+      }
+    };
+  }
+  var handle = createCompanionApi(deps);
+  var events = companionEvents(deps);
+  // The page in the console's language (the phone.* messages, English where it has none).
+  var pageNow = () => pageFor({ strings: catalogFor("phone."), language: getLocale(), rtl: isRTL(getLocale()) });
   // Every drive downloads can go to, with its space, from the cache: nothing here waits on a drive. The
   // phone asks again every few seconds, so asking the worker to look again is enough to keep it current.
   function drives() {
@@ -136,6 +232,8 @@ import { homebrew } from '../state/homebrew-store.js';
   var hasPin = () => currentPin() !== "";
   // On means switched on and able to start: a console that had it on before PINs were chosen waits for one.
   var isEnabled = () => (enabledNow ?? (enabledNow = loadList(SETTINGS, "settings").companion === true)) && hasPin();
+  // For the stats ping (companion/usage.js): whether it's on, and kept on while the app is closed.
+  trackCompanion(() => ({ on: isEnabled(), away: isEnabled() && isAway() }));
   function saveSettings(change) {
     saveList(SETTINGS, "settings", { ...loadList(SETTINGS, "settings"), companionCode: void 0, ...change });
   }
@@ -193,6 +291,44 @@ import { homebrew } from '../state/homebrew-store.js';
   var changed = () => {
     for (const listener of listeners) listener();
   };
+  // ---- Live updates (0.5.4): companion/live.js, while the server runs ----
+  var live = null;
+  var unlisten = [];
+  function push(name, value) {
+    if (timer && live) live.push(name, value);
+  }
+  function listen() {
+    live = createLive({
+      server: LocalServer,
+      events,
+      notes: () => online().snapshot().announcements,
+      onMinute: countMinute,
+      log: (message) => console.log(`companion: ${message}`)
+    });
+    unlisten = [
+      downloadQueue().subscribe(() => live.mark("queue")),
+      homebrew().subscribe(() => live.mark("homebrew")),
+      online().subscribe((now) => live.notesChanged(now.announcements)),
+      // A box on the console asking for text, or none now: phones show it (or stop) at once.
+      onPhoneAsking((asking) => push("typing", { asking }))
+    ];
+  }
+  function unlistenAll() {
+    for (const off of unlisten) off();
+    unlisten = [];
+    live = null;
+  }
+  // A new language: the page is swapped in place (no phone is signed out), and open pages load it again.
+  onLanguage((code) => {
+    if (!timer) return;
+    try {
+      LocalServer.setPage(pageNow());
+    } catch (error) {
+      console.log(`companion: the page in ${code} not set: ${error.message}`);
+      return;
+    }
+    push("app", { language: code });
+  });
   function pump() {
     let requests;
     try {
@@ -204,6 +340,7 @@ import { homebrew } from '../state/homebrew-store.js';
     // Each request on its own: an answer the server refuses (too large) becomes a 500, and one failure
     // never leaves the rest of the batch waiting out their timeout.
     for (const request of requests) {
+      countRequest(request.method, request.path);
       try {
         const answer = handle(request);
         LocalServer.respond(request.id, answer.status, answer.type, answer.body);
@@ -215,13 +352,15 @@ import { homebrew } from '../state/homebrew-store.js';
         }
       }
     }
+    if (live) live.tick(Date.now());
   }
   function startServer() {
     if (timer || !hasPin()) return;
     try {
-      LocalServer.start({ ports: PORTS, pin: currentPin(), page: PAGE, session: currentSession() });
+      LocalServer.start({ ports: PORTS, pin: currentPin(), page: pageNow(), session: currentSession() });
       problem = "";
       timer = setInterval(pump, PUMP_MS);
+      listen();
       console.log(`companion: starting on the first free of ${PORTS.join(", ")}`);
     } catch (error) {
       problem = error.message;
@@ -232,6 +371,7 @@ import { homebrew } from '../state/homebrew-store.js';
   function stopServer() {
     if (timer) clearInterval(timer);
     timer = null;
+    unlistenAll();
     try {
       LocalServer.stop();
     } catch (error) {

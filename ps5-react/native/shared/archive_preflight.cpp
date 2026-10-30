@@ -14,7 +14,9 @@
 #include <fcntl.h>
 #include <string_view>
 #include <sys/stat.h>
+#include <tuple>
 #include <unistd.h>
+#include <utility>
 
 namespace archives {
 // A RAR's headers sit between its files' data, each a disk read of its own, and inspect() runs on the
@@ -50,21 +52,25 @@ std::uint64_t little_endian(const unsigned char* bytes, unsigned count) {
 // The ordered volumes as the one byte stream libarchive reads.
 class Volumes {
 public:
-  explicit Volumes(const std::vector<std::string>& paths) : paths_(paths) {
-    for (const auto& path : paths_) {
+  explicit Volumes(const std::vector<std::string>& paths) : paths_(&paths) {
+    for (const auto& path : paths) {
       struct stat st;
       starts_.push_back(total_);
       if (!stat(path.c_str(), &st) && st.st_size > 0) total_ += st.st_size;
     }
   }
+  // Ranges fetched from an archive `total` bytes long; the first read outside them is kept in `missing`.
+  Volumes(const std::vector<Range>& ranges, std::uint64_t total) : ranges_(&ranges), total_(total) {}
   Volumes(const Volumes&) = delete;
   Volumes& operator=(const Volumes&) = delete;
   ~Volumes() {
     if (fd_ >= 0) close(fd_);
   }
   std::uint64_t size() const { return total_; }
+  std::pair<std::uint64_t, std::uint64_t> missing{0, 0};
   bool read(std::uint64_t offset, void* out, std::size_t size) {
     if (offset > total_ || size > total_ - offset) return false;
+    if (ranges_) return read_ranges(offset, static_cast<unsigned char*>(out), size);
     auto* target = static_cast<unsigned char*>(out);
     while (size) {
       const auto volume = static_cast<std::size_t>(std::upper_bound(starts_.begin(), starts_.end(), offset) - starts_.begin()) - 1;
@@ -84,11 +90,30 @@ public:
 private:
   bool open(std::size_t volume) {
     if (fd_ >= 0) close(fd_);
-    fd_ = ::open(paths_[volume].c_str(), O_RDONLY | O_NOFOLLOW);
+    fd_ = ::open((*paths_)[volume].c_str(), O_RDONLY | O_NOFOLLOW);
     open_ = volume;
     return fd_ >= 0;
   }
-  const std::vector<std::string>& paths_;
+  bool read_ranges(std::uint64_t offset, unsigned char* target, std::size_t size) {
+    while (size) {
+      const auto found = std::find_if(ranges_->begin(), ranges_->end(), [&](const Range& range) {
+        return range.offset <= offset && offset - range.offset < range.bytes.size();
+      });
+      if (found == ranges_->end()) {
+        if (!missing.second) missing = {offset, size};
+        return false;
+      }
+      const auto at = static_cast<std::size_t>(offset - found->offset);
+      const auto count = std::min(size, found->bytes.size() - at);
+      std::memcpy(target, found->bytes.data() + at, count);
+      target += count;
+      offset += count;
+      size -= count;
+    }
+    return true;
+  }
+  const std::vector<std::string>* paths_ = nullptr;
+  const std::vector<Range>* ranges_ = nullptr;
   std::vector<std::uint64_t> starts_;
   std::uint64_t total_ = 0;
   std::size_t open_ = SIZE_MAX;
@@ -406,6 +431,14 @@ std::uint64_t folder_memory(const Folder& item, const Streams& streams, Volumes&
   return memory;
 }
 
+// A folder's files come out of its one output that no coder takes in.
+std::uint64_t unpacked_size(const Folder& item) {
+  for (std::uint64_t output = 0; output < item.sizes.size(); ++output)
+    if (std::none_of(item.bindings.begin(), item.bindings.end(), [&](const auto& binding) { return binding.second == output; }))
+      return item.sizes[output];
+  return 0;
+}
+
 bool decode_header(const Coder& coder, const std::vector<unsigned char>& packed, std::vector<unsigned char>& header) {
   std::array<lzma_filter, 2> filters{{{coder.method == lzma2 ? LZMA_FILTER_LZMA2 : LZMA_FILTER_LZMA1, nullptr}, {LZMA_VLI_UNKNOWN, nullptr}}};
   if (lzma_properties_decode(filters.data(), nullptr, coder.properties.data(), coder.properties.size()) != LZMA_OK) return false;
@@ -438,7 +471,7 @@ bool unpack_header(Volumes& in, Cursor& cursor, std::vector<unsigned char>& head
   return in.read(signature_size + streams.pack_position, packed.data(), packed.size()) && decode_header(coder, packed, header);
 }
 
-std::string check(Volumes& in) {
+std::string check(Volumes& in, std::uint64_t* unpacked) {
   std::array<unsigned char, signature_size> signature{};
   if (!in.read(0, signature.data(), signature.size())) return malformed;
   const auto offset = little_endian(signature.data() + 12, 8);
@@ -474,8 +507,12 @@ std::string check(Volumes& in) {
     } else return malformed;
   }
   if (!cursor.ok) return malformed;
-  std::uint64_t memory = 0;
-  for (const auto& item : main.folders) memory = std::max(memory, folder_memory(item, main, in));
+  std::uint64_t memory = 0, total = 0;
+  for (const auto& item : main.folders) {
+    memory = std::max(memory, folder_memory(item, main, in));
+    total += std::min(unpacked_size(item), unbounded - total);
+  }
+  if (unpacked) *unpacked = total;
   return fits(memory);
 }
 }
@@ -603,7 +640,7 @@ std::uint64_t entry_window(Volumes& in, unsigned method, std::uint64_t local) {
 }
 
 // Returns false when the stream has no central directory, i.e. libarchive will not read it as ZIP.
-bool check(Volumes& in, std::string& refusal) {
+bool check(Volumes& in, std::string& refusal, std::uint64_t* unpacked) {
   const auto tail_size = std::min(in.size(), end_size + max_comment);
   std::vector<unsigned char> tail(tail_size);
   if (tail_size < end_size || !in.read(in.size() - tail_size, tail.data(), tail.size())) return false;
@@ -631,7 +668,8 @@ bool check(Volumes& in, std::string& refusal) {
     refusal = too_many_entries;
     return true;
   }
-  std::uint64_t at = base + directory_at, memory = 0;
+  std::uint64_t at = base + directory_at, memory = 0, total = 0;
+  bool sized = true;
   for (std::uint64_t entry = 0; entry < entries; ++entry) {
     std::array<unsigned char, 46> central{};
     if (!in.read(at, central.data(), central.size()) || little_endian(central.data(), 4) != central_signature) {
@@ -641,32 +679,37 @@ bool check(Volumes& in, std::string& refusal) {
     const auto method = static_cast<unsigned>(little_endian(central.data() + 10, 2));
     const auto name_size = little_endian(central.data() + 28, 2);
     const auto extra_size = little_endian(central.data() + 30, 2);
+    const bool windowed = method == lzma || method == zstd || method == xz || method == ppmd;
+    std::uint64_t size = little_endian(central.data() + 24, 4);
     std::uint64_t local = little_endian(central.data() + 42, 4);
-    if (method == lzma || method == zstd || method == xz || method == ppmd) {
-      if (local == saturated) {
-        std::vector<unsigned char> extra(extra_size);
-        if (!in.read(at + central.size() + name_size, extra.data(), extra.size())) {
-          refusal = malformed;
-          return true;
-        }
-        Cursor cursor{extra.data(), extra.data() + extra.size()};
-        while (cursor.ok && cursor.at < cursor.end) {
-          const auto id = cursor.fixed(2);
-          const auto size = cursor.fixed(2);
-          if (id != 1) {
-            cursor.skip(size);
-            continue;
-          }
-          if (little_endian(central.data() + 24, 4) == saturated) cursor.skip(8);
-          if (little_endian(central.data() + 20, 4) == saturated) cursor.skip(8);
-          local = cursor.fixed(8);
-          break;
-        }
+    // ZIP64 keeps a saturated size and offset in extra field 1: the size first, then the packed size.
+    if (size == saturated || (windowed && local == saturated)) {
+      std::vector<unsigned char> extra(extra_size);
+      const bool read = in.read(at + central.size() + name_size, extra.data(), extra.size());
+      if (!read && windowed && local == saturated) {
+        refusal = malformed;
+        return true;
       }
-      memory = std::max(memory, entry_window(in, method, base + local));
+      Cursor cursor{extra.data(), extra.data() + (read ? extra.size() : 0)};
+      while (cursor.ok && cursor.at < cursor.end) {
+        const auto id = cursor.fixed(2);
+        const auto length = cursor.fixed(2);
+        if (id != 1) {
+          cursor.skip(length);
+          continue;
+        }
+        if (size == saturated) size = cursor.fixed(8);
+        if (little_endian(central.data() + 20, 4) == saturated) cursor.skip(8);
+        if (local == saturated) local = cursor.fixed(8);
+        break;
+      }
     }
+    if (windowed) memory = std::max(memory, entry_window(in, method, base + local));
+    sized = sized && size != saturated;
+    total += std::min(size, unbounded - total);
     at += central.size() + name_size + extra_size + little_endian(central.data() + 32, 2);
   }
+  if (unpacked) *unpacked = sized ? total : 0;
   refusal = fits(memory);
   return true;
 }
@@ -677,19 +720,20 @@ bool starts_with(const std::array<unsigned char, 8>& magic, std::string_view pre
 }
 }
 
-std::string preflight(const std::vector<std::string>& sources) {
+std::string preflight(const std::vector<std::string>& sources, std::uint64_t* unpacked) {
+  if (unpacked) *unpacked = 0;
   Volumes in(sources);
   std::array<unsigned char, 8> magic{};
   in.read(0, magic.data(), static_cast<std::size_t>(std::min<std::uint64_t>(magic.size(), in.size())));
   // libarchive searches executables for an embedded archive, which these checks do not follow.
   if (starts_with(magic, "MZ") || starts_with(magic, "\x7F" "ELF")) return "Self-extracting archives are not supported.";
-  if (starts_with(magic, "7z\xBC\xAF\x27\x1C")) return seven_zip::check(in);
+  if (starts_with(magic, "7z\xBC\xAF\x27\x1C")) return seven_zip::check(in, unpacked);
   if (starts_with(magic, rar5::signature)) return rar5::check(in, false);
   if (starts_with(magic, rar4::signature)) return rar4::check(in, false);
   // Compression around a TAR: only the outer layer is checked.
   if (const auto window = std::max({xz_window(in, 0), zstd_window(in, 0), lzip_window(in)})) return fits(window);
   std::string refusal;
-  if (zip::check(in, refusal)) return refusal;
+  if (zip::check(in, refusal, unpacked)) return refusal;
   if (starts_with(magic, "PK\x03\x04")) return malformed;
   return fits(lzma_alone_window(in));
 }
@@ -734,5 +778,21 @@ Inspection inspect(const std::vector<std::string>& sources) {
   if (starts_with(boot, "EXFAT   ")) return {"exfat", {}};
   if (little_endian(ufs.data(), 4) == 0x19540119) return {"ffpkg", {}};
   return {};
+}
+
+RangeInspection inspect_ranges(const std::vector<Range>& ranges) {
+  const auto start = std::find_if(ranges.begin(), ranges.end(), [](const Range& range) { return !range.offset; });
+  if (start == ranges.end() || start->bytes.size() < seven_zip::signature_size) return {{}, {}, 0, 0, seven_zip::signature_size};
+  if (start->bytes.compare(0, 6, std::string_view("7z\xBC\xAF\x27\x1C", 6))) return {};
+  const auto* head = reinterpret_cast<const unsigned char*>(start->bytes.data());
+  const auto offset = little_endian(head + 12, 8), length = little_endian(head + 20, 8);
+  // 7-Zip writes the directory last, so the archive ends where the directory does.
+  if (offset > unbounded - seven_zip::signature_size || length > unbounded - seven_zip::signature_size - offset) return {"7z", malformed};
+  RangeInspection result{"7z", {}, seven_zip::signature_size + offset + length};
+  Volumes in(ranges, result.size);
+  const auto refusal = seven_zip::check(in, nullptr);
+  if (in.missing.second) std::tie(result.need_offset, result.need_length) = in.missing;
+  else result.refusal = refusal;
+  return result;
 }
 }

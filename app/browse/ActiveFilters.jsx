@@ -51,7 +51,7 @@ import { colors, radius } from '../ui/colors.js';
         clearFilters();
         focusLater("catalog:filters");
       }, style: (_state) => [{ height: 60, justifyContent: "center", borderRadius: radius.md, paddingHorizontal: 24 }, _state.focused ? { backgroundColor: colors.surface3 } : null], children: [
-        /* @__PURE__ */ (0, jsx)(FocusRing, { round: "full" }),
+        /* @__PURE__ */ (0, jsx)(FocusRing, { round: "md" }),
         /* @__PURE__ */ (0, jsx)(ClearAll, {})
       ] })
     ] });

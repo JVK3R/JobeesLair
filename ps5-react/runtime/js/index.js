@@ -12,12 +12,13 @@ export const Text = inspectableText(EngineText);
 setFrameBatcher(unstable_batchedUpdates);
 export {View, Image, ReleaseImages, Pressable, ScrollView, VirtualList, FocusScope, useFocusable, useFocus, useFocusActions,
   useIsFocused, useNavigationEvents} from './focus/index.js';
-export {motion, AnimatePresence, transitions} from './motion/index.js';
+export {motion, AnimatePresence, transitions, setLightMotion} from './motion/index.js';
 export {Screens, Screen, useIsScreenActive} from './screens.js';
 export {Video} from './video.js';
+export {useKeptState} from './keep-state.js';
 export {DownloadFormats} from './download-formats.js';
 export {Platform, DeviceInfo, FileSystem, Notifications, Users, Controller, useGamepad, useControllerEvents, Linking, Power, Display, AudioOutput, Fonts, BackHandler,
-  Http, Downloads, Archives, Packages, SelfUpdate, Payloads, BrowserCapture, LocalNetwork, LocalServer, Sound} from './native.js';
+  Http, Downloads, Archives, Packages, SelfUpdate, Payloads, BrowserCapture, LocalNetwork, LocalServer, Sound, Keyboard} from './native.js';
 
 // Input protocol v1 compatibility: each direction is followed by its legacy action.
 const legacyActions = {up: 'previous', left: 'previous', down: 'next', right: 'next'};

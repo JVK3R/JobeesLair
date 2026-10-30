@@ -17,7 +17,7 @@ Controller.setLightBar('#38bdf8');
 ## Contract
 
 The modules in `runtime/js/native.js` wrap `globalThis.__ps5ReactNative`, which
-each host installs before the bundle runs. Its exact shape (ABI v23) is
+each host installs before the bundle runs. Its exact shape (ABI v24) is
 documented in [`native/shared/host_api.hpp`](../native/shared/host_api.hpp).
 `native/shared/host_api.cpp` implements the filesystem with POSIX and the object
 itself; `native/ps5/` and `native/desktop/` implement the platform functions.
@@ -145,6 +145,9 @@ to inspect redirect metadata; cookies and authentication headers stay private.
 HTTP requests accept a custom `Range` header for bounded probes; downloads own
 their ranges and reject it. Custom headers disable automatic redirects. Response
 headers include `etag` and `last-modified` for stable file identity checks.
+`binary: true` (ABI v24) keeps a response's bytes as they came: it has `bytes()`, a
+string of one character per byte (0–255), in place of `text()` and `json()`. The
+runtime has no `ArrayBuffer`; QuickJS still stores such a string at one byte each.
 `Downloads.enqueue({url, destination, ...options})` returns a cancellable task
 with progress subscriptions and a completion promise. Binary downloads stay
 native, use parallel validated ranges when eligible, and resume durable ranges.
@@ -201,8 +204,8 @@ setInterval(() => {
 
 It runs on a native worker of its own with its own sockets, apart from the download
 transport, filesystem workers and rendering; every wait is sliced at 100 ms, every read
-and write has a deadline, and one connection is served at a time with
-`Connection: close`. `start` returns at once: the worker binds the first of `ports`
+and write has a deadline, and requests are served one at a time with
+`Connection: close` (event streams, below, have a worker of their own). `start` returns at once: the worker binds the first of `ports`
 (1–8; `0` is any free port) and only it ever opens a socket. `page` (at most 512 KiB) is
 served at `/` by the worker itself, with no secret in the address.
 
@@ -226,9 +229,42 @@ gets that same cookie, and it is accepted from the first request, so an app that
 with its PIN keeps its phones signed in across restarts (and can share it with a helper that
 serves the page while the app is closed). Make a new one with each new PIN.
 
+### Live updates (ABI v24)
+
+A page that holds `GET /api/events` open (signed in, with `X-JBH: 1`, like any API request) hears what the
+app sends as [Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html), at once,
+instead of asking every second:
+
+```js
+// The app, whenever something changed (and only while a page listens):
+if (LocalServer.status().streams) LocalServer.push('queue', {jobs});
+```
+
+```js
+// The page: fetch, since EventSource cannot add the X-JBH header.
+const response = await fetch('/api/events', {headers: {'X-JBH': '1'}});
+const reader = response.body.getReader();
+// … split the text at blank lines; each event has "event: <name>" and "data: <line>" fields.
+```
+
+`push(event, data)` returns how many streams took it, and costs nothing while none is open. `event` is 1–32
+of `a`–`z`, `0`–`9` and `-`; `data` is a string, or anything else as JSON, at most 256 KiB, sent as one
+`data:` line per line of it (so nothing in it can end the event early or start another). A second worker
+holds up to 8 streams and writes each one's events as its socket takes them, so the requests the first worker
+serves never wait on a phone, and a phone never waits on one. A ninth stream closes the oldest (a page that
+reloaded never waits for its old stream to time out); a stream whose phone hangs up, or falls 1 MiB behind,
+is closed, and the page reconnects. Quiet streams get a comment line every 15 s, which is how a phone that
+left without a word is noticed. Open the stream first, then fetch the current state, so nothing between the
+two is missed. `tools/test_http_server.py` runs the streams over real sockets.
+
+`setPage(page)` (ABI v24) swaps the page `/` serves while the server runs, say for a page in the app's new
+language: every phone stays signed in and every stream stays open, so the app can push an event that tells
+open pages to load again. It throws when the server is not running, or the page is over 512 KiB.
+
 `status()` reports `starting`, then `listening` with the `port` it bound and the
 `address` it looked up, or `failed` with every port's reason and errno (`port 34177: in
-use by another app (errno 48); …`), plus `failures`, `locked` and `sessions`. `stop()`
+use by another app (errno 48); …`), plus `failures`, `locked`, `sessions`, and (ABI v24) `streams` open
+and events `pushed` since it started. `stop()`
 answers waiting requests 503, forgets every session and joins the worker; the host stops
 it before networking when the title closes. `address()` reads that status. Session cookies
 come from OpenSSL's `RAND_bytes`, not `arc4random_buf`: titles get it only from libScePosixForWebKit,
@@ -237,6 +273,45 @@ such a function. Anyone on the network can reach the port and try PINs: check wh
 request asks before acting on it. Needs `networking: true` (and on PS5
 `filesystemAccess: "console"`). `tools/tests/http_server_test.cpp` runs the server over
 real sockets.
+
+## Keyboard (ABI v24)
+
+`Keyboard.open(options)` shows the console's on-screen keyboard over the app and resolves once it closes:
+
+```js
+import {Keyboard} from '@ps5-react/core';
+const {status, text} = await Keyboard.open({title: 'Search', text: query, enter: 'search', maxLength: 64});
+if (status === 'done') setQuery(text);
+```
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `title` | `''` | Above the text field; at most 127 characters |
+| `text` | `''` | Already typed when it opens |
+| `placeholder` | `''` | Shown while the field is empty; at most 127 characters |
+| `maxLength` | `255` | 1–2048, in UTF-16 units as the system counts (an emoji takes two) |
+| `type` | `'default'` | `'default'` (every language the player set up), `'basic'` (Latin letters, digits, symbols), `'url'`, `'mail'`, `'number'` |
+| `enter` | `'default'` | The finishing key's label: `'default'`, `'send'`, `'search'`, `'go'` |
+| `multiline` | `false` | New lines allowed; type `'default'` or `'basic'` |
+| `password` | `false` | Hidden text; type `'basic'` or `'number'` |
+
+It resolves `{status: 'done', text}` when the player finishes, `{status: 'cancelled', text: ''}` when they back
+out, and `{status: 'aborted', text: ''}` after `Keyboard.close()` or when the system took it away. `open`
+throws, before any promise, when one is open, an option is out of range, or the system refused (its code in
+the message). One opens at a time; `Keyboard.isOpen` says whether one is.
+
+While it is open the controller belongs to it: the host passes the app no presses, no held buttons and no
+touchpad, and after it closes it lets every button it was given go before the app hears the controller again,
+so the Cross that finished it does not press what opened it. The PS5 presents every frame while it is up.
+
+On the PS5 it is the system keyboard (`libSceImeDialog`, loaded through the system module service at startup,
+before filesystem elevation, as the hardware video decoder is; a title cannot `dlopen` it by name), with the
+player's own languages and input methods. `Keyboard.available` is `false`
+when that module or its calls are missing: offer your own keyboard then. **Not yet validated on hardware**: the
+host logs `keyboard:` lines with each call's result for that. The desktop preview takes what is typed into
+its window (Enter finishes, Shift+Enter starts a line in a multiline one, Escape cancels, Ctrl+V pastes) and
+shows it in the window's title; `tools/ps5_drive.py type <text>` finishes it as the player would, and
+`keyboard-cancel` backs out.
 
 ## Images
 
@@ -523,13 +598,15 @@ the app folder.
 
 ## Desktop preview behavior
 
-`npm run dev` and `npm run preview` implement the same API on macOS:
+`npm run dev` and `npm run preview` implement the same API on macOS, Linux and WSL 2:
 
 - Files live in `.build/<app>/sandbox/`: `download0/` and `temp0/` are
   directories, and `app0` is a link to `apps/<app>/`. `/` lists the sandbox
   root. Unlike the console, `/app0` is writable on desktop; do not rely on it.
 - `mounts()` lists the Mac's mounted filesystems.
 - `Notifications.show` prints `[notify] message: subMessage` to the terminal.
+- `Keyboard.open` takes what is typed into the preview window and prints `[keyboard]` lines; see
+  [Keyboard](#keyboard-abi-v24).
 - `Users` reports the macOS user (`$USER`) with id `1`.
 - Temperatures are `null`; `cpuFrequency` is `null` on Apple silicon.
 - `language` comes from `PS5_REACT_LANGUAGE`, else `LC_ALL`, `LC_MESSAGES` or
@@ -562,6 +639,7 @@ title can load these modules; when one cannot, only the dependent call degrades:
 | --- | --- | --- |
 | `DeviceInfo.get().model` | `libkernel_sys.sprx` | `null` |
 | `Notifications.show()` | `libSceNotification.sprx` | Returns `false` |
+| `Keyboard.open()` | `libSceImeDialog.sprx` | `Keyboard.available` is `false`; `open` throws |
 
 PS5 `diskUsage()` uses the native-title `_fstatfs` export on a descriptor opened
 with `sceKernelOpen`. `mounts()` discovers kernel-provided records through
@@ -612,7 +690,6 @@ directory or select **Refresh** to query again; focus changes do not query stora
 
 - Global `fetch`, raw sockets, multicast and WebSocket (UDP broadcast queries: `LocalNetwork`).
 - Music, streamed or long audio, and decoding compressed formats at run time.
-- The system on-screen keyboard (IME) for text input.
 - System save data; use `FileSystem.dataDir` for now.
 
 ## Package installation
@@ -701,6 +778,22 @@ error, so a first volume can be refused before the remaining volumes download.
 7z and ZIP keep their directories at the end and show no refusal until complete.
 An empty kind is not proof of anything; image kinds are recognized by superblock
 magic only, not validated as mountable.
+
+`Archives.inspectRanges(ranges)` (ABI v24) runs the 7z preflight before the
+archive downloads, on byte ranges fetched from its server with `Http.request`
+(a `Range` header and `binary: true`). Call it with no ranges, fetch the range
+its `need` names (`{offset, length}`), add it as `{offset, bytes}` and call again
+until `need` is null; `refusal` is then the decoder-memory message or `''`. The
+first 32 bytes give the archive's length as `size`, since 7-Zip writes the
+directory last: a server whose file is longer or shorter is not serving that
+archive alone. `kind` is `'7z'`, or `''` once the first bytes show another format.
+Two or three ranges usually suffice: the start header, the directory, and the
+compressed directory's packed bytes. A 7z with zstd folders also reads the start
+of each folder.
+
+A task's `total` in `Archives.extract` progress is what the files unpack to once
+it is known: the RAR worker reads it from every volume's headers, and a 7z or
+ZIP gives it before the first file is written. It is `null` for other formats.
 
 
 ## Browser download capture (ABI v7)

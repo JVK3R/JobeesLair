@@ -1,0 +1,17 @@
+[01:14:05]   [IMG] Mounting image (exfatfs, optimized-1.7): /data/homebrew/PPSA32236.exfat -> /mnt/shadowmnt/PPSA32236_975ad7d1
+[01:14:05]   [IMG][LVD] attach backend selected for /data/homebrew/PPSA32236.exfat
+[01:14:05]   [IMG][LVD] Mounted (exfatfs) /dev/lvd1 -> /mnt/shadowmnt/PPSA32236_975ad7d1
+[01:14:05]   [LINK] nullfs mounted: /mnt/shadowmnt/PPSA32236_975ad7d1 -> /system_ex/app/PPSA32236
+[01:14:05]   [SHELLCORE] launch mount ready: PPSA32236
+[01:14:05]   [FAKELIB] directory mounted for PPSA32236: /preinst/common/font -> /mnt/sandbox/PPSA32236_003/preinst/common/font
+[01:14:05]   [SHELLCORE] sandbox ready handled: PPSA32236
+[01:14:05]   [SHELLFLAG] SceLncUtilSystemStatus poll rc=0x80020010
+[01:14:11]   [GAME] started: PPSA32236 pid=761 app_id=0x00000019
+[01:14:11]   [MDBG] log monitor ready: PPSA32236 buffer_size=0x20018
+[01:14:11]   [MDBG] monitoring game errors: PPSA32236 pid=761 for up to 60 seconds
+[01:14:31]   [SHELLFLAG] SceShellCoreUtilAppFocus value=0x000000000000E007 delta=0x000000000000E01E low32=0x0000E007 high32=0x00000000 decoded=APP_ID=0x0000E007
+[01:14:39]   [MDBG] game error: PPSA32236 pid=761: 0xa0d0c00d (GPU_FAULT_SUSPENDPOINT_TIMEOUT_IN_SUSPEND_ASYNC)
+[01:14:41]   [FAKELIB] game stopped: pid=761 title=PPSA32236 layers=5
+[01:14:41]   [GAME] process exited, awaiting same-app handoff: PPSA32236 pid=761 app_id=0x00000019
+[01:14:51]   [GAME] finalizing stopped application: PPSA32236 pid=761
+[01:14:51]   [LINK] runtime layers released: PPSA32236

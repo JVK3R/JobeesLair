@@ -20,7 +20,7 @@ the framework bundler without installing a separate `node_modules`.
 
 Build output remains in the framework's `.build/<directory-name>/` and
 `dist/<TITLE_ID>/`. The watcher ignores the external app's `.git/` and
-`node_modules/`. Saving sources rebuilds and restarts the preview; state resets.
+`node_modules/`. Saving sources rebuilds and restarts the preview, which keeps the app's state (README).
 
 ## Editor configuration
 

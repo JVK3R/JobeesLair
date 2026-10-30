@@ -1,7 +1,7 @@
 # Contributing
 
 Start with `npm ci`, `npm run doctor`, and `npm test`. See the README for
-native prerequisites and the macOS setup. Keep documentation, comments,
+native prerequisites and the macOS, Linux or WSL 2 setup. Keep documentation, comments,
 commit messages, and user-visible text in English.
 
 ## Scope

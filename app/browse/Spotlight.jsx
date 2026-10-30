@@ -121,8 +121,10 @@ import { colors, radius } from '../ui/colors.js';
       }
     );
   }
+  // 0.5.4: no game to show, no carousel (it read the first of none and stopped the app).
   function Spotlight() {
-    return /* @__PURE__ */ (0, jsx)(Carousel, { shown: useNavState().top.name === "browse" });
+    const shown = useNavState().top.name === "browse";
+    return featured.length ? /* @__PURE__ */ (0, jsx)(Carousel, { shown }) : null;
   }
   var Carousel = (0, memo)(function Carousel2({ shown }) {
     const t2 = useT();

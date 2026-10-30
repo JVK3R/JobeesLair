@@ -122,6 +122,21 @@
       "default": "PS5React/0.2",
       "description": "User-Agent sent with every native HTTP request: printable ASCII, 1..128 characters."
     },
+    "ps4": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The PS4 build's identity (tools/build_ps4.py). Without it, the PS4 build makes test IDs from the PS5 ones.",
+      "properties": {
+        "titleId": {
+          "type": "string",
+          "pattern": "^[A-Z]{4}[0-9]{5}$"
+        },
+        "contentId": {
+          "type": "string",
+          "pattern": "^[A-Z]{2}[0-9]{4}-[A-Z]{4}[0-9]{5}_00-[A-Z0-9]{16}$"
+        }
+      }
+    },
     "resources": {
       "type": "array",
       "maxItems": 16,
@@ -141,10 +156,12 @@
           "japanese",
           "devanagari",
           "bengali",
-          "arabic"
+          "arabic",
+          "symbols",
+          "emoji"
         ]
       },
-      "description": "Scripts whose subset Noto font is packaged in fonts/ and shaped and rasterized at runtime when text needs it: chinese (GB 2312), japanese (JIS X 0208), devanagari (Hindi), bengali, arabic (Arabic and Urdu). See docs/TEXT.md."
+      "description": "Scripts whose subset Noto font is packaged in fonts/ and shaped and rasterized at runtime when text needs it: chinese (GB 2312), japanese (JIS X 0208), devanagari (Hindi), bengali, arabic (Arabic and Urdu), symbols (arrows, shapes, dingbats such as ✕ ✓ ★), emoji (monochrome). See docs/TEXT.md."
     },
     "video": {
       "type": "boolean",

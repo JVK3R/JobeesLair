@@ -4,7 +4,7 @@
 import '../assets/Exo2.ttf';
 import { jsx, jsxs } from 'react/jsx-runtime';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { STALE_PARTIAL, cause, explainError } from '../downloads/errors.js';
+import { STALE_PARTIAL, cause, explainError, finalError } from '../downloads/errors.js';
 import { WAITING, shownState } from '../downloads/labels.js';
 import { Choice, ReadyPick, TextAction } from './Choice.jsx';
 import { DISABLED, DownloadLabel, statusLine } from './DownloadLabel.jsx';
@@ -116,7 +116,10 @@ import { colors, radius } from '../ui/colors.js';
     const need = spaceNeeded(release, roots[storage]);
     const lacking = download.status === "idle" && need && free[storage] !== null && free[storage] < need + MARGIN2;
     const stale = ["paused", "failed"].includes(download.status) && STALE_PARTIAL.test(cause(error2));
-    const status = lacking ? "no-space" : stale ? "stale" : download.status;
+    // 0.5.4: a refusal Retry would only meet again (an archive the console can't unpack): the button opens the
+    // list of sources instead.
+    const refused = download.status === "failed" && finalError(error2, Boolean(job2?.release.parts));
+    const status = lacking ? "no-space" : stale ? "stale" : refused ? "refused" : download.status;
     // Not enough room, by the button's own count or the queue's (which counts the downloads queued before
     // it): Make Room frees what the drive needs for it and its queue, then starts it.
     const roomless = !job2 && (lacking || /Not enough space/i.test(error2));
@@ -131,6 +134,7 @@ import { colors, radius } from '../ui/colors.js';
     };
     const begin = () => {
       if (stale) restart();
+      else if (refused) chooseSource(mainFocus);
       else if (lacking) openRoom();
       else download.advance();
     };
@@ -175,7 +179,7 @@ import { colors, radius } from '../ui/colors.js';
       submit: (url) => downloadQueue().continueWithURL(job2.id, url)
     });
     const written = (job2?.parts?.[job2.partIndex]?.written ?? job2?.written) > 0;
-    const recoverable = ["paused", "failed", "stale"].includes(status) || browser;
+    const recoverable = ["paused", "failed", "stale", "refused"].includes(status) || browser;
     const choosing = !job2 || browser && !written;
     const sizeGb = job2?.total ? job2.total / GB2 : release?.sizeBytes ? release.sizeBytes / GB2 : game.sizeGb;
     const inProgress = BUSY.includes(status) || status === "paused";
@@ -186,9 +190,10 @@ import { colors, radius } from '../ui/colors.js';
     const ready = job2 ? readinessOf(job2) : null;
     const settled = job2?.state === "installed" && (ready?.stage === "played" || ready?.stage === "wontStart") ? ready.stage : null;
     const shown = settled ?? (job2 && shownState(job2) === "finishing" ? "finishing" : status);
-    const [plain, line] = statusLine(stale ? download.status : settled ? "installed" : shown, progress, sizeGb);
+    const [plain, line] = statusLine(stale || refused ? download.status : settled ? "installed" : shown, progress, sizeGb);
     const state = ready && !stale && shown !== "finishing" ? readinessText(ready) : plain;
-    const detail2 = sizeless ? t2("download.soFar", { size: formatBytes(job2?.written || 0) }) : line;
+    // A refused download's size says nothing (it never started, or will not be used): its status gets the row.
+    const detail2 = refused ? null : sizeless ? t2("download.soFar", { size: formatBytes(job2?.written || 0) }) : line;
     // How the chosen source's link stands, after its name and host: nothing while it answers or is unchecked.
     const linkTag = release?.linkHealth?.status === "dead" ? t2("links.badge.dead") : release?.linkHealth?.status === "unreachable" ? t2("links.badge.unreachable") : null;
     // A PS5 fake package installs but won't launch above 11.60 (release-sets.js releaseType), so the line
@@ -287,7 +292,7 @@ import { colors, radius } from '../ui/colors.js';
       next: true
     };
     const options = COMPLETE.includes(status) ? [diagnosis, removal, deletion].filter(Boolean) : recoverable ? [
-      stale ? null : {
+      stale || refused ? null : {
         icon: "restart",
         label: t2("download.restart.label"),
         detail: saved ? t2("download.restart.detailSaved", { size: saved }) : t2("download.restart.detail"),
@@ -368,8 +373,9 @@ import { colors, radius } from '../ui/colors.js';
         ),
         /* @__PURE__ */ (0, jsx)(FocusRing, {})
       ] }),
-      /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", justifyContent: "space-between" }, children: [
-        WAITING.includes(shown) ? /* @__PURE__ */ (0, jsx)(ShimmerText, { textStyle: STATUS, children: state }) : /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 21, color: colors.subtle, lineHeight: 30 }, children: state }),
+      // 0.5.4: a long status ("Stopped, choose another source") is cut short, never run into the size.
+      /* @__PURE__ */ (0, jsxs)(View, { style: { flexDirection: "row", justifyContent: "space-between", gap: 12 }, children: [
+        WAITING.includes(shown) ? /* @__PURE__ */ (0, jsx)(ShimmerText, { textStyle: STATUS, children: state }) : /* @__PURE__ */ (0, jsx)(Text, { style: { flexShrink: 1, fontFamily: "Exo2", fontSize: 21, color: colors.subtle, lineHeight: 30, numberOfLines: 1, ellipsizeMode: "tail" }, children: state }),
         detail2 ? /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 21, color: colors.subtle, lineHeight: 30 }, children: detail2 }) : null
       ] }),
       problem ? /* @__PURE__ */ (0, jsx)(ProblemNote, { title: problem.title, action: problem.action }) : notice ? /* @__PURE__ */ (0, jsx)(Text, { style: { width: 408, fontFamily: "Exo2", fontSize: 21, color: colors.muted, numberOfLines: 3, ellipsizeMode: "tail", lineHeight: 30 }, children: notice.slice(0, 160) }) : null,

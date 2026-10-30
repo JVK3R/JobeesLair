@@ -80,7 +80,7 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useFocu
   var formatCount = (n) => n >= 1e3 ? `${Math.round(n / 100) / 10}k` : String(n);
   // ---- The section's header ----------------------------------------------------------------------------
   function Stat({ text, tone }) {
-    return jsx(View, { style: { height: 48, justifyContent: "center", borderRadius: radius.pill, backgroundColor: tone ? hb().soft : colors.surface2, paddingHorizontal: 20 }, children: jsx(Text, { style: { fontFamily: "Exo2", fontSize: 20, fontWeight: 600, lineHeight: 28, color: tone ?? colors.fg }, children: text }) });
+    return jsx(View, { style: { height: 48, justifyContent: "center", borderRadius: radius.md, backgroundColor: tone ? hb().soft : colors.surface2, paddingHorizontal: 20 }, children: jsx(Text, { style: { fontFamily: "Exo2", fontSize: 20, fontWeight: 600, lineHeight: 28, color: tone ?? colors.fg }, children: text }) });
   }
   // 0.5.3: the search field, at the header's right: it opens the search page on homebrew alone.
   function SearchFace() {
@@ -88,7 +88,7 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useFocu
     const focused = useIsFocused();
     const tone = hb();
     return jsxs(Fragment, { children: [
-      jsx(FocusRing, { round: "full", color: tone.hi }),
+      jsx(FocusRing, { round: "md", color: tone.hi }),
       jsx(Icon, { name: "search", size: 18, color: focused ? tone.hi : colors.muted }),
       jsx(Text, { style: { flex: 1, fontFamily: "Exo2", fontSize: 21, lineHeight: 30, color: focused ? colors.fg : colors.subtle, numberOfLines: 1, ellipsizeMode: "tail" }, children: t2("homebrew.searchPlaceholder") })
     ] });
@@ -107,7 +107,7 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useFocu
           jsx(Text, { style: { fontFamily: "Exo2", fontSize: 19, lineHeight: 28, color: tone.glow }, children: t2("homebrew.listBy") })
         ] })
       ] }),
-      jsx(View, { focusKey: "hb:search", onPress: onSearch, style: (state) => ({ position: "relative", width: 420, height: 60, flexDirection: "row", alignItems: "center", gap: 14, borderRadius: radius.pill, borderWidth: 2, borderColor: state.focused ? tone.hi : colors.line, backgroundColor: state.focused ? colors.surface2 : colors.surface, paddingHorizontal: 24 }), children: jsx(SearchFace, {}) }),
+      jsx(View, { focusKey: "hb:search", onPress: onSearch, style: (state) => ({ position: "relative", width: 420, height: 60, flexDirection: "row", alignItems: "center", gap: 14, borderRadius: radius.md, borderWidth: 2, borderColor: state.focused ? tone.hi : colors.line, backgroundColor: state.focused ? colors.surface2 : colors.surface, paddingHorizontal: 24 }), children: jsx(SearchFace, {}) }),
       jsxs(View, { style: { flexDirection: "row", gap: 12 }, children: [
         jsx(Stat, { text: t2("homebrew.appCount", { count: counts.all }) }),
         counts.installed ? jsx(Stat, { text: `${counts.installed} ${t2("homebrew.filter.installed")}` }) : null,
@@ -154,8 +154,8 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useFocu
   // ---- Filters ---------------------------------------------------------------------------------------
   function FilterChip({ id, label, count, icon, selected, onPress }) {
     const tone = hb();
-    return jsxs(View, { focusKey: `hb:chip:${id}`, onPress, style: { height: 60, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: radius.pill, backgroundColor: selected ? tone.accent : colors.surface2, paddingHorizontal: 24 }, children: [
-      jsx(FocusRing, { round: "full", color: tone.hi }),
+    return jsxs(View, { focusKey: `hb:chip:${id}`, onPress, style: { height: 60, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: radius.md, backgroundColor: selected ? tone.accent : colors.surface2, paddingHorizontal: 24 }, children: [
+      jsx(FocusRing, { round: "md", color: tone.hi }),
       icon ? jsx(Icon, { name: icon, size: 14, color: selected ? tone.fg : colors.fg }) : null,
       jsx(Text, { style: { fontFamily: "Exo2", fontSize: 21, fontWeight: 600, lineHeight: 30, color: selected ? tone.fg : colors.fg }, children: label }),
       count != null ? jsx(Text, { style: { fontFamily: "Exo2", fontSize: 19, lineHeight: 30, color: selected ? tone.fg : colors.subtle }, children: String(count) }) : null
@@ -257,8 +257,8 @@ import { FocusScope, Image, ScrollView, Text, View, VirtualList, motion, useFocu
       jsx(View, { style: { width: 6, height: 34, borderRadius: radius.pill, backgroundColor: tone.hi } }),
       jsx(Text, { style: { fontFamily: "Exo2", fontSize: 34, fontWeight: 700, lineHeight: 44, color: colors.fg }, children: title }),
       jsx(Text, { style: { flex: 1, fontFamily: "Exo2", fontSize: 22, lineHeight: 44, color: colors.subtle }, children: t2("homebrew.appCount", { count }) }),
-      jsxs(View, { focusKey: "hb:sort", onPress: onSort, style: { height: 52, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: radius.pill, backgroundColor: colors.surface2, paddingHorizontal: 20 }, children: [
-        jsx(FocusRing, { round: "full", color: tone.hi }),
+      jsxs(View, { focusKey: "hb:sort", onPress: onSort, style: { height: 52, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: radius.md, backgroundColor: colors.surface2, paddingHorizontal: 20 }, children: [
+        jsx(FocusRing, { round: "md", color: tone.hi }),
         jsx(ButtonGlyph, { button: "square", size: 16 }),
         jsx(Text, { style: { fontFamily: "Exo2", fontSize: 20, fontWeight: 600, lineHeight: 28, color: colors.fg }, children: t2(`homebrew.sort.${sort}`) })
       ] })

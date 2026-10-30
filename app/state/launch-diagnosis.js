@@ -7,7 +7,7 @@
 // lines for any error in its first 60 seconds. A launch that ends in "runtime layers released" with no
 // "[GAME] started" never got a game process: the console refused the executable before the game ran.
 
-import { t } from '../i18n/core.js';
+import { tWhole } from '../i18n/core.js';
 
   var TITLE_ID = /\b[A-Z]{4}\d{5}\b/g;
   var REGISTRATION = /register(?:ed)? failed|failed to register|\[SKIP\]|duplicate|Failed to copy staged/i;
@@ -15,6 +15,9 @@ import { t } from '../i18n/core.js';
   var GAME_ERROR = /error|fatal|signal|exception|crash|fail|cannot|could not|load/i;
   var MONITOR_NOISE = /monitoring game errors|log monitor ready|coredump privileges|monitoring expired/i;
   var LOADER = /eboot\.bin|sce_module|\.s?prx\b|\bself\b|\belf\b|module/i;
+  // The console closes a game that does not reach a suspend point when it pauses it (the PS button): the game
+  // had frozen. Seen with Tokyo Xtreme Racer (0xa0d0c00d) on two consoles, with images that installed fine.
+  var FROZE = /SUSPENDPOINT_TIMEOUT/i;
   var MAX_LINES = 40;
   var MAX_KERNEL = 20;
   // A line that names another title is someone else's; one that names none belongs to whatever ran then.
@@ -79,10 +82,13 @@ import { t } from '../i18n/core.js';
     return {
       title,
       version,
-      verdict: { ...verdict, text: t(`diagnosis.verdict.${verdict.key}`, verdict.params) },
+      // Whole: the sheet draws it in pieces (ui/LongText.jsx); one Text would cut it at 255 bytes.
+      verdict: { ...verdict, text: tWhole(`diagnosis.verdict.${verdict.key}`, verdict.params) },
       launches: attempts.length,
       // Whether its last launch loaded the game's own fakelib: the Library's Options can turn it off.
       fakelib: Boolean(attempts.at(-1)?.fakelib),
+      // Whether it crashed because it froze: the sheet says so in plain words under the error.
+      froze: verdict.key === "crashed" && attempts.at(-1).errors.some((line) => FROZE.test(line)),
       lines: shown,
       kernel: kernelLines,
       debugRead: debug !== null && debug !== void 0,

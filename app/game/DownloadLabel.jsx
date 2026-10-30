@@ -32,6 +32,8 @@ import { Text, View } from '@ps5-react/core';
     failed: { icon: "download", text: "download.button.failed" },
     // A failure whose saved progress no longer matches the file: only starting over recovers it.
     stale: { icon: "download", text: "download.button.stale" },
+    // 0.5.4: a refusal a retry only meets again: the button opens the list of sources.
+    refused: { icon: "list", text: "download.otherSource.label" },
     "file-downloaded": { icon: "circleCheck", text: "download.button.file-downloaded" },
     downloaded: { icon: "circleCheck", text: "download.button.downloaded" },
     "installer-required": { icon: "download", text: "download.button.installer-required" },

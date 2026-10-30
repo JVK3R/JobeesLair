@@ -45,7 +45,8 @@
     "capture-hosts.json": isRecord,
     "feeds.json": isStringList,
     "update-prompt.json": isRecord,
-    "online.json": isRecord
+    "online.json": isRecord,
+    "compat.json": isRecord
   };
 
 export { SAVED_FILES, isRecord, isStringList, readJSON };

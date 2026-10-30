@@ -25,10 +25,14 @@ const FORBIDDEN = [
   [/\bIntl\s*\./, 'Intl'],
 ];
 
+// The phone companion's page (companion/page.js TEMPLATE) is text the console serves; its script runs in the phone's
+// browser, which has Intl (plurals, numbers in the phone's language). The code around it runs on the console.
+const consoleSide = (file, text) => file.endsWith(path.join('companion', 'page.js')) ? text.replace(/String\.raw`[\s\S]*?`;/, 'String.raw``;') : text;
+
 test('app code uses no Date beyond Date.now(), and no Intl', () => {
   const problems = [];
   for (const file of sources(root)) {
-    const text = code(readFileSync(file, 'utf8'));
+    const text = code(consoleSide(file, readFileSync(file, 'utf8')));
     for (const [pattern, what] of FORBIDDEN) {
       const found = pattern.exec(text);
       if (found) problems.push(`${path.relative(root, file)}: ${what} (${found[0]})`);
@@ -38,6 +42,9 @@ test('app code uses no Date beyond Date.now(), and no Intl', () => {
 });
 
 test('the guard itself sees what it should', () => {
+  const page = path.join(root, 'companion', 'page.js');
+  assert.doesNotMatch(consoleSide(page, 'var T = String.raw`<script>new Intl.PluralRules(LANG)</script>`;\nvar x = 1;'), /Intl/, "the phone's script is skipped");
+  assert.match(consoleSide(page, 'var T = String.raw`<p>`;\nvar d = new Date();'), /new Date/, 'the code around it is not');
   assert.match(code('const a = new Date(x); // fine'), /new Date/);
   assert.doesNotMatch(code('// new Date() in a comment\nconst b = Date.now();'), /new Date/);
   assert.doesNotMatch(code('/* Date.parse is out */ const c = 1;'), /Date\.parse/);

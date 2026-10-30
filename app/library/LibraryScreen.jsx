@@ -76,7 +76,7 @@ import { AnimatePresence, DeviceInfo, FocusScope, Image, ScrollView, Text, View,
     const t2 = useT();
     const bad = ready.tone === "bad" && !moving;
     const ink2 = bad ? "#1c0a0a" : moving ? colors.accentHi : ready.tone === "good" ? GREEN : colors.accentHi;
-    return /* @__PURE__ */ (0, jsxs)(View, { style: { position: "absolute", left: 18, top: 18, height: 46, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: radius.pill, backgroundColor: bad ? RED : `${colors.canvas}e6`, paddingHorizontal: 18 }, children: [
+    return /* @__PURE__ */ (0, jsxs)(View, { style: { position: "absolute", left: 18, top: 18, height: 46, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: radius.sm, backgroundColor: bad ? RED : `${colors.canvas}e6`, paddingHorizontal: 18 }, children: [
       /* @__PURE__ */ (0, jsx)(Icon, { name: moving ? "hardDrive" : ready.icon, size: 17, color: ink2 }),
       /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 21, fontWeight: 600, lineHeight: 28, color: bad ? ink2 : colors.fg }, children: moving ? t2("shelf.badge.moving") : t2(`ready.stage.${ready.stage}`) })
     ] });

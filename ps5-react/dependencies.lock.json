@@ -41,7 +41,8 @@
       "patches/embeddedReact-host-props-cost.patch",
       "patches/embeddedReact-slice-by-area.patch",
       "patches/embeddedReact-layer-radius.patch",
-      "patches/embeddedReact-rounded-clip-blend.patch"
+      "patches/embeddedReact-rounded-clip-blend.patch",
+      "patches/embeddedReact-logical-edges.patch"
     ]
   },
   "platform": {
@@ -104,6 +105,28 @@
     "url": "https://github.com/ps5-payload-dev/pacbrew-repo/releases/download/v0.40.2/ps5-payload-dev.tar.gz",
     "sha256": "a85f65de418a8e6a898c6c3e3c870d50fff7618a200e4dd59ea9692af6ecec4d"
   },
+  "ps4Ports": {
+    "zlib": {
+      "version": "1.3.2",
+      "url": "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz",
+      "sha256": "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+    },
+    "openssl": {
+      "version": "3.5.2",
+      "url": "https://github.com/openssl/openssl/releases/download/openssl-3.5.2/openssl-3.5.2.tar.gz",
+      "sha256": "c53a47e5e441c930c3928cf7bf6fb00e5d129b630e0aa873b08258656e7345ec"
+    },
+    "curl": {
+      "version": "8.18.0",
+      "url": "https://curl.se/download/curl-8.18.0.tar.xz",
+      "sha256": "40df79166e74aa20149365e11ee4c798a46ad57c34e4f68fd13100e2c9a91946"
+    },
+    "caBundle": {
+      "version": "2026-09-25",
+      "url": "https://curl.se/ca/cacert-2026-09-25.pem",
+      "sha256": "a41b5d356aea97a529fe27e0f7316d2f9d946d75927476cf9cf1b90637d00505"
+    }
+  },
   "harfbuzz": {
     "version": "14.6.0",
     "url": "https://github.com/harfbuzz/harfbuzz/releases/download/14.6.0/harfbuzz-14.6.0.tar.xz",
@@ -129,6 +152,18 @@
     "NotoSansArabic-Regular.ttf": {
       "url": "https://raw.githubusercontent.com/notofonts/notofonts.github.io/47acfd3806a2b2c7f2b8a7cc95030ead55d03c21/fonts/NotoSansArabic/unhinted/ttf/NotoSansArabic-Regular.ttf",
       "sha256": "bd86ca02f087d7f3c3788ba458fb6b73744c7639ed276b8d870dba6def6c40d0"
+    },
+    "NotoSansSymbols2-Regular.ttf": {
+      "url": "https://raw.githubusercontent.com/notofonts/notofonts.github.io/47acfd3806a2b2c7f2b8a7cc95030ead55d03c21/fonts/NotoSansSymbols2/unhinted/ttf/NotoSansSymbols2-Regular.ttf",
+      "sha256": "c4a0a80f0041ce4be81e2478faad22776d23edb98ae3f0d19bd37044820ecf9d"
+    },
+    "NotoSansSymbols-Regular.ttf": {
+      "url": "https://raw.githubusercontent.com/notofonts/notofonts.github.io/47acfd3806a2b2c7f2b8a7cc95030ead55d03c21/fonts/NotoSansSymbols/unhinted/ttf/NotoSansSymbols-Regular.ttf",
+      "sha256": "6eea9cb4cd39269ea9f95ba5c2735f80ae74049dfc9e1a7c932a5cfc8f0c3030"
+    },
+    "NotoEmoji-Regular.ttf": {
+      "url": "https://raw.githubusercontent.com/google/fonts/b979dba422e445492b0eb9951ac52ee0b4d648c3/ofl/notoemoji/NotoEmoji%5Bwght%5D.ttf",
+      "sha256": "de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551"
     }
   },
   "sheenBidi": {
