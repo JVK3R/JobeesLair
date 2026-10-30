@@ -96,7 +96,8 @@ def doctor():
         print("Preview: SDL2/OpenGL; install with brew install cmake sdl2 llvm@18 curl libarchive openssl@3")
     else:
         print("Preview: SDL2/OpenGL; on Ubuntu or Debian (and WSL 2): sudo apt install clang-18 lld-18 llvm-18 cmake "
-              "libsdl2-dev libcurl4-openssl-dev libarchive-dev liblzma-dev libssl-dev zlib1g-dev nasm (README, Quick start)")
+              "libsdl2-dev libcurl4-openssl-dev libarchive-dev libarchive-tools liblzma-dev libssl-dev zlib1g-dev nasm "
+              "(README, Quick start)")
         if Path("/proc/version").exists() and "microsoft" in Path("/proc/version").read_text().lower():
             print("WSL: keep the clone in the Linux filesystem (~/), not /mnt/c: builds there are many times slower")
     print("Assets: python3 -m pip install -r requirements.txt")
