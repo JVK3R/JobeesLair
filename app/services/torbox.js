@@ -196,6 +196,18 @@ import { parseStamp } from '../state/clock.js';
       // request got a 307 for a while, then a 502): it says so, rather than a bare status.
       const trouble = response.status >= 500 || response.status >= 300 && response.status < 400;
       if (!answer || typeof answer !== "object") throw new TorBoxError(`HTTP_${response.status}`, trouble ? `TorBox isn't answering right now (HTTP ${response.status}). Try again in a few minutes.` : `TorBox answered HTTP ${response.status}.`);
+      // TorBox's docs say API codes ending in ERROR are server faults (including
+      // DOWNLOAD_SERVER_ERROR); preserve them so callers don't treat their detail as a dead link.
+      const serviceCode = typeof answer.error === "string" ? answer.error : "";
+      const serverFault = serviceCode.endsWith("_ERROR") || response.status >= 500 && !serviceCode;
+      if (serverFault) {
+        const status = Number(response.status) || 0;
+        const statusText = status >= 500 ? ` (HTTP ${status})` : "";
+        const code = scrub(serviceCode || "DOWNLOAD_SERVER_ERROR", value);
+        const message = `TorBox returned ${code}${statusText}. This is a temporary server problem; retry later.`;
+        log(`${method} ${path} temporary server error: ${code}${statusText}`);
+        throw new TorBoxError("DOWNLOAD_SERVER_ERROR", message, { httpStatus: status, serviceCode: code });
+      }
       if (!answer.success) {
         const code = answer.error || `HTTP_${response.status}`;
         log(`${method} ${path} refused: ${code}`);
