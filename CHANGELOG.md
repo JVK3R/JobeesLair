@@ -4,6 +4,10 @@ What changed in each version of Jobee'sLair. Each release on
 [GitHub](https://github.com/JVK3R/JobeesLair/releases) carries the full notes, the files and their
 SHA-256 checksums.
 
+## Unreleased
+
+- **PS5 package firmware warning:** downloads from opaque binary links now show the existing firmware warning when their package header identifies a PPSA title that may not launch on this firmware.
+
 ## 0.5.4 (2026-10-29)
 
 - **The PS5 keyboard.** Searching, and typing a link or a TorBox or AllDebrid key, opens the console's own

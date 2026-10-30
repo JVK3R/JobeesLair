@@ -14,7 +14,7 @@ import { t } from '../i18n/core.js';
 import { archivePassword } from './archive-password.js';
 import { diagnoseLaunch, launchOutcomes } from './launch-diagnosis.js';
 import { fakelibState } from './fakelib.js';
-import { consoleFirmware, newerFirmware, titleRequirement } from './firmware.js';
+import { consoleFirmware, newerFirmware, ps5FakePackagesLaunch, titleRequirement } from './firmware.js';
 import { reportLink } from './link-health.js';
 import { BrowserRequired, RESOLVED_KINDS, archiveRefusal, cancellation, createSourceResolver, sourceKind, webURL } from './download-sources.js';
 import { captureAnchor } from './browser-links.js';
@@ -1013,10 +1013,24 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     // another game's file past every other check. Another region of the same game has its own id too, so
     // a difference is shown, never acted on.
     function noteTitle(job2, title) {
-      if (!title || !job2.titleId || job2.titleMismatch || String(title).toUpperCase() === String(job2.titleId).toUpperCase()) return;
-      job2.titleMismatch = String(title).toUpperCase();
-      console.log(`[download-queue] ${job2.id}: the file is ${job2.titleMismatch}, the game chosen is ${job2.titleId}`);
-      change();
+      if (!title) return;
+      const found = String(title).toUpperCase();
+      let changed = false;
+      // A generic or opaque source can only be identified as a PS5 package after it arrives. Show the
+      // same firmware advice as a package named by its source, before the gamer starts installation.
+      if (/^PPSA\d{5}$/.test(found) && ps5FakePackagesLaunch(firmware()) !== true) {
+        const warning = t("release.fpkg.action");
+        if (job2.message !== warning) {
+          job2.message = warning;
+          changed = true;
+        }
+      }
+      if (job2.titleId && !job2.titleMismatch && found !== String(job2.titleId).toUpperCase()) {
+        job2.titleMismatch = found;
+        console.log(`[download-queue] ${job2.id}: the file is ${job2.titleMismatch}, the game chosen is ${job2.titleId}`);
+        changed = true;
+      }
+      if (changed) change();
     }
     function finishRouting(job2) {
       const from = job2.downloadDestination, to = job2.routing.destination;
