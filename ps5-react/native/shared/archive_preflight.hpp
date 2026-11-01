@@ -11,7 +11,7 @@ namespace archives {
 // empty string when its declared decoder windows fit the console's memory budget. `unpacked`, when given,
 // gets what the files unpack to where the archive's directory says so up front (7z, ZIP), else 0.
 std::string preflight(const std::vector<std::string>& sources, std::uint64_t* unpacked = nullptr);
-// `title`: the title id a PKG's content id names (its header's "UP0001-CUSA01234_00-..." at 0x40),
+// `title`: the title id a PKG's content id names (PS4 CNT at 0x40; PS5 FIH's embedded CNT header),
 // so the app can tell another game's file from the one chosen before it has all downloaded.
 struct Inspection { std::string kind, refusal, title{}; };
 // What the leading bytes of the ordered volumes are ("rar", "7z", "zip", "tar", "tar.gz", "tar.bz2",

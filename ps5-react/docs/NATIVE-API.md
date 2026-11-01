@@ -763,8 +763,8 @@ register games. Desktop extraction and successful PS5 linking are not console
 execution evidence.
 
 `Archives.inspect(sources)` reads headers synchronously and returns
-`{kind, refusal}`. `kind` names the leading bytes: `rar`, `7z`, `zip`, `tar`,
-`tar.gz`, `tar.bz2`, `tar.xz`, `tar.zst`, `pkg` (`\x7FCNT`), `exfat`, `ffpkg` (a
+`{kind, refusal, title}`. `kind` names the leading bytes: `rar`, `7z`, `zip`, `tar`,
+`tar.gz`, `tar.bz2`, `tar.xz`, `tar.zst`, `pkg` (`\x7FCNT` for PS4, `\x7FFIH` for PS5), `exfat`, `ffpkg` (a
 UFS2 superblock), `ffpfs`, `ffpfsc`, or `''`. For an archive, `refusal` is the
 decoder-memory message above when the headers read so far already declare a
 window over 64 MiB: an xz/zstd first block, or a RAR's file headers. A RAR's
@@ -777,7 +777,10 @@ works on a download's growing `.part` file: a hole or a missing end is not an
 error, so a first volume can be refused before the remaining volumes download.
 7z and ZIP keep their directories at the end and show no refusal until complete.
 An empty kind is not proof of anything; image kinds are recognized by superblock
-magic only, not validated as mountable.
+magic only, not validated as mountable. For a PKG, `title` is the `CUSA` or `PPSA`
+title ID in its content ID when the header is complete and valid; otherwise it is
+empty. PS5 packages keep the content ID in an embedded CNT header whose offset is
+recorded in the FIH header.
 
 `Archives.inspectRanges(ranges)` (ABI v24) runs the 7z preflight before the
 archive downloads, on byte ranges fetched from its server with `Http.request`

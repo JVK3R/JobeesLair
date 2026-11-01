@@ -120,6 +120,31 @@ private:
   int fd_ = -1;
 };
 
+std::string pkg_title_id(Volumes& in, const std::array<unsigned char, 8>& magic) {
+  std::array<char, 36> content_id{};
+  if (!std::memcmp(magic.data(), "\x7F" "CNT", 4)) {
+    if (!in.read(0x40, content_id.data(), content_id.size())) return {};
+  } else if (!std::memcmp(magic.data(), "\x7F" "FIH", 4)) {
+    // PS5 packages point to the embedded CNT header with a little-endian offset at 0x58.
+    std::array<unsigned char, 0x60> package_header{};
+    if (!in.read(0, package_header.data(), package_header.size())) return {};
+    const auto offset = little_endian(package_header.data() + 0x58, 8);
+    constexpr std::size_t minimum_header = 0x40 + 36 + 1;
+    std::array<unsigned char, 0x40 + 36> content_header{};
+    if (offset < minimum_header || !in.read(offset, content_header.data(), content_header.size()) ||
+        std::memcmp(content_header.data(), "\x7F" "CNT", 4)) return {};
+    std::memcpy(content_id.data(), content_header.data() + 0x40, content_id.size());
+  } else {
+    return {};
+  }
+
+  if (content_id[6] != '-') return {};
+  std::string title(content_id.data() + 7, 9);
+  const bool valid = std::all_of(title.begin(), title.begin() + 4, [](char c) { return c >= 'A' && c <= 'Z'; }) &&
+                     std::all_of(title.begin() + 4, title.end(), [](char c) { return c >= '0' && c <= '9'; });
+  return valid ? title : std::string{};
+}
+
 struct Cursor {
   const unsigned char* at;
   const unsigned char* end;
@@ -757,19 +782,9 @@ Inspection inspect(const std::vector<std::string>& sources) {
   if (starts_with(magic, "\xFD" "7zXZ")) return {"tar.xz", fits(xz_window(in, 0))};
   if (starts_with(magic, "\x28\xB5\x2F\xFD")) return {"tar.zst", fits(zstd_window(in, 0))};
   if (std::string_view(reinterpret_cast<const char*>(ustar.data()), 5) == "ustar") return {"tar", {}};
-  if (starts_with(magic, "\x7F" "CNT")) {
-    std::array<char, 36> content{};
-    std::string title;
-    if (in.read(0x40, content.data(), content.size()) && content[6] == '-') {
-      title.assign(content.data() + 7, 9);
-      const bool valid = std::all_of(title.begin(), title.begin() + 4, [](char c) { return c >= 'A' && c <= 'Z'; }) &&
-                         std::all_of(title.begin() + 4, title.end(), [](char c) { return c >= '0' && c <= '9'; });
-      if (!valid) title.clear();
-    }
-    return {"pkg", {}, title};
-  }
-  // A PS5 package opens on "\x7F" "FIH" where a PS4 one has "\x7F" "CNT": it installs the same way.
-  if (starts_with(magic, "\x7F" "FIH")) return {"pkg", {}};
+  // A PS5 package opens on FIH and points to a CNT header; PS4 packages start on CNT.
+  if (starts_with(magic, "\x7F" "CNT") || starts_with(magic, "\x7F" "FIH"))
+    return {"pkg", {}, pkg_title_id(in, magic)};
   if (starts_with(magic, "PFSC")) return {"ffpfsc", {}};
   if (little_endian(magic.data(), 8) == 1) {
     std::array<unsigned char, 8> pfs{};
