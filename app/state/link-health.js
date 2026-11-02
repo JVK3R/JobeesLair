@@ -129,6 +129,13 @@ import { sourceKind, webURL } from './download-sources.js';
     const bytes = links.length === 1 ? recordOf(links[0].url)?.b : null;
     return bytes ? { ...release, sizeBytes: bytes, sizeFromCheck: true } : release;
   }
+  // 0.5.5: the catalog links of a release, as the catalog has them (a host's page, a set's first source each part),
+  // the way the download queue reports them to the server (state/shared-links.js).
+  function catalogLinks(release) {
+    if (!release || typeof release !== "object" || release.unavailableReason) return [];
+    const sources = release.parts ? release.parts.filter((part) => part.sources?.[0]).map((part) => [part.sources[0], part.number]) : [[release, null]];
+    return sources.map(([source, part]) => [source.browserUrl || source.url, part]).filter(([link]) => typeof link === "string" && link);
+  }
   var stopped = () => Object.assign(new Error("Link check stopped."), { stopped: true });
   function createLinkHealth({
     http,
@@ -146,7 +153,9 @@ import { sourceKind, webURL } from './download-sources.js';
       return () => clearTimeout(id);
     },
     random = Math.random,
-    log = (line) => console.log(`[links] ${line}`)
+    log = (line) => console.log(`[links] ${line}`),
+    // 0.5.5: whether other players found a catalog link gone (state/shared-links.js sharedDead).
+    sharedDead = () => false
   }) {
     let records = null;
     let version = 0;
@@ -167,6 +176,19 @@ import { sourceKind, webURL } from './download-sources.js';
       return records;
     }
     const recordOf = (url) => load()[url];
+    // A release no check of this console has a word on, which other players found gone: dead, said as theirs.
+    function sharedVerdict(release) {
+      for (const [link, part] of catalogLinks(release)) {
+        if (!sharedDead(link)) continue;
+        let host = "";
+        try {
+          host = webURL(link).host;
+        } catch {
+        }
+        return { status: "dead", code: "shared", host, ...part ? { part } : {} };
+      }
+      return null;
+    }
     function emit() {
       for (const listener of [...listeners]) {
         try {
@@ -361,14 +383,14 @@ import { sourceKind, webURL } from './download-sources.js';
       /** The saved record of one link: { s: status, c: code, at }, or undefined. */
       recordOf,
       /** A release's standing (judge), or null when its links are not known yet. */
-      verdictOf: (release) => judge(linksOf(release), recordOf),
+      verdictOf: (release) => judge(linksOf(release), recordOf) ?? sharedVerdict(release),
       /** `releases` with what is known of their links applied (withVerdict); the same array while nothing changed. */
       overlay(releases) {
         const known = memo.get(releases);
         if (known?.version === version) return known.result;
         let changed = false;
         const result = releases.map((release) => {
-          const verdict = judge(linksOf(release), recordOf);
+          const verdict = judge(linksOf(release), recordOf) ?? sharedVerdict(release);
           const sized = withSize(release, recordOf);
           if (!verdict && sized === release) return release;
           changed = true;
@@ -421,6 +443,11 @@ import { sourceKind, webURL } from './download-sources.js';
         const status = Number(/\bHTTP (\d{3})\b/.exec(message || "")?.[1]);
         if (status && classify(link, { status }).verdict === "dead") remember(link.url, "dead", status);
       },
+      /** The shared dead links changed (state/shared-links.js): every overlay is worked out again. */
+      sharedChanged() {
+        version++;
+        emit();
+      },
       /** { state: waiting | checking | done, done, total, manual, summary, at } for `key`, or null. */
       progressOf: (key) => progress.get(key) ?? null,
       version: () => version,
@@ -446,5 +473,19 @@ import { sourceKind, webURL } from './download-sources.js';
     reporters.add(reporter);
     return () => reporters.delete(reporter);
   }
+  // 0.5.5: how a catalog link did in a download (gone, or a download from it finished), for the shared list.
+  var outcomes = /* @__PURE__ */ new Set();
+  function reportOutcome(link, ok) {
+    for (const listener of outcomes) {
+      try {
+        listener(link, ok);
+      } catch {
+      }
+    }
+  }
+  function onOutcome(listener) {
+    outcomes.add(listener);
+    return () => outcomes.delete(listener);
+  }
 
-export { BACKGROUND_LINKS, MANUAL_LINKS, TTL, classify, createLinkHealth, judge, linksOf, onLinkReport, reportLink, withVerdict };
+export { BACKGROUND_LINKS, MANUAL_LINKS, TTL, catalogLinks, classify, createLinkHealth, judge, linksOf, onLinkReport, onOutcome, reportLink, reportOutcome, withVerdict };

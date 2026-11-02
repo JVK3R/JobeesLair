@@ -17,18 +17,19 @@ import { colors, radius } from './colors.js';
 
   // After the store's reveal (index.jsx CURTAIN_MS) has finished.
   var DELAY_MS = 4500;
-  // 0.5.4's: the PS5 keyboard, the phone companion, whether a game starts for other players, focus. (0.5.3's: PS5
+  // 0.5.5's: dead links flagged for everyone, downloads that try again, the drive remembered, archives in archives.
+  // (0.5.4's: the PS5 keyboard, the phone companion, whether a game starts for other players, focus. 0.5.3's: PS5
   // packages, Homebrew search, top games, "Device busy". 0.5.2's: online, Fix it, Homebrew keeps your saves, backports.)
   var ITEMS = [
-    { icon: "keyboard", tone: "#38bdf8", title: "whatsNew.keyboard", detail: "whatsNew.keyboardDetail" },
-    { icon: "phone", tone: "#a78bfa", title: "whatsNew.phoneLive", detail: "whatsNew.phoneLiveDetail" },
-    { icon: "play", tone: "#facc15", title: "whatsNew.players", detail: "whatsNew.playersDetail" },
-    { icon: "focus", tone: "#4ade80", title: "whatsNew.focus", detail: "whatsNew.focusDetail" }
+    { icon: "alert", tone: "#38bdf8", title: "whatsNew.sharedLinks", detail: "whatsNew.sharedLinksDetail" },
+    { icon: "restart", tone: "#a78bfa", title: "whatsNew.retry", detail: "whatsNew.retryDetail" },
+    { icon: "hardDrive", tone: "#facc15", title: "whatsNew.drive", detail: "whatsNew.driveDetail" },
+    { icon: "archive", tone: "#4ade80", title: "whatsNew.nested", detail: "whatsNew.nestedDetail" }
   ];
-  // A player who saw neither 0.5.2's panel nor 0.5.3's (an update from 0.5.1 or earlier, or a new install) still learns
+  // A player who saw none of 0.5.2's, 0.5.3's or 0.5.4's panels (an update from 0.5.1 or earlier, or a new install) still learns
   // there that the anonymous stats are on and where they turn off: 0.5.2's online card takes the last place.
   var ONLINE = { icon: "globe", tone: "#38bdf8", title: "whatsNew.online", detail: "whatsNew.onlineDetail" };
-  var itemsFor = (seen) => seen === "0.5.2" || seen === "0.5.3" ? ITEMS : [...ITEMS.slice(0, 3), ONLINE];
+  var itemsFor = (seen) => seen === "0.5.2" || seen === "0.5.3" || seen === "0.5.4" ? ITEMS : [...ITEMS.slice(0, 3), ONLINE];
   var text = (size, color, extra) => ({ fontFamily: "Exo2", fontSize: size, lineHeight: Math.round(size * 1.35), color, ...extra });
   function ButtonFace({ label, primary }) {
     const focused = useIsFocused();

@@ -14,8 +14,9 @@ import { t } from '../i18n/core.js';
 import { archivePassword } from './archive-password.js';
 import { diagnoseLaunch, launchOutcomes } from './launch-diagnosis.js';
 import { fakelibState } from './fakelib.js';
-import { consoleFirmware, newerFirmware, titleRequirement } from './firmware.js';
-import { reportLink } from './link-health.js';
+import { consoleFirmware, newerFirmware, ps5FakePackagesLaunch, titleRequirement } from './firmware.js';
+import { releaseType } from './release-sets.js';
+import { reportLink, reportOutcome } from './link-health.js';
 import { BrowserRequired, RESOLVED_KINDS, archiveRefusal, cancellation, createSourceResolver, sourceKind, webURL } from './download-sources.js';
 import { captureAnchor } from './browser-links.js';
 import { createCaptureFlow } from './capture-flow.js';
@@ -65,6 +66,11 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
   var ADOPTED = "A partial download from another source holds this name. Resume it from its original source, or delete it in Files.";
   var DELETED = "Its partial files were deleted. Restart to download it again, or remove it.";
   var REMOVAL_CUT = "The app closed while deleting its files. Delete it again.";
+  // 0.5.5 (GitHub issue #2): a server busy or failing for a moment (HTTP 429 or 5xx, TorBox's DOWNLOAD_SERVER_ERROR)
+  // gets two more tries by itself, this far apart, before the download waits on the gamer. Not kept across
+  // launches: opening the app again is a try of its own.
+  var BUSY_SERVER = /HTTP (?:429|5\d\d)\b|TorBox had a server error/;
+  var RETRY_AFTER_MS = [3 * 6e4, 10 * 6e4];
   // The passwords the catalog's archives are published with. Some entries name none or the wrong one,
   // so after the catalog's own (or none) these are tried in turn. A wrong or missing password is caught
   // on the archive's headers before anything is written ("RAR archive password is missing.",
@@ -106,6 +112,8 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       delete job2.aheadAt;
       delete job2.aheadState;
       delete job2.aheadPart;
+      delete job2.retryAt;
+      delete job2.autoRetries;
       if (job2.state === "installing") return { ...job2, state: "installer-required" };
       // An earlier build counted a title at rest (whose runtime ShadowMount mounts only at launch) as not
       // mounted; it is checked again.
@@ -178,6 +186,26 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
     const AUTO_OPEN_MS = autoOpenMs;
     const autoTimers = /* @__PURE__ */ new Map();
     let queueApi = null;
+    // A failed download's next try by itself (BUSY_SERVER): job id -> timer. job.retryAt is when, for its card.
+    const retryTimers = /* @__PURE__ */ new Map();
+    function retryLater(job2) {
+      const tries = job2.autoRetries || 0;
+      if (job2.state !== "failed" || job2.cancelling || tries >= RETRY_AFTER_MS.length || !BUSY_SERVER.test(cause(job2.error || ""))) return false;
+      const wait2 = RETRY_AFTER_MS[tries];
+      job2.autoRetries = tries + 1;
+      job2.retryAt = Date.now() + wait2;
+      console.log(`[download-queue] ${job2.id}: the server is busy; trying again by itself in ${wait2 / 6e4} min`);
+      clearTimeout(retryTimers.get(job2.id));
+      const timer = setTimeout(() => {
+        retryTimers.delete(job2.id);
+        if (!jobs.includes(job2) || job2.state !== "failed" || !job2.retryAt) return;
+        queueApi.resume(job2.id);
+      }, wait2);
+      // Node's (the tests): a try minutes away doesn't hold the process open.
+      timer?.unref?.();
+      retryTimers.set(job2.id, timer);
+      return true;
+    }
     function scheduleNextPart(job2) {
       if (!browserCapture || !job2.parts || !job2.partIndex || !job2.parts[job2.partIndex - 1]?.completed || !autoContinue()) return;
       clearTimeout(autoTimers.get(job2.id));
@@ -610,7 +638,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         job2.release = { ...next };
         job2.artifact = artifact2;
         job2.total = next.sizeBytes || null;
-        for (const key of ["options", "browserUrl", "directURL", "parts", "partIndex", "currentSource", "downloadDestination", "inspected", "adopted", "endChecked"]) delete job2[key];
+        for (const key of ["options", "browserUrl", "directURL", "parts", "partIndex", "currentSource", "downloadDestination", "inspected", "adopted", "endChecked", "playerLink"]) delete job2[key];
         job2.error = "";
         job2.state = "queued";
         return true;
@@ -667,6 +695,30 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       change();
     }
     const canInstall = () => Boolean(packages) && platform === "ps5";
+    // 0.5.5: the catalog link a download's outcome speaks for (state/shared-links.js), or null: never a link the player
+    // gave, a debrid service's or a torrent's.
+    function sharedLink(job2, source2) {
+      if (!source2 || job2.playerLink || job2.release.debrid) return null;
+      let kind;
+      try {
+        kind = sourceKind(source2);
+      } catch {
+        return null;
+      }
+      return ["debrid", "torrent", "manifest", "unavailable"].includes(kind) ? null : source2.browserUrl || source2.url || null;
+    }
+    // 0.5.5 (GitHub issue #2): a PS5 package from a source that never said it was one (so the game page gave no
+    // warning) installs whole on firmware above 11.60 and then won't start. Its install waits for the player, with
+    // the reason; Install still starts it.
+    function heldPackage(job2) {
+      if (ps5FakePackagesLaunch(firmware()) !== false || releaseType(job2.release, "ps5").dumpType === "fpkg") return false;
+      const names = (job2.packages ?? [job2.downloadDestination || job2.artifact.destination]).map((path) => path.slice(path.lastIndexOf("/") + 1));
+      const ps5 = names.some((name) => /PPSA\d{5}/i.test(name) || !/CUSA\d{5}/i.test(name) && /^PPSA/i.test(job2.titleId || ""));
+      if (!ps5) return false;
+      console.log(`[download-queue] ${job2.id}: a PS5 package on firmware ${firmware()}; its install waits for the player`);
+      job2.message = t("downloads.fpkgHeld");
+      return true;
+    }
     async function execute(job2) {
       let task;
       let unsubscribe;
@@ -809,13 +861,16 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
           job2.artifact.images = [job2.artifact.destination];
           job2.payload = [{ path: job2.artifact.destination, size: fs.stat(job2.artifact.destination)?.size ?? 0 }];
         }
+        // 0.5.5: its catalog link works, for the shared list (state/shared-links.js).
+        const worked = sharedLink(job2, job2.release);
+        if (worked) reportOutcome(worked, true);
         job2.state = job2.artifact.nextAction === "shadowmount" ? "downloaded" : job2.artifact.nextAction === "downloaded" ? "file-downloaded" : job2.artifact.nextAction;
         job2.written = job2.total || job2.written;
         job2.bytesPerSecond = 0;
         if ((job2.artifact.nextAction === "extraction-required" || job2.output) && archives) await extract(job2, [job2.downloadDestination]);
         delete job2.reresolved;
         notifications.show(t("downloads.notice.complete"), job2.title);
-        if (job2.state === "installer-required" && canInstall()) await install(job2);
+        if (job2.state === "installer-required" && canInstall() && !heldPackage(job2)) await install(job2);
       } catch (error2) {
         if (noRoom) error2 = noRoom;
         console.log("[download-queue] transfer stopped:", error2.message);
@@ -835,6 +890,9 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         // was written, it asks for the page's check again instead of reading as a dead source.
         const unwritten = !(job2.parts ? job2.parts[job2.partIndex]?.written : job2.written);
         const expired = !refused && job2.capturedLink && unwritten && /HTTP (?:401|403|404|410)/.test(cause(error2.message));
+        // 0.5.5: a catalog link found gone goes to the shared list too.
+        const gone = !expired && (refused || /HTTP (?:404|410)\b/.test(cause(error2.message))) ? sharedLink(job2, failedSource) : null;
+        if (gone) reportOutcome(gone, false);
         if (expired) console.log("[download-queue] the captured link expired while queued; asking for the check again");
         const browser = !refused && (expired || error2 instanceof BrowserRequired || /browser verification required/i.test(cause(error2.message)));
         const retried = job2.state !== "pausing" && !job2.cancelling && browser && active2.transferring && reresolve(job2);
@@ -849,7 +907,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
             delete job2.options;
             if (job2.parts) delete job2.parts[job2.partIndex].options;
             scheduleNextPart(job2);
-          } else if (!job2.cancelling) notifications.show(t("downloads.notice.failed"), job2.title);
+          } else if (!job2.cancelling && !retryLater(job2)) notifications.show(t("downloads.notice.failed"), job2.title);
         }
       } finally {
         unsubscribe?.();
@@ -1070,6 +1128,33 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         maxBytes: fs.exists(job2.output) ? 1024 ** 4 : Math.min(1024 ** 4, Math.max(1, fs.diskUsage(job2.root).free - MARGIN2))
       };
     }
+    // 0.5.5: the first volume of an archive set among an extraction's files ("x.rar", alone or with x.r00, …,
+    // "x.part1.rar", "x.7z", "x.7z.001", "x.zip"), or null when they hold what installs already: an image, a package
+    // or a game folder's eboot.bin.
+    function innerArchive(artifacts) {
+      if (artifacts.some((path) => IMAGE.test(path) || /\.(?:pkg|fpkg)$/i.test(path) || /(?:^|\/)eboot\.bin$/i.test(path))) return null;
+      return artifacts.find((path) => /\.part0*1\.rar$/i.test(path)) ?? artifacts.find((path) => /\.rar$/i.test(path) && !/\.part\d+\.rar$/i.test(path)) ?? artifacts.find((path) => /\.(?:7z|7z\.001|zip)$/i.test(path)) ?? null;
+    }
+    // An unpacked folder's files as paths under it: its own and those one folder down (a scene release's folder),
+    // without the extraction's own markers. The engine's artifacts name only images and packages.
+    function unpackedFiles(output) {
+      const found = [];
+      const list = (folder, prefix, deeper) => {
+        let entries = [];
+        try {
+          entries = fs.readDir(folder);
+        } catch {
+          return;
+        }
+        for (const entry2 of entries) {
+          if (entry2.name.startsWith(".ps5-react")) continue;
+          if (!entry2.isDirectory) found.push(`${prefix}${entry2.name}`);
+          else if (deeper) list(`${folder}/${entry2.name}`, `${prefix}${entry2.name}/`, false);
+        }
+      };
+      list(output, "", true);
+      return found;
+    }
     const STREAM_FAILURE = /RAR worker|Only a RAR set|extraction thread|archive task is already running|^RAR extraction failed|^Extraction cancelled/;
     async function forgetPart(job2, error2) {
       const part = job2.parts?.[Number(INCOMPLETE_PART.exec(error2.message)?.[1]) - 1];
@@ -1210,6 +1295,41 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         Object.assign(job2, downloaded, { bytesPerSecond: 0 });
         delete job2.phase;
       }
+      // 0.5.5: an archive can hold another archive set (an .nfo beside .rar, .r00, … or a .7z or .zip) with the game
+      // in it, which stopped at "No game folder". That set is unpacked too, once, beside the first, whose download
+      // goes first to make room.
+      const inner = job2.role === "backport" || (result.artifacts || []).length || gameFolder(job2.output) ? null : innerArchive(unpackedFiles(job2.output));
+      if (inner) {
+        const destination = `${job2.output}-inner`;
+        console.log(`[download-queue] ${job2.id}: the archive held another (${inner}); unpacking it to ${destination}`);
+        await Promise.all(files.flatMap((path) => [path, `${path}.complete`]).filter((path) => fs.exists(path)).map((path) => fs.removeAsync(path)));
+        job2.state = "extracting";
+        job2.written = 0;
+        job2.total = null;
+        roomChecked = false;
+        samples = [{ at: Date.now(), bytes: 0 }];
+        change();
+        const task = archives.extract({ sources: [`${job2.output}/${inner}`], destination, maxBytes: Math.min(1024 ** 4, Math.max(1, fs.diskUsage(job2.root).free - MARGIN2)) });
+        active2.task = task;
+        const off = task.subscribe(follow);
+        try {
+          result = await task.done;
+          if (noRoom) throw new Error(noRoom);
+        } catch (error2) {
+          console.log(`[download-queue] ${job2.id}: the inner archive stopped: ${error2.message}`);
+          throw noRoom && !job2.cancelling && job2.state !== "pausing" ? new Error(noRoom) : error2;
+        } finally {
+          off();
+          Object.assign(job2, downloaded, { bytesPerSecond: 0 });
+          delete job2.phase;
+        }
+        try {
+          await removeAll([job2.output]);
+        } catch (error2) {
+          console.log(`[download-queue] ${job2.id}: the first archive's files were kept: ${error2.message}`);
+        }
+        job2.output = destination;
+      }
       console.log(`[download-queue] ${job2.id}: extracted in ${Math.round((Date.now() - began) / 1e3)} s, ${(result.artifacts || []).length} files`);
       const images = orderImages(job2.output, (result.artifacts || []).filter((path) => IMAGE.test(path)));
       // A backport is checked for nothing a game needs, and none of it goes where games are scanned: even
@@ -1254,7 +1374,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       }
       change();
       try {
-        await Promise.all(files.flatMap((path) => [path, `${path}.complete`]).map((path) => fs.removeAsync(path)));
+        await Promise.all(files.flatMap((path) => [path, `${path}.complete`]).filter((path) => !inner || fs.exists(path)).map((path) => fs.removeAsync(path)));
         if (job2.release.parts) await fs.removeAsync(setDirectory(job2));
       } catch (error2) {
         console.log("[download-queue] archive not deleted:", error2.message);
@@ -1502,7 +1622,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       if (job2.state === "pausing") return;
       await extract(job2, job2.parts.map((part) => part.destination), streamed);
       notifications.show(t("downloads.notice.complete"), job2.title);
-      if (job2.state === "installer-required" && canInstall()) await install(job2);
+      if (job2.state === "installer-required" && canInstall() && !heldPackage(job2)) await install(job2);
     }
     function lostPartial(job2) {
       const kept = (path) => fs.exists(path) || fs.exists(`${path}.part`);
@@ -2064,6 +2184,8 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       job2.directURL = verifiedOptions ? void 0 : url;
       // Captured from the browser: if it waits in the queue too long, its refusal means expired.
       job2.capturedLink = Boolean(verifiedOptions);
+      // 0.5.5: a link the player gave says nothing of the catalog's (state/shared-links.js).
+      job2.playerLink = true;
       stopCapture(job2);
       delete job2.reresolved;
       job2.message = "";
@@ -2169,6 +2291,9 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         const job2 = find(id);
         if (job2.state !== "paused" && job2.state !== "failed") return;
         delete job2.reresolved;
+        delete job2.retryAt;
+        clearTimeout(retryTimers.get(job2.id));
+        retryTimers.delete(job2.id);
         job2.state = "queued";
         job2.error = "";
         change();

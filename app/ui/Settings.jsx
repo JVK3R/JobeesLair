@@ -21,7 +21,7 @@ import { URLDialog } from '../downloads/URLDialog.jsx';
 import { formatDate2, formatNumber2 } from '../i18n/core.js';
 import { chooseLanguage, languageChoice, systemLocale, tWhole, useT } from '../i18n/index.js';
 import { LOCALES } from '../i18n/locales.js';
-import { reportRelay, sendReport } from '../state/bug-report.js';
+import { autoReportsChoice, reportCode, reportRelay, sendReport, setAutoReports, subscribeAutoReports } from '../state/bug-report.js';
 import { online, useOnline } from '../state/online.js';
 import { debridStatus, setAllDebridKey, setTorBoxKey, testAllDebrid, testTorBox, useDebrid } from '../state/debrid.js';
 import { HOMEBREW_ONLY } from '../edition.js';
@@ -99,7 +99,8 @@ import { FocusScope, Image, Keyboard, Linking, ScrollView, Text, View, motion, u
       /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, gap: 3 }, children: [
         /* @__PURE__ */ (0, jsx)(Text, { style: text(23, colors.fg, { fontWeight: 600, numberOfLines: 1, ellipsizeMode: "tail" }), children: name }),
         detail ? /* @__PURE__ */ (0, jsx)(Text, { style: text(20, focused ? colors.fg : colors.muted, { numberOfLines: 2, ellipsizeMode: "tail" }), children: detail }) : null,
-        hint && focused ? /* @__PURE__ */ (0, jsx)(Text, { style: text(20, colors.muted, { numberOfLines: 3, ellipsizeMode: "tail" }), children: hint }) : null
+        // 0.5.5: in pieces when longer than a Text node keeps (ui/LongText.jsx), as Hindi and Bengali hints were.
+        hint && focused ? /* @__PURE__ */ (0, jsx)(LongText, { style: text(20, colors.muted, { numberOfLines: 3, ellipsizeMode: "tail" }), children: hint }) : null
       ] }),
       end
     ] });
@@ -443,7 +444,8 @@ import { FocusScope, Image, Keyboard, Linking, ScrollView, Text, View, motion, u
     ] });
   }
   // 0.5.1: "Report a bug": press once to arm, again to send the logs to the Jobee'sLair Discord (state/bug-report.js).
-  // Only in a build that has the relay's address.
+  // Only in a build that has the relay's address. 0.5.5: the console's report code under it (a player's post is
+  // matched to their logs by it), and the switch for sending the logs by themselves when something fails.
   function ReportRow() {
     const t2 = useT();
     const [available] = (0, useState)(() => Boolean(reportRelay()));
@@ -463,11 +465,18 @@ import { FocusScope, Image, Keyboard, Linking, ScrollView, Text, View, motion, u
         (error2) => setReport({ state: "failed", error: error2.message })
       );
     };
-    const detail = report.state === "armed" ? t2("settings.report.armed") : report.state === "sending" ? t2("settings.report.sending") : report.state === "sent" ? t2("settings.report.sent") : null;
+    const detail = report.state === "armed" ? t2("settings.report.armed") : report.state === "sending" ? t2("settings.report.sending") : report.state === "sent" ? t2("settings.report.sent") : t2("settings.report.code", { code: reportCode() });
     return jsxs(Fragment, { children: [
       jsx(Row, { focusKey: "settings:bugReport", name: t2("settings.report.row"), detail, hint: t2("settings.report.detail"), end: jsx(Icon, { name: report.state === "sent" ? "circleCheck" : "alert", color: report.state === "armed" ? colors.glow : colors.muted }), onPress: press }),
-      report.state === "failed" ? jsx(Callout, { tone: "error", children: report.error }) : null
+      report.state === "failed" ? jsx(Callout, { tone: "error", children: report.error }) : null,
+      jsx(AutoReportRow, {})
     ] });
+  }
+  function AutoReportRow() {
+    const t2 = useT();
+    const [on, setOn] = (0, useState)(() => autoReportsChoice() === true);
+    (0, useEffect)(() => subscribeAutoReports(() => setOn(autoReportsChoice() === true)), []);
+    return jsx(Row, { focusKey: "settings:autoReports", name: t2("settings.report.autoRow"), hint: t2("settings.report.autoDetail"), end: jsx(Switch, { on }), onPress: () => setAutoReports(!on) });
   }
   // 0.5.2: the announcements up now, whole (the bar under the top island can cut a long one short), the stats
   // switch and what it sends (state/online.js).

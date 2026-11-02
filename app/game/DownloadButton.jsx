@@ -25,6 +25,7 @@ import { consoleFirmware, firmwareText, ps5FakePackagesLaunch } from '../state/f
 import { isPatchOnly } from '../state/release-sets.js';
 import { readinessOf, readinessText } from '../state/readiness.js';
 import { downloadQueue, driveName, freeBytes, storageRoots } from '../state/downloads.js';
+import { startingDrive } from '../state/last-drive.js';
 import { useNavActions } from '../state/nav.jsx';
 import { formatBytes } from '../state/size.js';
 import { MARGIN2, stillNeeded } from '../state/space.js';
@@ -75,12 +76,13 @@ import { colors, radius } from '../ui/colors.js';
         return ["/data"];
       }
     });
+    // 0.5.5: the drive the last download went to while it has room (state/last-drive.js), else the first that has.
     const [storage, setStorage] = (0, useState)(() => {
       const first = releases[preferredRelease(releases)];
-      return Math.max(0, roots.findIndex((root2) => {
+      return startingDrive(roots, (root2) => {
         const need2 = spaceNeeded(first, root2);
         return !need2 || freeBytes(root2) >= need2 + MARGIN2;
-      }));
+      });
     });
     // Through TorBox, the source's TorBox form (the same object for the same source); its mirrors stay the
     // fallbacks, so a TorBox failure falls back to downloading them directly.
@@ -226,7 +228,7 @@ import { colors, radius } from '../ui/colors.js';
     const problem = browser && !error2 ? {
       title: step ? t2("download.browser.partTitle", step) : t2("download.browser.title"),
       action: t2("download.browser.action")
-    } : error2 ? explainError(error2, Boolean(job2?.release.parts)) : lacking ? { title: t2("download.noFit"), action: spaceAdvice(roots, free, storage, need) } : sourceWarning ? sourceWarning : shadowMount || status === "installed" ? null : { title: t2("shadowMount.offTitle"), action: t2("shadowMount.offAction") };
+    } : error2 ? job2?.retryAt ? { ...explainError(error2, Boolean(job2?.release.parts)), action: t2("downloads.retryingSoon") } : explainError(error2, Boolean(job2?.release.parts)) : lacking ? { title: t2("download.noFit"), action: spaceAdvice(roots, free, storage, need) } : sourceWarning ? sourceWarning : shadowMount || status === "installed" ? null : { title: t2("shadowMount.offTitle"), action: t2("shadowMount.offAction") };
     const notice = job2?.message || download.notice || switched;
     const pick2 = (index, debrid = false) => {
       if ((index !== selected || debrid !== viaDebrid) && job2 && !written && ["awaiting-browser", "failed", "paused"].includes(job2.state)) downloadQueue().remove(job2.id);

@@ -424,3 +424,23 @@ test('a file link answering with its size gives the source that size; a web page
   assert.equal(shown[3].sizeBytes, 7, 'a size the catalog lists stays');
   assert.equal(health.recordOf(ARCHIVE).b, 42 * 1024 ** 3, 'kept with the link, so it shows next time without asking');
 });
+
+test('a link other players found gone reads as dead, said as theirs, when this console has no word on it (0.5.5)', async () => {
+  const { createLinkHealth } = await load('app/state/link-health.js');
+  const store = { value: null, get() { return this.value; }, set(next) { this.value = next; } };
+  const gone = new Set(['https://rootz.so/d/abc']);
+  const health = createLinkHealth({ http: { request: async () => ({ status: 200, headers: {} }) }, store, sharedDead: (url) => gone.has(url), wait: async () => {} });
+  const host = { id: 'r1', provider: 'Rootz', url: 'https://rootz.so/d/abc' };
+  const fine = { id: 'r2', provider: 'Rootz', url: 'https://rootz.so/d/fine' };
+  const set = { id: 'r3', provider: 'Host', parts: [{ number: 1, sources: [{ url: 'https://example.com/p1' }] }, { number: 2, sources: [{ url: 'https://rootz.so/d/abc' }] }] };
+  const [one, two, three] = health.overlay([host, fine, set]);
+  assert.deepEqual([one.health, one.linkHealth.status, one.linkHealth.code, one.linkHealth.host], ['dead', 'dead', 'shared', 'rootz.so']);
+  assert.equal(two, fine, 'a link nobody found gone stays as it was');
+  assert.deepEqual([three.linkHealth.code, three.linkHealth.part], ['shared', 2], "a set says which part");
+  let heard = 0;
+  health.subscribe(() => heard++);
+  gone.clear();
+  health.sharedChanged();
+  assert.equal(heard, 1);
+  assert.equal(health.overlay([host])[0], host, 'the list changing is seen at once');
+});

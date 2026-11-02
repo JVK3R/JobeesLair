@@ -38,7 +38,8 @@ import { downloadQueue, reportPastLaunches } from './state/downloads.js';
 import { colors, useThemeEpoch } from './ui/colors.js';
 import { watchQueue } from './ui/lightBar.js';
 import { startInstaller, startUpdateChecks } from './state/update.js';
-import { startOnline } from './state/online.js';
+import { startOnline, watchInstalls } from './state/online.js';
+import { startSharedLinks } from './state/links.js';
 import { applySpeedLimit } from './state/speed-limit.js';
 import { installLogger } from './services/logger.js';
 import { VERSION } from './version.js';
@@ -53,6 +54,8 @@ import { Reveal } from './ui/Reveal.jsx';
 import { laterReady } from './ui/later.js';
 import { Disclaimer } from './ui/Disclaimer.jsx';
 import { UpdateDialog } from './ui/UpdateDialog.jsx';
+import { AutoReportAsk } from './ui/AutoReportAsk.jsx';
+import { startAutoReports } from './state/bug-report.js';
 import { ScreenSaver } from './ui/ScreenSaver.jsx';
 import { WhatsNew } from './ui/WhatsNew.jsx';
 import { AnnouncementBar, usePageGlide } from './ui/AnnouncementBar.jsx';
@@ -125,6 +128,17 @@ import './state/picture-route.js';
     }, []);
     // The light bar watches the queue from launch; a queue that cannot start leaves it breathing idle.
     (0, useEffect)(() => watchQueue((listener) => downloadQueue().subscribe(listener)), []);
+    // 0.5.5: the logs go by themselves when something fails or the run before crashed, once the player says yes
+    // (state/bug-report.js; the first failure asks, ui/AutoReportAsk.jsx).
+    (0, useEffect)(() => HOMEBREW_ONLY ? void 0 : startAutoReports(downloadQueue()), []);
+    // And each game installed, or not, for the dashboard, with stats on (state/online.js watchInstalls).
+    (0, useEffect)(() => HOMEBREW_ONLY ? void 0 : watchInstalls(downloadQueue()), []);
+    // 0.5.5: the dead links other players found, asked for once, a while after launch (state/shared-links.js).
+    (0, useEffect)(() => {
+      if (HOMEBREW_ONLY) return void 0;
+      const id = setTimeout(startSharedLinks, 25e3);
+      return () => clearTimeout(id);
+    }, []);
     // The update check: once at launch (after the store is up), then every 24 hours.
     (0, useEffect)(() => startUpdateChecks(), []);
     // The Homebrew section's live index, fetched once a while after launch (state/homebrew-store.js).
@@ -152,7 +166,8 @@ import './state/picture-route.js';
           ),
           immersive ? null : /* @__PURE__ */ (0, jsx)(Legend, { screen: top.name }),
           immersive ? null : jsx(AnnouncementBar, {}),
-          /* @__PURE__ */ (0, jsx)(UpdateDialog, {})
+          /* @__PURE__ */ (0, jsx)(UpdateDialog, {}),
+          HOMEBREW_ONLY ? null : /* @__PURE__ */ (0, jsx)(AutoReportAsk, {})
         ] }),
         // 0.5.0 Pre Release 4: the one-time What's new, and the screen saver over everything.
         HOMEBREW_ONLY ? null : /* @__PURE__ */ (0, jsx)(WhatsNew, {}),

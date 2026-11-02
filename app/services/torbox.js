@@ -42,7 +42,10 @@ import { parseStamp } from '../state/clock.js';
     MONTHLY_LIMIT: "Your TorBox plan's monthly limit is used up.",
     COOLDOWN_LIMIT: "Your TorBox plan is in a cooldown. Try again later.",
     TEMPORARILY_DISABLED: "TorBox has this host turned off for now.",
-    RATE_LIMITED: "TorBox asked to slow down. Try again in a minute."
+    RATE_LIMITED: "TorBox asked to slow down. Try again in a minute.",
+    // 0.5.5 (GitHub issue #2): TorBox's own download server failing for a while, which its `detail` words as a link
+    // that may not be online. It is TorBox's side, and the download queue tries again by itself.
+    DOWNLOAD_SERVER_ERROR: "TorBox had a server error. Try again in a few minutes."
   };
   // An error from TorBox: `code` is its error code (or HTTP_<status>, NETWORK, PENDING, NO_FILE).
   var TorBoxError = class extends Error {

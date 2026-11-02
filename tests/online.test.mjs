@@ -361,3 +361,37 @@ test("the players' numbers for a game: all of them, and this console's firmware'
   assert.equal(compatOf(data, 'CUSA00001', '13.60'), null);
   assert.equal(compatOf(null, 'PPSA09076', '13.60'), null);
 });
+
+test('each game installed, or not, goes once with its step and code, never the game or the console (0.5.5)', async () => {
+  const { watchInstalls } = await load('app/state/online.js');
+  const listeners = new Set();
+  const queue = { subscribe: (listener) => (listeners.add(listener), () => listeners.delete(listener)) };
+  const push = (jobs) => { for (const listener of listeners) listener(jobs); };
+  const sent = [];
+  const stop = watchInstalls(queue, (said) => sent.push(said));
+  push([{ id: 'old', state: 'failed', error: 'HTTP 404' }]);
+  push([{ id: 'a', state: 'downloading' }, { id: 'b', state: 'extracting' }, { id: 'c', state: 'downloading' }]);
+  push([{ id: 'a', state: 'installed' }, { id: 'b', state: 'failed', error: 'Archive.extract /data/x.rar: damaged RAR' }, { id: 'c', state: 'failed', error: 'server answered HTTP 503', retryAt: 1 }]);
+  push([{ id: 'a', state: 'installed' }, { id: 'b', state: 'failed', error: 'Archive.extract /data/x.rar: damaged RAR' }, { id: 'c', state: 'failed', error: 'server answered HTTP 503' }]);
+  stop();
+  assert.deepEqual(sent, [
+    { ok: true },
+    { ok: false, stage: 'unpack', error: 'Archive.extract /data/x.rar: damaged RAR' },
+    { ok: false, stage: 'download', error: 'server answered HTTP 503' },
+  ], 'the one there at launch is not sent, the one about to try again waits');
+});
+
+test('a game install is sent as the step and the code alone, and not at all with stats off (0.5.5)', async () => {
+  const on = world();
+  on.online.gameInstalled({ ok: false, stage: 'install', error: 'Packages.install /data/homebrew/Game.pkg: 0x80990085 (CUSA01234)' });
+  on.online.gameInstalled({ ok: false, stage: 'download', error: 'Downloads.enqueue /data/x: server answered HTTP 404' });
+  on.online.gameInstalled({ ok: true, error: 'ignored' });
+  assert.deepEqual(on.sent.map((s) => s.body), [
+    { type: 'ps5-install', ok: false, stage: 'install', code: '0x80990085', version: '0.5.2-pre.1', firmware: '13.60' },
+    { type: 'ps5-install', ok: false, stage: 'download', code: 'HTTP 404', version: '0.5.2-pre.1', firmware: '13.60' },
+    { type: 'ps5-install', ok: true, stage: 'download', code: '', version: '0.5.2-pre.1', firmware: '13.60' }
+  ]);
+  const off = world({ saved: { enabled: false } });
+  off.online.gameInstalled({ ok: true });
+  assert.equal(off.sent.length, 0);
+});

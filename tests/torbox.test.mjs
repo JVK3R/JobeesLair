@@ -213,3 +213,13 @@ test('debrid state: the key, which sources TorBox takes, their TorBox form, and 
   debrid.setTorBoxClient(null);
   assert.deepEqual(fallbacks([browser, { ...browser, id: 'b2', provider: 'gofile.io', url: 'https://gofile.io/d/x', browserUrl: 'https://gofile.io/d/x' }], 0).map(({ id }) => id), [], 'mirrors are the catalog\'s, unchanged');
 });
+
+test("TorBox's own server failing (DOWNLOAD_SERVER_ERROR) says it was TorBox, and reads as try again later (0.5.5, issue #2)", async () => {
+  const { http } = fakeApi({ 'GET /user/me': () => fail('DOWNLOAD_SERVER_ERROR', 500) });
+  await assert.rejects(createTorBox({ http, key: () => KEY }).me(), (error) => error.code === 'DOWNLOAD_SERVER_ERROR' && /TorBox had a server error/.test(error.message) && !/scanning/.test(error.message));
+  const { configure } = await load('app/i18n/core.js');
+  configure(() => en, en);
+  const { explainError } = await load('app/downloads/errors.js');
+  const said = explainError('TorBox had a server error. Try again in a few minutes.');
+  assert.deepEqual([said.title, said.action], [en['errors.torboxServer'], en['errors.action.retryLater']]);
+});

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { fractionOf } from '../downloads/useQueue.js';
 import { BUSY } from '../state/download-queue.js';
 import { downloadQueue } from '../state/downloads.js';
+import { rememberDrive } from '../state/last-drive.js';
 import { sameRelease } from '../state/release-sets.js';
 
   function useDownload(game, release, root2, alternatives) {
@@ -36,6 +37,8 @@ import { sameRelease } from '../state/release-sets.js';
           if (release) {
             started.current = true;
             queue.enqueue(game, release, root2, alternatives);
+            // 0.5.5: the next game page starts on this drive (state/last-drive.js).
+            rememberDrive(root2);
           }
         } else if (BUSY.includes(job2.state) && job2.state !== "pausing" && job2.state !== "installing") queue.pause(job2.id);
         else if (job2.state === "installer-required") queue.install(job2.id);

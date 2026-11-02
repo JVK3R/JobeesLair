@@ -8,7 +8,8 @@
 // A download that fails with "gone" reports its link too (download-queue.js reportLink).
 
 import { useEffect, useState } from 'react';
-import { createLinkHealth, onLinkReport } from './link-health.js';
+import { createLinkHealth, onLinkReport, onOutcome } from './link-health.js';
+import { refreshShared, reportShared, sharedDead, subscribeShared } from './shared-links.js';
 import { downloadQueue } from './downloads.js';
 import { savedList } from './saved.js';
 import { Http } from '@ps5-react/core';
@@ -24,10 +25,16 @@ import { Http } from '@ps5-react/core';
       quiet: (reason, work) => {
         const queue = downloadQueue();
         return queue.quietNetwork ? queue.quietNetwork(reason, work) : work();
-      }
+      },
+      sharedDead
     }));
   }
   onLinkReport((url, message) => linkHealth().report(url, message));
+  // 0.5.5: dead links other players found (state/shared-links.js), and this console's downloads told to them.
+  subscribeShared(() => linkHealth().sharedChanged());
+  onOutcome((link, ok) => reportShared(link, ok));
+  /** Fetches the shared dead links once; the app calls it a while after launch. */
+  var startSharedLinks = () => void refreshShared();
   // Asks for `key`'s links to be checked in the background (`releases` read when the time comes), again
   // every AGAIN_MS when `repeat`. Returns the function that stops it.
   function watchLinks(key, releases, { settleMs = SETTLE_MS, repeat = true } = {}) {
@@ -68,4 +75,4 @@ import { Http } from '@ps5-react/core';
   /** Checks every link of `releases` now; resolves with the counts (or null). */
   var checkLinksNow = (key, releases) => linkHealth().checkNow(key, releases);
 
-export { checkLinksNow, linkHealth, useHealthyReleases, useLinkCheck, useLinkWatch, watchLinks };
+export { checkLinksNow, linkHealth, startSharedLinks, useHealthyReleases, useLinkCheck, useLinkWatch, watchLinks };

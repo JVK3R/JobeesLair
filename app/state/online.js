@@ -250,11 +250,30 @@ import { companionFacts, companionSent } from '../companion/usage.js';
         if (!response.ok) say(`install of ${app} not sent: HTTP ${response.status}`);
       }, (failure) => say(`install of ${app} not sent: ${failure?.message}`));
     }
+    /**
+     * 0.5.5: a game this console installed ({ok: true}) or failed to ({ok: false, stage, error}): sent only with stats
+     * on, with no console ID and no game, only the step ("download", "unpack", "install") and the console's or the
+     * server's code in the error ("0x80990085", "HTTP 404"). The dashboard's PS5 game installs.
+     */
+    function gameInstalled({ ok, stage = "download", error = "" }) {
+      if (!enabled()) return;
+      const { version, firmware } = facts();
+      const text = String(error);
+      const code = ok ? "" : /0x[0-9a-f]{8}/i.exec(text)?.[0] ?? /HTTP [1-5]\d\d/.exec(text)?.[0] ?? "";
+      void http.request(`${url}/v1/event`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "ps5-install", ok: Boolean(ok), stage, code, version, firmware }),
+        maxBytes: 1024
+      }).then((response) => {
+        if (!response.ok) say(`a game install not sent: HTTP ${response.status}`);
+      }, (failure) => say(`a game install not sent: ${failure?.message}`));
+    }
     function subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     }
-    return { enabled, installed, launched, launchedBefore, refresh, setEnabled, snapshot, start, subscribe };
+    return { enabled, gameInstalled, installed, launched, launchedBefore, refresh, setEnabled, snapshot, start, subscribe };
   }
   var instance = null;
   var networkBusy = () => false;
@@ -293,4 +312,31 @@ import { companionFacts, companionSent } from '../companion/usage.js';
     return value;
   }
 
-export { ONLINE_URL, compatStore, createOnline, online, startOnline, useOnline };
+  /**
+   * 0.5.5: each game the download queue installs, or fails to, for the dashboard (gameInstalled): one that comes to
+   * "installed" worked; one that fails is sent with the step it was at (what it was doing before: unpacking,
+   * installing, else downloading). Each end once, and again only after the task ran again; the tasks already ended
+   * when the app opens were sent then, and one about to try again by itself (download-queue.js retryLater) waits for
+   * that try. Returns the stop.
+   */
+  // A debrid service still fetching the file is a download to resume later (state/bug-report.js leaves it out too).
+  var STILL_FETCHING = /is still fetching this/;
+  function watchInstalls(queue, send = (said) => online().gameInstalled(said)) {
+    const last = /* @__PURE__ */ new Map();
+    let first = true;
+    return queue.subscribe((jobs) => {
+      for (const job of jobs) {
+        const before = last.get(job.id);
+        const failed = Boolean(job.error) && !job.retryAt && (job.state === "failed" || job.state === "installer-required") && !STILL_FETCHING.test(job.error);
+        const end = job.state === "installed" ? "installed" : failed ? `${job.state}|${job.error}` : null;
+        if (!first && end && before?.end !== end) {
+          if (!failed) send({ ok: true });
+          else send({ ok: false, stage: job.state === "installer-required" || before?.state === "installing" ? "install" : before?.state === "extracting" ? "unpack" : "download", error: job.error });
+        }
+        last.set(job.id, { state: job.state, end });
+      }
+      first = false;
+    });
+  }
+
+export { ONLINE_URL, compatStore, createOnline, online, startOnline, useOnline, watchInstalls };

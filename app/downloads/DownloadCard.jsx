@@ -66,8 +66,12 @@ import { Text, View, motion } from '@ps5-react/core';
     // whose button then opens the list of sources.
     if (state === "failed" && finalError(error2, Boolean(parts))) return { icon: "list", label: "download.otherSource.label", onPress: openGame };
     if (state === "failed") return { icon: "download", label: "downloads.action.retry", onPress: () => run("resume") };
-    if (state === "awaiting-browser") return { icon: "play", label: "downloads.action.continueOnPage", onPress: openGame };
+    // 0.5.5 (GitHub issue #2): a lone download whose link expired opens its host's page from here too, where the
+    // link is caught again; before, this went to the game page, whose words asked for the link to be typed in.
+    if (state === "awaiting-browser") return { icon: "external", label: "download.button.awaiting-browser", onPress: () => run("openBrowser") };
     if (state === "downloaded") return { icon: "circleCheck", label: "downloads.action.install", onPress: () => run("register") };
+    // 0.5.5: a package waiting on the player (download-queue.js heldPackage, or the console refused it) installs from here.
+    if (state === "installer-required") return { icon: "download", label: "downloads.action.install", onPress: () => run("install") };
     // 0.5.1: extracted, but its game folder was not found then: look again and install.
     if (state === "extracted") return { icon: "circleCheck", label: "downloads.action.install", onPress: () => run("installExtracted") };
     if (state === "attention") return { icon: "restart", label: "downloads.action.checkAgain", onPress: () => run("register") };
@@ -186,10 +190,12 @@ import { Text, View, motion } from '@ps5-react/core';
       onBlur: () => setWithin((current) => current === name ? null : current)
     });
     const meta = [formatOf(job2, release), partOf(job2), `${release.provider} ${release.version || ""}`.trim(), job2.root].filter(Boolean).join(" \xB7 ");
-    const problem = job2.error && explainError(job2.error, Boolean(release.parts));
+    // 0.5.5: a busy server's download tries again by itself (download-queue.js retryLater), and says so.
+    const explained = job2.error && explainError(job2.error, Boolean(release.parts));
+    const problem = explained && job2.retryAt ? { ...explained, action: t2("downloads.retryingSoon") } : explained;
     // The file's own title id is another game's (a PKG's header, download-queue.js noteTitle): said after any problem.
     const mismatch = job2.titleMismatch ? t2("downloads.titleMismatch", { found: job2.titleMismatch, expected: job2.titleId }) : "";
-    const note = problem ? problem.action ? t2("downloads.problem", { title: problem.title, action: problem.action }) : problem.title : mismatch || (ready.action === "seeWhy" ? t2("ready.seeWhyHint") : state === "downloaded" ? job2.message || t2("downloads.installHint") : "");
+    const note = problem ? problem.action ? t2("downloads.problem", { title: problem.title, action: problem.action }) : problem.title : mismatch || (ready.action === "seeWhy" ? t2("ready.seeWhyHint") : state === "downloaded" ? job2.message || t2("downloads.installHint") : state === "installer-required" ? job2.message || "" : "");
     const cdn = isCdnProvider(release.provider);
     return /* @__PURE__ */ (0, jsxs)(View, { style: { width: CARD_WIDTH, flexDirection: "row", borderRadius: radius.lg, roundedClip: true, borderWidth: 1, borderColor: within ? colors.glow : colors.line, backgroundColor: within ? colors.surface2 : colors.surface }, children: [
       /* @__PURE__ */ (0, jsxs)(View, { style: { flex: 1, gap: 18, padding: 28 }, children: [

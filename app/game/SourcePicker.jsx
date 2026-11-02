@@ -46,6 +46,8 @@ import { FileSystem, Text, View, useIsFocused } from '@ps5-react/core';
     if (health?.status === "dead") {
       const part = health.part ? String(health.part) : null;
       if (health.code === "removed") return part ? t2("links.dead.partRemoved", { host, part }) : t2("links.dead.removed", { host });
+      // 0.5.5: found gone by other players' downloads (state/shared-links.js), not by this console.
+      if (health.code === "shared") return part ? t2("links.dead.partShared", { host, part }) : t2("links.dead.shared", { host });
       return part ? t2("links.dead.part", { host, part, code: String(health.code) }) : t2("links.dead.code", { host, code: String(health.code) });
     }
     return [host, release.unavailableReason].filter(Boolean).join(" \xB7 ");

@@ -4,6 +4,33 @@ What changed in each version of Jobee'sLair. Each release on
 [GitHub](https://github.com/JVK3R/JobeesLair/releases) carries the full notes, the files and their
 SHA-256 checksums.
 
+## 0.5.5 (2026-11-02)
+
+- **Broken links, flagged for everyone.** When downloads find a game's link gone (HTTP 404 or 410), they tell
+  api.jobees.org, and once two players have found it gone since anyone last downloaded from it, every console ranks
+  that link last and says other players found the file gone; a download from it that finishes clears it. Only the
+  catalog's own link is sent, with no console ID, and only with the anonymous stats on. This covers the host pages
+  the console's own link check can't ask.
+- **Downloads try again by themselves.** A busy or failing server (HTTP 429 or 5xx, and TorBox's own
+  DOWNLOAD_SERVER_ERROR) gets two more tries, 3 and then 10 minutes later, before the download waits on you. Its
+  card says so. A TorBox server error now says it was TorBox, instead of reading like a dead link.
+- **Your download drive, remembered.** A game page starts on the drive your last download went to, while it is
+  plugged in and has room (GitHub issue #2).
+- **Archives inside archives.** A release whose archive holds another archive set (an .nfo beside .rar, .r00, …, or
+  a .7z or .zip) is unpacked again from its first volume, and the game placed.
+- **Expired host links.** A download waiting on its host's page opens that page from Downloads (Open host page),
+  where the link is caught again; nobody is asked to type a file link any more.
+- **PS5 packages that won't start.** A PS5 fake package from a source that never said it was one waits on Install
+  above firmware 11.60, with the reason, instead of installing 30 GB that won't start (GitHub issue #2). Install
+  still installs it.
+- **Logs by themselves, if you say so.** The first time something fails, Jobee'sLair asks whether it may send its
+  logs to the Jobee'sLair Discord when a download, unpack or install fails, or after a crash. Settings, About &
+  credits has the switch and this console's report code, which matches a post to its logs. Reports now carry the
+  engine's own log too, where a freeze shows.
+- **Settings' longer hints** are no longer cut off in Hindi, Bengali and other languages.
+- The anonymous stats now count each game install that worked or failed, with the step and the error code only,
+  never the game or the console.
+
 ## 0.5.4 (2026-10-29)
 
 - **The PS5 keyboard.** Searching, and typing a link or a TorBox or AllDebrid key, opens the console's own

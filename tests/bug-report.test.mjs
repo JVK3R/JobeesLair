@@ -54,3 +54,84 @@ test('the relay refusing reads as a sentence; a build without it says where to g
   await assert.rejects(sendReport({ http: down, relay: RELAY, appLog: () => 'x', now: 7e12 }), /didn't go through \(HTTP 502\)/);
   await assert.rejects(sendReport({ http, relay: null, now: 6e12 }), /aren't set up in this build/);
 });
+
+// ---- 0.5.5: the engine's log, a code for the console, and the logs by themselves once the player says yes ----
+const { reportCode, startAutoReports } = await load('app/state/bug-report.js');
+
+test("a report carries the engine's log as host.log, blanked, and the console's code; after a crash, the run before's", async () => {
+  const sent = [];
+  const http = {
+    async request(url, options) {
+      if (url.includes('127.0.0.1:10101')) return { ok: true, status: 200, json: async () => ({ content: 'SM' }) };
+      sent.push(options.body);
+      return { ok: true, status: 204 };
+    },
+  };
+  const read = (file) => (file.endsWith('/app.log') ? 'engine line token=SECRET' : file.endsWith('/app.prev.log') ? 'before\n[PS5-REACT] fatal signal 11' : null);
+  await sendReport({ http, relay: RELAY, appLog: () => 'app', now: 2e12, read, redact: (text) => text.replace('SECRET', '***'), console: 'ABC234', reason: 'Download failed: X', previous: true, auto: true });
+  assert.match(sent[0], /filename="host\.log"[\s\S]*engine line token=\*\*\*/);
+  assert.match(sent[0], /filename="host\.prev\.log"[\s\S]*fatal signal/);
+  assert.ok(sent[0].includes('name="console"\r\n\r\nABC234\r\n'), 'the code made on this console');
+  assert.ok(sent[0].includes('name="reason"\r\n\r\nDownload failed: X\r\n'), 'why it went by itself');
+  assert.doesNotMatch(sent[0], /SECRET/);
+  assert.equal(reportWait(2e12), 0, 'one that went by itself leaves Report a bug free');
+});
+
+test('the report code is six letters and digits, the same each time', () => {
+  const code = reportCode();
+  assert.match(code, /^[A-Z2-9]{6}$/);
+  assert.equal(reportCode(), code);
+});
+
+// A queue to push snapshots through, and the timers startAutoReports sets, run by hand.
+function autoWorld(start) {
+  const queueListeners = new Set();
+  const choiceListeners = new Set();
+  const world = { choice: start, asked: 0, sent: [], timers: [] };
+  world.queue = { subscribe: (listener) => (queueListeners.add(listener), () => queueListeners.delete(listener)) };
+  world.push = (jobs) => { for (const listener of queueListeners) listener(jobs); };
+  world.answer = (yes) => { world.choice = yes; for (const listener of choiceListeners) listener(); };
+  world.run = () => { for (const fn of world.timers.splice(0)) fn(); };
+  world.stop = startAutoReports(world.queue, {
+    send: async (report) => world.sent.push(report),
+    choose: () => world.choice,
+    ask: () => world.asked++,
+    subscribe: (listener) => (choiceListeners.add(listener), () => choiceListeners.delete(listener)),
+    relay: () => RELAY,
+    read: () => '',
+    timer: (fn) => world.timers.push(fn),
+    cancel: () => {},
+    now: () => 1e13,
+  });
+  return world;
+}
+
+test('the first failure asks before any log goes; yes sends what failed, and a busy server about to retry waits', () => {
+  const world = autoWorld(null);
+  world.push([]);
+  world.push([{ id: 'a', title: 'Game A', state: 'failed', error: 'HTTP 503', retryAt: 1 }]);
+  assert.equal(world.asked, 0, 'a download that tries again by itself is not a failure yet');
+  world.push([{ id: 'a', title: 'Game A', state: 'failed', error: 'Source unavailable: HTTP 404. Choose another source.' }]);
+  assert.equal(world.asked, 1, 'asked at the first failure');
+  world.run();
+  assert.equal(world.sent.length, 0, 'nothing goes before the answer');
+  world.answer(true);
+  world.run();
+  assert.equal(world.sent.length, 1);
+  assert.match(world.sent[0].reason, /^Download failed: Game A: Source unavailable: HTTP 404/);
+  assert.equal(world.sent[0].auto, true);
+  world.stop();
+});
+
+test('no drops what waited and sends nothing after; failures there at launch were reported then', () => {
+  const world = autoWorld(null);
+  world.push([{ id: 'old', title: 'Old', state: 'failed', error: 'HTTP 404' }]);
+  world.push([{ id: 'old', title: 'Old', state: 'failed', error: 'HTTP 404' }, { id: 'b', title: 'Game B', state: 'installer-required', error: 'Packages.install: 0x80990085' }]);
+  assert.equal(world.asked, 1);
+  world.answer(false);
+  world.run();
+  world.push([{ id: 'c', title: 'Game C', state: 'failed', error: 'HTTP 410' }]);
+  world.run();
+  assert.equal(world.sent.length, 0);
+  world.stop();
+});
