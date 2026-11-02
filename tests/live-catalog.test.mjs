@@ -91,10 +91,13 @@ const { feedDocument } = await import('../app/state/feed-format.js');
 
 test('the live catalog: AkiraBox and Rootz volumes are a set only when their files say so', () => {
   const document = JSON.parse(readFileSync(new URL('../catalog/live.json', import.meta.url), 'utf8'));
+  // ASTRO BOT (USA), while the catalogs list it: the refresh of 2026-11-02 dropped it, and a test of the code can't
+  // ask the catalogs to keep a game.
   const astro = document.games.find((game) => game.id === 'PPSA21564');
-  assert.ok(astro, 'ASTRO BOT (USA) is listed');
-  assert.ok(astro.releases.every((release) => !release.volume), 'its three AkiraBox uploads are whole files, not "part 1-3"');
-  assert.ok(astro.releases.some((release) => /\.ffpkg$/.test(release.filename)), 'the .ffpkg keeps its name, so it reads as a 13.60 image');
+  if (astro) {
+    assert.ok(astro.releases.every((release) => !release.volume), 'its three AkiraBox uploads are whole files, not "part 1-3"');
+    assert.ok(astro.releases.some((release) => /\.ffpkg$/.test(release.filename)), 'the .ffpkg keeps its name, so it reads as a 13.60 image');
+  }
   for (const game of document.games) {
     for (const release of game.releases) {
       if (!release.volume || !/akirabox|rootz/.test(new URL(release.url).host)) continue;
