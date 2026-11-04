@@ -36,6 +36,26 @@ v0.42 SDK. See [DEPENDENCIES.md](DEPENDENCIES.md).
 operation, throughput, heap headroom or firmware compatibility. The networking
 artifact still requires its own [hardware evidence](HARDWARE.md).
 
+## Proxy
+
+`Http.setProxy(proxy)` (ABI v25) sends every native request the app makes — large
+downloads, bounded HTTP (catalog feeds, updates) and remote images — through an HTTP
+or SOCKS proxy. `''` sends everything direct again.
+
+```js
+import {Http} from '@ps5-react/core';
+
+Http.setProxy('http://192.168.1.20:7890');        // an HTTP proxy on the LAN
+Http.setProxy('socks5h://192.168.1.20:1080');     // names resolved at the proxy
+Http.setProxy('http://user:pass@192.168.1.20:7890');
+Http.setProxy('');                                // direct
+```
+
+It applies to connections made after the call; a transfer already running keeps the
+proxy it started with. A malformed address throws a `TypeError`. On the console
+`127.0.0.1` is the console itself, so a proxy running on a PC is that PC's LAN address.
+There is no bypass list: turning the proxy off is the only way to go direct.
+
 ## Download a large file
 
 ```js

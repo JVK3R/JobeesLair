@@ -27,6 +27,7 @@ import { debridStatus, setAllDebridKey, setTorBoxKey, testAllDebrid, testTorBox,
 import { HOMEBREW_ONLY } from '../edition.js';
 import { LIMITS as SPEED_LIMITS, setSpeedLimit, useSpeedLimit } from '../state/speed-limit.js';
 import { setAutoContinueParts, useAutoContinueParts } from '../state/auto-continue.js';
+import { proxyHost, setProxy as saveProxy, useProxy } from '../state/proxy.js';
 import { setScreenSaver, showScreenSaver, useScreenSaverOn } from '../state/screen-saver.js';
 import { setTypingChoice, useTypingChoice } from '../state/system-keyboard.js';
 import { useNavActions } from '../state/nav.jsx';
@@ -49,7 +50,7 @@ import { setNavigationHaptics, useNavigationHaptics } from './haptics.js';
 import { onStatusLight, setStatusLight, statusLightOn } from './lightBar.js';
 import { logical } from './scale.js';
 import { PRESETS, presetOf, useActiveTheme } from './themes.js';
-import { FocusScope, Image, Keyboard, Linking, ScrollView, Text, View, motion, useIsFocused } from '@ps5-react/core';
+import { FocusScope, Image, Keyboard, Linking, Platform, ScrollView, Text, View, motion, useIsFocused } from '@ps5-react/core';
 
   var CARD = { gap: 16, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 34 };
   var THUMB = { type: "tween", duration: 0.18, ease: "easeOut" };
@@ -318,16 +319,22 @@ import { FocusScope, Image, Keyboard, Linking, ScrollView, Text, View, motion, u
       }, value)) })
     ] });
   }
-  // Drives, the speed limit and whether a download in parts opens the browser for its next part by itself.
-  function DownloadsCard() {
+  // Drives, the speed limit, the app's proxy and whether a download in parts opens the browser for its
+  // next part by itself.
+  function DownloadsCard({ onProxy }) {
     const t2 = useT();
     const drives = useDrives();
     const autoParts = useAutoContinueParts();
+    const proxy = useProxy();
     return /* @__PURE__ */ (0, jsxs)(View, { scrollAnchor: true, style: CARD, children: [
       /* @__PURE__ */ (0, jsx)(CardHead, { icon: "download", title: t2("settings.card.downloads") }),
       /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:autoParts", name: t2("settings.autoParts"), hint: t2("settings.autoPartsDetail"), end: /* @__PURE__ */ (0, jsx)(Switch, { on: autoParts }), onPress: () => setAutoContinueParts(!autoParts) }),
       /* @__PURE__ */ (0, jsx)(View, { style: { height: 1, marginVertical: 8, backgroundColor: colors.line } }),
       /* @__PURE__ */ (0, jsx)(SpeedLimitRow, {}),
+      /* @__PURE__ */ (0, jsx)(View, { style: { height: 1, marginVertical: 8, backgroundColor: colors.line } }),
+      // The proxy is process-wide (state/proxy.js): one address for downloads, feeds, covers and updates.
+      /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:proxy", name: t2("settings.proxy"), detail: proxy ? t2("settings.proxyOn", { host: proxyHost(proxy) }) : t2("settings.proxyNone"), hint: t2("settings.proxyDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "chevronRight", color: colors.muted }), onPress: onProxy }),
+      proxy ? /* @__PURE__ */ (0, jsx)(Row, { focusKey: "settings:proxy:remove", name: t2("settings.proxyRemove"), hint: t2("settings.proxyRemoveDetail"), end: /* @__PURE__ */ (0, jsx)(Icon, { name: "trash", color: colors.muted }), onPress: () => saveProxy("") }) : null,
       /* @__PURE__ */ (0, jsx)(View, { style: { height: 1, marginVertical: 8, backgroundColor: colors.line } }),
       ...drives.roots.map((root) => /* @__PURE__ */ (0, jsx)(Drive, { root, usage: drives.usage[root] }, root))
     ] });
@@ -580,6 +587,8 @@ import { FocusScope, Image, Keyboard, Linking, ScrollView, Text, View, motion, u
     const [pinMode, setPinMode] = (0, useState)(null);
     const [keying, setKeying] = (0, useState)(false);
     const [keyingAll, setKeyingAll] = (0, useState)(false);
+    const [proxying, setProxying] = (0, useState)(false);
+    const proxy = useProxy();
     // Drawn again in a newly chosen accent while open; the rest of the store follows once it is left.
     useActiveTheme();
     (0, useEffect)(() => () => commitTheme(), []);
@@ -587,7 +596,7 @@ import { FocusScope, Image, Keyboard, Linking, ScrollView, Text, View, motion, u
     const closed = (key) => focusLater(key);
     const cards = {
       companion: [/* @__PURE__ */ (0, jsx)(CompanionCard, { onChoosePin: setPinMode }, "companion")],
-      downloads: [/* @__PURE__ */ (0, jsx)(DownloadsCard, {}, "downloads")],
+      downloads: [/* @__PURE__ */ (0, jsx)(DownloadsCard, { onProxy: () => setProxying(true) }, "downloads")],
       feeds: [/* @__PURE__ */ (0, jsx)(FeedsCard, { onAdd: () => setAdding(true), onMirror: setMirrorOf }, "feeds")],
       debrid: [/* @__PURE__ */ (0, jsx)(DebridCard, { onKey: () => setKeying(true), onAllDebridKey: () => setKeyingAll(true) }, "debrid")],
       look: [/* @__PURE__ */ (0, jsx)(ThemeCard, {}, "theme"), /* @__PURE__ */ (0, jsx)(LanguageCard, {}, "language"), /* @__PURE__ */ (0, jsx)(FeedbackCard, {}, "feedback"), /* @__PURE__ */ (0, jsx)(ScreenSaverCard, {}, "screenSaver")],
@@ -634,6 +643,10 @@ import { FocusScope, Image, Keyboard, Linking, ScrollView, Text, View, motion, u
       keyingAll ? jsx(URLDialog, { title: t2("settings.alldebrid.key"), detail: t2("settings.alldebrid.keyDetail"), initial: "", submit: setAllDebridKey, onClose: () => {
         setKeyingAll(false);
         closed("settings:alldebrid:key");
+      } }) : null,
+      proxying ? /* @__PURE__ */ (0, jsx)(URLDialog, { title: t2("settings.proxy"), detail: t2("settings.proxyDialogDetail"), initial: proxy || "http://", submit: saveProxy, autoType: Platform.OS === "ps5", onClose: () => {
+        setProxying(false);
+        closed("settings:proxy");
       } }) : null,
       pinMode ? /* @__PURE__ */ (0, jsx)(PinDialog, { mode: pinMode, onDone: choosePin, onClose: () => {
         const mode = pinMode;

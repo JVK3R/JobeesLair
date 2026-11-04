@@ -4,6 +4,17 @@ What changed in each version of Jobee'sLair. Each release on
 [GitHub](https://github.com/JVK3R/JobeesLair/releases) carries the full notes, the files and their
 SHA-256 checksums.
 
+## Unreleased
+
+- **An HTTP proxy for everything.** Settings → Downloads → HTTP proxy takes `http://host:port`,
+  `https://host:port`, `socks5://host:port` or `socks5h://host:port`, with `user:pass@` before the host
+  when the proxy asks for a sign-in. Every request the app makes goes through it: downloads, catalog
+  feeds, cover art, homebrew updates, the app's own update check and the players' numbers. It is kept in
+  `settings.json` and applied before the first request at launch; on the console `127.0.0.1` is the
+  console itself, so a proxy on a PC is that PC's LAN address. Remove it to connect directly again. Its
+  dialog is fully operable with the controller or keyboard: the on-screen keys with the D-pad and Cross,
+  Triangle to type, Square to delete, R2 to confirm and Circle to cancel.
+
 ## 0.5.5 (2026-11-02)
 
 - **Broken links, flagged for everyone.** When downloads find a game's link gone (HTTP 404 or 410), they tell

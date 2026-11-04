@@ -32,7 +32,7 @@ export const Keyboard = {
 };
 export const Platform = { OS: 'desktop' };
 export const setLightMotion = () => {};
-export const Http = {};
+export const Http = { setProxy: (proxy) => { globalThis.__stubProxy = proxy; } };
 export const Image = { warm() {}, prefetch: () => Promise.resolve(), setRouter() {} };
 export const Downloads = {};
 export const Payloads = { send: () => ({ ok: false, error: 'stub' }) };

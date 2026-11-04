@@ -17,7 +17,7 @@ Controller.setLightBar('#38bdf8');
 ## Contract
 
 The modules in `runtime/js/native.js` wrap `globalThis.__ps5ReactNative`, which
-each host installs before the bundle runs. Its exact shape (ABI v24) is
+each host installs before the bundle runs. Its exact shape (ABI v25) is
 documented in [`native/shared/host_api.hpp`](../native/shared/host_api.hpp).
 `native/shared/host_api.cpp` implements the filesystem with POSIX and the object
 itself; `native/ps5/` and `native/desktop/` implement the platform functions.
@@ -168,6 +168,15 @@ downloads share, `0` for no limit. It applies at once, to running downloads too;
 enqueued with `unlimited: true` (an app's own update, say) is exempt. A capped download
 opens about one connection per MB/s of the cap, so each still gets bytes often enough to
 stay above curl's low-speed cutoff.
+
+`Http.setProxy(proxy)` (ABI v25) sends every request the transport makes — bounded HTTP,
+large downloads and remote images alike — through an HTTP or SOCKS proxy:
+`http://host:port`, `https://host:port`, `socks5://host:port` or `socks5h://host:port`
+(`socks5h` resolves names at the proxy). Basic authentication goes before the host
+(`http://user:pass@host:port`). `''` goes direct again. Connections made after the call
+use it; a transfer already running keeps the proxy it started with. Anything else throws
+a `TypeError`. The proxy is process-wide: it is not an option of one request, so it also
+covers the app's cover art and update check.
 
 ## LocalNetwork (ABI v9)
 

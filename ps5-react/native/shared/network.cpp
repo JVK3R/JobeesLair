@@ -52,6 +52,14 @@ constexpr unsigned writer_count = 2;
 static_assert(sizeof(off_t) >= 8, "Large downloads require 64-bit file offsets");
 constexpr std::uint64_t safe_integer = 9007199254740991ULL;
 std::atomic<bool> downloading_file{false};
+// The app's proxy (network::set_proxy): written on the render thread, read by every transfer's setup and
+// by the image loader. The lock is held only for a copy, never across a request.
+std::mutex proxy_mutex;
+std::string proxy_url;
+std::string current_proxy() {
+  std::lock_guard lock(proxy_mutex);
+  return proxy_url;
+}
 
 // Used for optional final-file verification and checkpoint identity, off the JS thread.
 using integrity::Hash;
@@ -544,6 +552,10 @@ bool configure_transport(void* handle, const std::string& url, bool follow_redir
   set(CURLOPT_CONNECTTIMEOUT, 10L);
   set(CURLOPT_LOW_SPEED_LIMIT, 1L); set(CURLOPT_LOW_SPEED_TIME, 30L);
   set(CURLOPT_TCP_KEEPALIVE, 1L);
+  // The app's proxy (empty: direct). libcurl reads the scheme, so socks5h:// resolves names at the proxy;
+  // user:pass@ in the URL is its basic authentication.
+  const std::string proxy = current_proxy();
+  if (!proxy.empty()) set(CURLOPT_PROXY, proxy.c_str());
 #ifdef PROSPERO
   set(CURLOPT_IPRESOLVE, static_cast<long>(CURL_IPRESOLVE_V4));
   set(CURLOPT_SOCKOPTFUNCTION, +[](void*, curl_socket_t fd, curlsocktype)->int {
@@ -1699,6 +1711,10 @@ std::uint32_t enqueue(Request request, std::string& error) { return service.enqu
 void cancel(std::uint32_t id) { service.cancel(id); }
 std::vector<Snapshot> poll() { return service.poll(); }
 void set_rate_limit(std::uint64_t bytes_per_second) { service.set_rate_limit(bytes_per_second); }
+void set_proxy(const std::string& proxy) {
+  std::lock_guard lock(proxy_mutex);
+  proxy_url = proxy;
+}
 bool downloading() { return downloading_file; }
 bool running() { return service.running(); }
 const char* version() { return curl_version(); }
@@ -1713,6 +1729,7 @@ std::uint32_t enqueue(Request, std::string& error) {
 void cancel(std::uint32_t) {}
 std::vector<Snapshot> poll() { return {}; }
 void set_rate_limit(std::uint64_t) {}
+void set_proxy(const std::string&) {}
 bool downloading() { return false; }
 bool running() { return false; }
 const char* version() { return "disabled"; }
