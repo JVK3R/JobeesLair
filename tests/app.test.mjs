@@ -2402,7 +2402,8 @@ test('settings: the support panel is opt-in, says nothing is locked, and its QR 
   assert.deepEqual([png.readUInt32BE(16), png.readUInt32BE(20)], [222, 222], 'exactly its on-screen size: 37 modules of 6 px, no scaling');
   assert.match(settings, /style: \{ width: 222, height: 222 \}/);
   const funding = readFileSync(path.join(repo, '.github/FUNDING.yml'), 'utf8');
-  assert.match(funding, /^buy_me_a_coffee: jvk3r$/m);
+  assert.match(funding, /^ko_fi: jvk3r$/m);
+  assert.doesNotMatch(funding, /buy_me_a_coffee/);
 });
 
 // ---- link health: a download's own 404 (download-queue.js reportLink → state/link-health.js) ----

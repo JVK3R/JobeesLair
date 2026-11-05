@@ -12,16 +12,24 @@
 
 <p align="center">
   <b>An open-source homebrew download manager for the PS5.</b><br>
-  Version 0.5.2 · Title ID <code>PPSA99471</code> · created by JVK3R<br>
+  Title ID <code>PPSA99471</code> · created by JVK3R<br>
   <i>Proudly created alongside AI by JVK3R</i>
 </p>
 
 <p align="center">
-  <a href="https://github.com/JVK3R/JobeesLair/releases/latest"><b>Download</b></a> ·
+  <a href="https://github.com/JVK3R/JobeesLair/releases/latest"><img src="https://img.shields.io/github/v/release/JVK3R/JobeesLair?style=for-the-badge&label=Download&color=e5322d" alt="Download the newest release"></a>
+  <a href="https://github.com/JVK3R/JobeesLair/releases"><img src="https://img.shields.io/github/downloads/JVK3R/JobeesLair/total?style=for-the-badge&label=Downloads&color=2b3240" alt="Total downloads"></a>
+  <a href="https://ko-fi.com/jvk3r"><img src="https://img.shields.io/badge/Support-Ko--fi-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white" alt="Support Jobee'sLair on Ko-fi"></a>
+  <a href="https://discord.gg/w5dtAMBVgZ"><img src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Discord"></a>
+</p>
+
+<p align="center">
   <a href="INSTALLATION-GUIDE.md">Install guide</a> ·
   <a href="CHANGELOG.md">Changelog</a> ·
   <a href="FEEDS.md">Catalog feeds</a> ·
-  <a href="https://buymeacoffee.com/jvk3r">☕ Support</a>
+  <a href="#support-jobeeslair">Support</a> ·
+  <a href="https://jobees.org">jobees.org</a> ·
+  <a href="https://github.com/JVK3R/JobeesLair-PS4">The PS4 app</a>
 </p>
 
 > [!IMPORTANT]
@@ -34,8 +42,12 @@
 > nothing; see the [Content Neutrality & DMCA Notice](#content-neutrality--dmca-notice).
 
 <p align="center">
-  <img src=".github/readme/home.png" alt="The Jobee'sLair home screen: a floating navigation dock, a featured game and rows of cards" width="100%">
+  <img src=".github/readme/ps5-discover.webp" alt="The Jobee'sLair home screen: the navigation bar, a featured game and the Featured row" width="100%">
 </p>
+
+> [!TIP]
+> **Jobee'sLair is free and made by one person.** If it's useful to you, [support it on Ko-fi](https://ko-fi.com/jvk3r)
+> or [with crypto](#support-jobeeslair). Donations keep the servers running and the updates coming.
 
 Jobee'sLair is a catalog browser and download manager that runs on a jailbroken PS5 with
 [ShadowMount+](https://github.com/drakmor/ShadowMountPlus). It is open source so it can't be locked away
@@ -43,21 +55,24 @@ or disappear: anyone can read, build, fix and fork it.
 
 ## What it does
 
-- **Homebrew, its own section:** 200+ open-source PS5 apps, emulators, ports and payloads, each with its
+- **Homebrew, its own section:** 300+ open-source PS5 apps, emulators, ports and payloads, each with its
   own art, installed and kept up to date straight from its author's GitHub release (nothing is rehosted).
   Apps land in `homebrew/` for ShadowMount+; payloads run through your ELF loader with one button.
 - **Browse and download** a bundled catalog of games, plus up to 4 catalog feeds of your own
   (with mirror addresses, so a feed survives its domain going down). Downloads go straight to internal
-  storage or a USB drive.
+  storage or a USB drive, and the drive you picked is remembered.
 - **Labels every source** before you download: what it is (Folder Dump, .exfat Image, FFPKG, Backport),
   whether it runs on firmware 13.60 (**13.60 Ready**), and whether its link still works (**Broken link**,
-  **Offline**). Nothing is hidden, only ranked.
+  **Offline**). A link that stops working for other players is flagged for you too. Nothing is hidden, only ranked.
+- **Downloads that look after themselves:** a download that fails part-way retries by itself, and archives
+  are unpacked for you, even an archive inside an archive.
 - **Catches file links from the console's browser** for you, so there is no typing links with a
   controller, and **learns which hosts work** on your console (**Auto-capture** / **Rarely works here**).
-- **TorBox (optional):** add your API key in Settings and supported hosts download at full speed with no
-  browser step.
+- **TorBox and AllDebrid (optional):** add your key in Settings and supported hosts download at full speed
+  with no browser step.
 - **Library, play time and Make Room:** see what's installed and how long you played it, free up space
-  safely, move games between drives, and find out **why a game won't start**.
+  safely, move games between drives, and find out **why a game won't start**, with how often it starts for
+  other players.
 - **Phone companion:** a live dashboard, the queue, games and homebrew (install, update, run, remove), your
   library with Fix it, and a remote, from your phone, in the console's language. Downloads and installs move on
   the phone as they happen. Off until you turn it on, and you choose its 6-digit PIN. Experimental: it can stay
@@ -65,21 +80,42 @@ or disappear: anyone can read, build, fix and fork it.
 - **Types on the PS5's own keyboard** for searches, links and keys, in your language (or the store's own keys,
   with results as you type, if you prefer them).
 - **Updates from the app**, a **download speed limit**, six accent colors, DualSense light-bar status,
-  and 13 languages.
+  and 14 languages.
 
 <p align="center">
-  <img src=".github/readme/library.png" alt="The library: game tiles with readiness, drive and play time" width="49%">
-  <img src=".github/readme/make-room.png" alt="Make Room: drive bars before and after, and what can be freed" width="49%">
+  <img src=".github/readme/ps5-homebrew.webp" alt="The Homebrew section: a spotlighted emulator and the categories" width="49%">
+  <img src=".github/readme/ps5-homebrew-lists.webp" alt="Homebrew lists: most popular apps and fresh releases" width="49%">
 </p>
 
 <p align="center">
-  <img src=".github/readme/dashboard.png" alt="The downloads dashboard: throughput, queue progress and job counts" width="49%">
-  <img src=".github/readme/settings.png" alt="Settings: the phone companion with its QR code, and the other categories" width="49%">
+  <img src=".github/readme/ps5-companion.webp" alt="Settings: the phone companion with its QR code, address and PIN" width="49%">
+  <img src=".github/readme/ps5-about.webp" alt="Settings, About & credits: the version, update check and Support development" width="49%">
 </p>
 
+## Support Jobee'sLair
+
+Jobee'sLair is free and open source, and it's made by one person. Donations pay for what keeps it running: the
+servers behind the live catalog, the update checks and the bug reports, and the time each release takes. Nothing in
+the app is locked or held back, and nothing ever will be. A donation is a thank-you, never a requirement.
+
 <p align="center">
-  <img src=".github/readme/homebrew.png" alt="The Homebrew section: 200+ open-source apps, emulators and payloads" width="49%">
-  <img src=".github/readme/search.png" alt="Search: the catalog as a cover grid, with the 13.60 Ready and format filters" width="49%">
+  <a href="https://ko-fi.com/jvk3r"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support Jobee'sLair on Ko-fi" height="40"></a>
+</p>
+
+| How | Where |
+| --- | --- |
+| **Ko-fi** | [ko-fi.com/jvk3r](https://ko-fi.com/jvk3r): card, Apple Pay or Google Pay, once or monthly |
+| **Bitcoin** | `3PeEqA8UTvCuLwR1K5NKP8k11dFAh14rqM` |
+| **USDC on Solana** | `6iWHFuvmBgZtUsyF3GmrF2Ng4tAPnBaEJkD8tr7Hm3cX` |
+
+Supporters are thanked by name on [jobees.org/#support](https://jobees.org/#support) (a private gift stays private)
+and get the Supporter role on [Discord](https://discord.gg/w5dtAMBVgZ). Gave in crypto? Open a ticket there with the
+transaction link.
+
+From 0.5.6 the same Ko-fi code is in the app, under **Settings → About & credits → Support development**:
+
+<p align="center">
+  <img src=".github/readme/ps5-support.webp" alt="Support development in the app: a QR code for ko-fi.com/jvk3r" width="80%">
 </p>
 
 ## Install
@@ -158,25 +194,17 @@ release tagged with the same version (`v0.5.0`). Attach `JobeesLair.exfat` and `
 
 </details>
 
-## Support the project
-
-Jobee'sLair is free and open source, and stays that way. Nothing is locked or limited and the app never asks
-for money. If you'd like to support it, you can **[buy me a coffee ☕](https://buymeacoffee.com/jvk3r)**
-(also under **Settings → About**). Thank you.
-
 ## Credits
 
 - **JVK3R**, creator of Jobee'sLair
-- **MyLuxy** ([Overdrive](https://github.com/MyLuxy/overdrive))
-- **saawant12** ([Orbit Store](https://github.com/saawant12/orbit-store-ps5))
-- **BlackBox** ([D3ATHLY/blackbox](https://github.com/D3ATHLY/blackbox))
 - **drakmor** ([ShadowMount+](https://github.com/drakmor/ShadowMountPlus))
 - **nexgen999** ([PS5 Repository List](https://github.com/nexgen999/PS5-Repository-List)): the Homebrew section's
-  list comes from it, with his permission, and grows with it
+  list comes from it, with their permission, and grows with it
 - **Every homebrew developer** whose work the Homebrew section lists
 - **PS5 React — created by half144 and PS5 React contributors.**
   The original repository is gone; the framework continues at
   [github.com/JVK3R/ps5-react](https://github.com/JVK3R/ps5-react), where the changes made for Jobee'sLair live.
+- **Nick** and **all testers**: thank you
 
 Distributed under the GPL-3.0-or-later ([LICENSE](LICENSE)). Third-party notices are in `notices/` inside the
 app and in `ps5-react/docs/DEPENDENCIES.md`.

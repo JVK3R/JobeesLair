@@ -1,3 +1,4 @@
 # The "Sponsor" button on the repository page. Donations are optional: nothing in Jobee'sLair is locked
-# behind them.
-buy_me_a_coffee: jvk3r
+# behind them. Ko-fi, and jobees.org's Support screen (crypto, the names of supporters).
+ko_fi: jvk3r
+custom: ["https://jobees.org/#support"]

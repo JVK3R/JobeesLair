@@ -17,8 +17,8 @@ for file in README.md README.ru.md INSTALLATION-GUIDE.md FEEDS.md CHANGELOG.md L
     [ -f "$repo/$file" ] || { echo "error: $repo/$file is missing" >&2; exit 1; }
     cp "$repo/$file" "$docs/$file"
 done
-# The images the READMEs reference, at the same relative paths.
-for image in logo.svg logo-dark.svg logo-light.svg home.png dashboard.png settings-theme.png; do
-    cp "$repo/.github/readme/$image" "$docs/.github/readme/$image"
+# The images the READMEs reference, at the same relative paths (read from the READMEs, so a new picture comes along).
+grep -h -o -E '\.github/readme/[A-Za-z0-9._-]+' "$repo/README.md" "$repo/README.ru.md" | sort -u | while read -r image; do
+    cp "$repo/$image" "$docs/$image"
 done
 echo "staged docs: $(find "$docs" -type f | wc -l) files in $docs"
