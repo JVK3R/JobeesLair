@@ -3,8 +3,9 @@
 // MODIFIED: Italian.
 
 
+  // French groups thousands with a no-break space (U+00A0), not its narrow one (U+202F): neither face has the narrow
+  // one baked in (assets.config.js), so "5 000" drew as "5?000".
   var NBSP = "\xA0";
-  var NNBSP = "\u202F";
   var SOURCE_LOCALE = "en";
   var LOCALES = [
     {
@@ -62,9 +63,9 @@
     {
       code: "fr",
       name: "Fran\xE7ais",
-      group: NNBSP,
+      group: NBSP,
       decimal: ",",
-      percent: `{n}${NNBSP}%`,
+      percent: `{n}${NBSP}%`,
       date: "{d} {MMM} {y}",
       months: ["janv.", "f\xE9vr.", "mars", "avr.", "mai", "juin", "juil.", "ao\xFBt", "sept.", "oct.", "nov.", "d\xE9c."],
       list: [", ", " et ", " et "]

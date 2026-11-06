@@ -406,15 +406,20 @@ bool recover_file(Job& job) {
   CompletionReceipt receipt, expected;
   const int meta = open((job.request.destination+".complete").c_str(), O_RDONLY | O_NOFOLLOW);
   const bool valid = meta >= 0 && read_all(meta, &receipt, sizeof receipt) &&
-    !std::memcmp(receipt.magic, expected.magic, sizeof receipt.magic) &&
-    !std::memcmp(receipt.identity, job.receipt_identity.c_str(), 65) && receipt.sha256[64] == '\0' &&
+    !std::memcmp(receipt.magic, expected.magic, sizeof receipt.magic) && receipt.sha256[64] == '\0' &&
     (!receipt.sha256[0] || std::all_of(receipt.sha256, receipt.sha256+64, [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }));
   if (meta >= 0) close(meta);
   struct stat file{};
   job.fd = open(job.request.destination.c_str(), O_RDONLY | O_NOFOLLOW);
+  // Jobee'sLair 0.5.6: an exFAT drive mounted again numbers its files (and its root) anew, so the receipt's identity,
+  // which holds the root's numbers, and its device and inode can differ for the very file it was written for:
+  // "existing destination has no matching completion receipt" stopped finished downloads on USB drives. Those numbers
+  // are logged; the file's size against the receipt's, and the hash the request expects, decide.
+  const bool moved = valid && (std::memcmp(receipt.identity, job.receipt_identity.c_str(), 65) ||
+    (job.fd >= 0 && fstat(job.fd, &file) == 0 && (static_cast<std::uint64_t>(file.st_dev) != receipt.device || static_cast<std::uint64_t>(file.st_ino) != receipt.inode)));
+  if (moved) platform_log("download receipt: the file's or drive's numbers changed since it was written; its size and hash decide");
   if (!valid || job.fd < 0 || fstat(job.fd, &file) != 0 || !S_ISREG(file.st_mode) || file.st_size < 0 ||
       static_cast<std::uint64_t>(file.st_size) != receipt.total ||
-      static_cast<std::uint64_t>(file.st_dev) != receipt.device || static_cast<std::uint64_t>(file.st_ino) != receipt.inode ||
       (!job.request.sha256.empty() && job.request.sha256 != receipt.sha256) ||
       (job.request.expected_bytes && receipt.total != job.request.expected_bytes)) {
     if (job.fd >= 0) close(job.fd);
@@ -713,7 +718,7 @@ private:
   void run_job(const std::shared_ptr<Job>& job);
   bool prepare(Job& job);
   bool probe_source(Job& job, unsigned source);
-  bool check_sample(Job& job);
+  bool check_sample(Job& job, bool bytes_only = false);
   void verify_mirrors(Job& job);
   CURLcode perform_probe(Transfer& probe);
   bool configure(Transfer& t);
@@ -1145,7 +1150,9 @@ void Service::verify_mirrors(Job& job) {
 
 // Without a strong ETag the server cannot promise that kept ranges still match its file, so before
 // appending, the tail of the last completed range is downloaded again and compared with the partial.
-bool Service::check_sample(Job& job) {
+// `bytes_only`: the bytes alone decide, whatever Last-Modified the server that answers gives (a host's servers each
+// give their own).
+bool Service::check_sample(Job& job, bool bytes_only) {
   std::size_t last = job.completed.size();
   while (last && !job.completed[last-1]) --last;
   if (!last) return true;
@@ -1156,7 +1163,7 @@ bool Service::check_sample(Job& job) {
   probe.probe_from = end-length; probe.probe_length = length;
   const bool fetched = configure(probe) && perform_probe(probe) == CURLE_OK && probe.status == 206 && probe.content_range &&
     probe.range_begin == end-length && probe.range_end == end-1 && probe.range_total == job.total &&
-    probe.sample.size() == length && (job.last_modified.empty() || probe.last_modified == job.last_modified);
+    probe.sample.size() == length && (bytes_only || job.last_modified.empty() || probe.last_modified == job.last_modified);
   probe.probe_from = 0; probe.probe_length = 1;
   if (job.cancelled) return false;
   if (!fetched) { job.fail(probe.error.empty() ? "could not re-read the partial file's tail from the server" : probe.error); return false; }
@@ -1239,13 +1246,27 @@ bool Service::prepare(Job& job) {
     job.fd = open(partial.c_str(), O_RDWR | O_NOFOLLOW);
     const int meta = open((job.request.destination+".resume").c_str(), O_RDONLY | O_NOFOLLOW);
     Checkpoint saved, expected;
+    bool sampled = false;
     bool valid = job.fd >= 0 && meta >= 0 && fstat(job.fd, &existing) == 0 && S_ISREG(existing.st_mode) &&
       existing.st_size >= 0 && static_cast<std::uint64_t>(existing.st_size) <= job.total && read_all(meta, &saved, sizeof saved) &&
       !std::memcmp(saved.magic, expected.magic, sizeof saved.magic) && saved.total == job.total &&
       saved.range_bytes == job.request.range_bytes && saved.count == job.completed.size() &&
-      !std::memcmp(saved.identity, job.identity.c_str(), 65) && read_all(meta, job.completed.data(), job.completed.size());
+      read_all(meta, job.completed.data(), job.completed.size());
     if (meta >= 0) close(meta);
     for (unsigned char value : job.completed) if (value > 1) valid = false;
+    // Jobee'sLair 0.5.6: the same size and ranges under another identity is most often the same file from another of
+    // the host's servers (each gives its own ETag or Last-Modified), a renewed link, or the drive's numbers after a
+    // remount: 13 players lost their progress to it in 0.5.5's first day (77 GB of one). A single-source file then
+    // resumes once its last kept range's tail matches the server's bytes (check_sample, which fails the job when
+    // they differ); one made of several sources still needs its identity.
+    const bool same = valid && !std::memcmp(saved.identity, job.identity.c_str(), 65);
+    if (valid && !same) {
+      if (!job.sources.empty()) valid = false;
+      else {
+        platform_log("download checkpoint: another identity for the same size; comparing the server's bytes");
+        sampled = true;
+      }
+    }
     if (!valid) { job.fail("partial file has no matching durable checkpoint; remove .part/.resume or choose another destination"); return false; }
     for (std::size_t i = 0; i < job.completed.size(); ++i) if (job.completed[i]) {
       const auto begin = job.sources.empty() ? i*job.request.range_bytes : job.segments[i].begin;
@@ -1253,7 +1274,7 @@ bool Service::prepare(Job& job) {
       if (end > static_cast<std::uint64_t>(existing.st_size)) { job.fail("partial file is shorter than its checkpoint"); return false; }
       job.committed += end-begin;
     }
-    if (job.committed && job.etag.empty() && job.sources.empty() && !check_sample(job)) return false;
+    if (job.committed && (sampled || job.etag.empty()) && job.sources.empty() && !check_sample(job, sampled)) return false;
   }
   if (job.fd < 0) { job.fail(system_error("open partial file (parent must exist; existing partial files require a valid checkpoint)")); return false; }
   struct stat partial_stat;

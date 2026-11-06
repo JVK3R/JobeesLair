@@ -57,6 +57,8 @@ import { MARGIN2 } from './space.js';
       const moved = rehome(job2, from, to);
       for (const key of Object.keys(job2)) if (!(key in moved)) delete job2[key];
       Object.assign(job2, moved, { root: to, rootIdentity: rootIdentityOf(to) });
+      // 0.5.6: the old drive's id (download-queue.js driveMark) goes with it; the next check reads the new one's.
+      delete job2.driveMark;
     }
     async function mountedOf(job2, paths, log2) {
       if (job2.artifact.nextAction !== "shadowmount" || platform !== "ps5") return [];

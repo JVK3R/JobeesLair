@@ -11,6 +11,13 @@ namespace archives {
 // empty string when its declared decoder windows fit the console's memory budget. `unpacked`, when given,
 // gets what the files unpack to where the archive's directory says so up front (7z, ZIP), else 0.
 std::string preflight(const std::vector<std::string>& sources, std::uint64_t* unpacked = nullptr);
+// A 7z's LZMA and LZMA2 dictionaries from this size up can live outside the heap: a platform that gives
+// lzma_raw_decoder an allocator of its own (the PS5's direct memory, native/ps5/big_memory.cpp) sets
+// `lzma_window_fits`, which answers whether a dictionary of that many bytes can be had now. A 7z that fits the
+// heap budget is admitted as before; a larger one only when it answers yes. Unset, every window counts against
+// the heap.
+constexpr std::uint64_t lzma_window_threshold = 8ULL * 1024 * 1024;
+extern bool (*lzma_window_fits)(std::uint64_t bytes);
 // `title`: the title id a PKG's content id names (its header's "UP0001-CUSA01234_00-..." at 0x40),
 // so the app can tell another game's file from the one chosen before it has all downloaded.
 struct Inspection { std::string kind, refusal, title{}; };

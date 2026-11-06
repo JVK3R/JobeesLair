@@ -23,13 +23,15 @@ namespace archives {
 // render thread: walking thousands of them while a download filled the drive held a tester's screen
 // for over 40 s.
 std::chrono::milliseconds inspect_budget{100};
+bool (*lzma_window_fits)(std::uint64_t bytes) = nullptr;
 namespace {
 // libarchive sizes its decoder windows from the archive and has no memory limit option, while the title
 // shares one heap (128 MiB on a console that leaves little flexible memory) and a failed allocation
 // inside libarchive aborts the app. 64 MiB fits that floor because an app's
 // queue never downloads while it extracts (downloads alone peak past 100 MiB), and it admits 7-Zip ultra
 // and WinRAR 7's default 32 MB dictionary, which libarchive doubles. Only archive-declared windows count;
-// fixed decoder state (bzip2's 3.6 MiB, LZMA's 30 KiB) does not.
+// fixed decoder state (bzip2's 3.6 MiB, LZMA's 30 KiB) does not. A 7z whose LZMA dictionaries are larger may
+// still be admitted where the platform sets lzma_window_fits (the PS5's direct memory).
 constexpr std::uint64_t max_decoder_memory = 64ULL * 1024 * 1024;
 constexpr std::uint64_t mib = 1024 * 1024;
 constexpr std::uint64_t unbounded = UINT64_MAX;
@@ -229,6 +231,18 @@ std::uint64_t lzma_alone_window(Volumes& in) {
 
 std::string fits(std::uint64_t memory) { return memory > max_decoder_memory ? too_much_memory : std::string(); }
 
+// What a 7z folder's coders hold at once: `heap` from the title's heap, `window` the LZMA and LZMA2
+// dictionaries from lzma_window_threshold up, which lzma_window_fits may place outside it.
+struct Need {
+  std::uint64_t heap = 0, window = 0;
+};
+
+std::string fits(const Need& need) {
+  const auto together = need.heap + std::min(need.window, unbounded - need.heap);
+  if (together <= max_decoder_memory || !lzma_window_fits) return fits(together);
+  return need.heap > max_decoder_memory || !lzma_window_fits(need.window) ? too_much_memory : std::string();
+}
+
 namespace seven_zip {
 enum : std::uint64_t {
   copy = 0x00, lzma = 0x030101, lzma2 = 0x21, ppmd = 0x030401, bcj2 = 0x0303011B, zstd = 0x04F71101,
@@ -398,8 +412,9 @@ bool parse_streams(Cursor& cursor, Streams& streams) {
 }
 
 // A folder decodes as one unit, so its coders' windows are held at the same time.
-std::uint64_t folder_memory(const Folder& item, const Streams& streams, Volumes& in) {
-  std::uint64_t memory = 0, input = 0;
+Need folder_memory(const Folder& item, const Streams& streams, Volumes& in) {
+  Need memory;
+  std::uint64_t input = 0;
   auto pack_offset = [&](std::uint64_t index) {
     std::uint64_t offset = signature_size + streams.pack_position;
     for (std::uint64_t i = 0; i < index && i < streams.pack_sizes.size(); ++i) offset += streams.pack_sizes[i];
@@ -425,7 +440,8 @@ std::uint64_t folder_memory(const Folder& item, const Streams& streams, Volumes&
       // libarchive buffers BCJ2's call, jump and range streams whole; only the main stream is streamed.
       for (std::uint64_t extra = 1; extra < coder.inputs; ++extra) need += std::min(source_size(input + extra), unbounded - need);
     }
-    memory += std::min(need, unbounded - memory);
+    auto& held = (coder.method == lzma || coder.method == lzma2) && need >= lzma_window_threshold ? memory.window : memory.heap;
+    held += std::min(need, unbounded - held);
     input += coder.inputs;
   }
   return memory;
@@ -507,9 +523,13 @@ std::string check(Volumes& in, std::uint64_t* unpacked) {
     } else return malformed;
   }
   if (!cursor.ok) return malformed;
-  std::uint64_t memory = 0, total = 0;
+  // Folders decode one after another, so the largest of each kind is what is held at once.
+  Need memory;
+  std::uint64_t total = 0;
   for (const auto& item : main.folders) {
-    memory = std::max(memory, folder_memory(item, main, in));
+    const auto need = folder_memory(item, main, in);
+    memory.heap = std::max(memory.heap, need.heap);
+    memory.window = std::max(memory.window, need.window);
     total += std::min(unpacked_size(item), unbounded - total);
   }
   if (unpacked) *unpacked = total;

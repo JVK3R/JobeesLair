@@ -22,7 +22,9 @@ import { t } from '../i18n/core.js';
     const stage = (stage2, note = null, extra = {}) => ({ stage: stage2, icon: ICON[stage2], tone: TONE[stage2], note: note && `ready.note.${note}`, action: null, ...extra });
     if (state in DOWNLOADING) {
       // 0.5.4: a refusal Retry would only meet again says to choose another source instead.
-      const note = state === "failed" && finalError(job2.error, Boolean(job2.release?.parts)) ? "refused" : DOWNLOADING[state];
+      // 0.5.6 (from PS4 Beta 3): one waiting on its own next try (download-queue.js retryLater) isn't stopped, so not
+      // red: 0.5.5's card said "Stopped, press Retry" under "Trying again by itself in a few minutes".
+      const note = state === "failed" && job2.retryAt ? "retrying" : state === "failed" && finalError(job2.error, Boolean(job2.release?.parts)) ? "refused" : DOWNLOADING[state];
       return stage("downloading", note, note === "failed" || note === "refused" ? { tone: "bad" } : {});
     }
     if (state in PREPARING) return stage("preparing", PREPARING[state]);

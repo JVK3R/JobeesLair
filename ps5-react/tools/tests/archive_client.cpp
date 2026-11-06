@@ -25,7 +25,10 @@ bool ended(const archives::Snapshot& s){
  return last;}
 bool archives::list_directory(const char* path,void(*visit)(const char*,void*),void* user){
  DIR* d=opendir(path);if(!d)return false;while(auto* e=readdir(d))visit(e->d_name,user);closedir(d);return true;}
+// ARCHIVE_LZMA_ROOM=<bytes> stands in for the PS5's direct memory: 7z LZMA dictionaries up to it are admitted.
+bool lzma_fits(std::uint64_t bytes){const char* v=std::getenv("ARCHIVE_LZMA_ROOM");return v&&bytes<=std::strtoull(v,nullptr,10);}
 int main(int argc,char** argv){
+ archives::lzma_window_fits=lzma_fits;
  if(argc>2&&std::string(argv[1])=="inspect"){
   int first=2;
   if(argc>4&&std::string(argv[2])=="--budget"){archives::inspect_budget=std::chrono::milliseconds(std::stol(argv[3]));first=4;}
@@ -58,6 +61,7 @@ int main(int argc,char** argv){
  auto started=std::chrono::steady_clock::now();
  while(true){for(const auto& s:archives::poll())if(ended(s)){
   std::cout<<s.state<<"\n"<<s.written<<"\n"<<s.error;
+  if(getenv("ARCHIVE_ARTIFACTS")){std::cout<<"\nartifacts";for(const auto& path:s.artifacts)std::cout<<"|"<<path;}
   if(!again){archives::stop();return 0;}
   std::cout<<"\n";setenv("PS5_REACT_RAR_WORKER",again,1);again=nullptr;cancel_after=-1;
   if(!(id=archives::enqueue(copy,error))){std::cout<<"failed\n"<<error;return 0;}

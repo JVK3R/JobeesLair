@@ -4,6 +4,36 @@ What changed in each version of Jobee'sLair. Each release on
 [GitHub](https://github.com/JVK3R/JobeesLair/releases) carries the full notes, the files and their
 SHA-256 checksums.
 
+## 0.5.6 (2026-11-06)
+
+- **Big 7z archives unpack.** A 7z packed with 7-Zip's largest settings (an LZMA2 dictionary of 128 MiB to
+  1.5 GiB) was refused with "This archive needs more memory to extract than the console app can use": 246 of
+  0.5.5's 251 such reports. Its dictionary now comes from the console's direct memory instead of the app's heap of
+  a few hundred MiB, and one is refused only when the console doesn't have that much free.
+- **Downloads resume instead of starting over.** After the app closed mid-download, a pause, or a renewed
+  expired link, a download could refuse to resume ("partial file has no matching durable checkpoint") and lose its
+  progress. A partial whose size and ranges still match now resumes once its last bytes are checked against the
+  server's, and a finished file on a USB drive is no longer refused after the drive is mounted again.
+- **Drives known by a file of their own.** "Storage changed. Reconnect the original drive." no longer loops: each
+  download folder carries a small marker, and deleting a download always works, even when its drive changed or is
+  unplugged.
+- **Real sizes.** An archive's space check shows what it really unpacks to, not the free space ("needs 356 GB,
+  356 GB free").
+- **Games with .pkg files of their own install.** Only real packages count as packages (by their header), so a
+  game that ships .pkg asset files (Hades II) is no longer refused as "too many installable artifacts".
+- **Make Room leaves a running unpack alone.** It no longer offered a game that was still unpacking as a leftover
+  to delete.
+- **Broken RAR sets, flagged for everyone.** A set its host lists short of the last volume goes to the shared
+  list, as a gone link does, so other players get a working source first.
+- **A download waiting on its own retry says so** on its card's status line too.
+- **French numbers** show their thousands separator again.
+- **Logs stay private.** Report a bug and the automatic reports now say where logs go: to Jobee'sLair, kept
+  private for a week, not to Discord. After Report a bug, the card shows the report code to give in a Discord
+  ticket.
+- **About & credits** thanks Nick and all testers; the takedown line names this repository or a Discord ticket.
+- **Support.** Support development opens Ko-fi (ko-fi.com/jvk3r), and after your fifth finished download a
+  one-time thank-you says where to find it.
+
 ## 0.5.5 (2026-11-02)
 
 - **Broken links, flagged for everyone.** When downloads find a game's link gone (HTTP 404 or 410), they tell

@@ -84,6 +84,24 @@ bool has_extension(const std::string& path, const std::array<std::string_view, c
 }
 bool image(const std::string& path) { return has_extension(path, image_extensions); }
 bool installable(const std::string& path) { return image(path) || has_extension(path, package_extensions); }
+// MODIFIED (0.5.6): a .pkg is one for the console only when it opens as one, "\x7F" "CNT" (PS4) or
+// "\x7F" "FIH" (PS5, archive_preflight.cpp). Games keep data of their own in .pkg files (Hades II has
+// hundreds), which were taken for packages to install and stopped the extraction at max_artifacts.
+bool console_package(const std::string& file) {
+  const int fd = open(file.c_str(), O_RDONLY);
+  if (fd < 0) return false;
+  char magic[4];
+  const auto count = pread(fd, magic, sizeof magic, 0);
+  close(fd);
+  const std::string_view head(magic, count == static_cast<ssize_t>(sizeof magic) ? sizeof magic : 0);
+  return head == std::string_view("\x7F" "CNT", 4) || head == std::string_view("\x7F" "FIH", 4);
+}
+// Keeps the images and console packages of `artifacts`, read under `root` once every file is on disk;
+// the limit's error when more than max_artifacts are left.
+std::string keep_artifacts(const std::string& root, std::vector<std::string>& artifacts) {
+  std::erase_if(artifacts, [&](const std::string& path) { return !image(path) && !console_package(root + "/" + path); });
+  return artifacts.size() > max_artifacts ? "Archive has too many installable artifacts." : std::string();
+}
 const char* archive_error(archive* archive, const char* fallback) {
   const char* error = archive_error_string(archive);
   return error ? error : fallback;
@@ -324,9 +342,8 @@ bool recover(Job& job, const std::string& identity) {
     if (++verified.entries > max_entries) return false;
     verified.written += st.st_size;
     if (installable(path)) verified.artifacts.push_back(path);
-    if (verified.artifacts.size() > max_artifacts) return false;
   }
-  if (cursor != metadata.size()) return false;
+  if (cursor != metadata.size() || !keep_artifacts(root, verified.artifacts).empty()) return false;
   std::lock_guard lock(job.mutex);
   job.snapshot.written = verified.written;
   job.snapshot.entries = verified.entries;
@@ -544,10 +561,8 @@ std::string extract(Job& job, archive* archive, const std::string& staging, std:
     }
     if (decrypted && !decrypted->verify(original_name, crc)) return "Extracted RAR5 file checksum mismatch.";
     std::lock_guard lock(job.mutex);
-    if (installable(path)) {
-      if (job.snapshot.artifacts.size() == max_artifacts) return "Archive has too many installable artifacts.";
-      job.snapshot.artifacts.push_back(path);
-    }
+    // Held to max_artifacts once every file is written (keep_artifacts); max_entries bounds the list here.
+    if (installable(path)) job.snapshot.artifacts.push_back(path);
     if (++job.snapshot.entries > max_entries) return "Archive has too many entries.";
   }
   if (!job.cancelled && result != ARCHIVE_EOF) return archive_error(archive, "Incomplete archive headers.");
@@ -609,10 +624,7 @@ std::string rar_file(Job& job, const std::string& staging, const std::string& re
   receipt += digest + "|" + path + "\n";
   if (receipt.size() > max_metadata_bytes) return "Extraction receipt exceeds the metadata limit.";
   std::lock_guard lock(job.mutex);
-  if (installable(path)) {
-    if (job.snapshot.artifacts.size() == max_artifacts) return "Archive has too many installable artifacts.";
-    job.snapshot.artifacts.push_back(path);
-  }
+  if (installable(path)) job.snapshot.artifacts.push_back(path);
   if (++job.snapshot.entries > max_entries) return "Archive has too many entries.";
   return {};
 }
@@ -660,6 +672,7 @@ bool extract_rar(Job& job, const std::string& staging, std::string& receipt, std
         const std::uint64_t declared = std::strtoull(line.c_str() + 2, nullptr, 10);
         std::lock_guard lock(job.mutex);
         job.snapshot.total = std::min(declared, job.request.max_bytes);
+        job.snapshot.unpacked = declared;
       } else if (line == "s" && !cancel_sent) {
         // Every file is decoded; the worker is writing out and syncing what it still holds.
         trace("rar worker finishing");
@@ -782,6 +795,7 @@ void run(const std::shared_ptr<Job>& pointer) {
   if (unpacked) {
     std::lock_guard lock(job.mutex);
     job.snapshot.total = std::min(unpacked, request.max_bytes);
+    job.snapshot.unpacked = unpacked;
   }
   if (!lstat(staging.c_str(), &st)) {
     std::string owner;
@@ -879,6 +893,10 @@ void run(const std::shared_ptr<Job>& pointer) {
     const auto full = input_identity(request);
     if (full.empty()) error = "Archive source is missing or not a regular file.";
     else receipt.replace(0, receipt.find('\n'), "P5AR001:" + full);
+  }
+  if (error.empty() && !job.cancelled) {
+    std::lock_guard lock(job.mutex);
+    error = keep_artifacts(staging, job.snapshot.artifacts);
   }
   if (error.empty() && !job.cancelled && !write_metadata(staging, receipt_name, receipt)) error = "Cannot save extraction completion receipt.";
   if (error.empty() && !job.cancelled && fsync(root)) error = std::strerror(errno);

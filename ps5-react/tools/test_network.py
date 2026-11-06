@@ -33,6 +33,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     # Signatures that now answer 403, like an expired signed CDN link.
     expired = set()
     modified = "Wed, 01 Jan 2025 00:00:00 GMT"
+    etag = '"fixture-v1"'
     mutated = False
     # /throttled answers like an archive.org storage node: past a few concurrent ranges it refuses
     # with 500/503/429, and it resets some ranges halfway once.
@@ -194,7 +195,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_header("Last-Modified", self.modified)
             self.send_header("ETag", 'W/"weak"')
         elif "no-validator" not in path:
-            self.send_header("ETag", '"fixture-v2"' if path == "/changed" or changed_etag else '"fixture-v1"')
+            self.send_header("ETag", '"fixture-v2"' if path == "/changed" or changed_etag else self.etag)
         if status == 206:
             reported = start+1 if path == "/bad-range" and selected != "bytes=0-0" else start
             self.send_header("Content-Range", f"bytes {reported}-{end}/{total}")
@@ -590,10 +591,32 @@ def main():
         assert all(r[2] == Handler.modified for r in ranged if span(r) != 65536), requests
         assert len([r for r in requests if r[1] != "bytes=0-0"]) < 17, requests
         path.unlink()
+        # Jobee'sLair 0.5.6: another Last-Modified for the same size, as another of a host's servers gives: the kept
+        # tail is compared, and the same bytes resume; other bytes fail as a changed file.
         assert run("/slow-modified", path, cancel=180)["state"] == "cancelled"
         Handler.modified = "Thu, 02 Jan 2025 00:00:00 GMT"
-        changed = run("/slow-modified", path)
-        assert changed["state"] == "failed" and "checkpoint" in changed["error"], changed
+        same = run("/slow-modified", path)
+        assert same["state"] == "completed", same
+        assert path.read_bytes() == DATA
+        path.unlink()
+        path = directory / "slow-modified-mutable"
+        Handler.modified = "Wed, 01 Jan 2025 00:00:00 GMT"
+        assert run("/slow-modified-mutable", path, cancel=180)["state"] == "cancelled"
+        Handler.modified, Handler.mutated = "Thu, 02 Jan 2025 00:00:00 GMT", True
+        changed = run("/slow-modified-mutable", path)
+        assert changed["state"] == "failed" and "changed since this partial" in changed["error"], changed
+        Handler.mutated = False
+        # The same bytes under another strong ETag (another server of the host, a renewed link): compared, resumed.
+        path = directory / "other-etag"
+        assert run("/slow", path, cancel=180)["state"] == "cancelled"
+        Handler.etag = '"fixture-other"'
+        before = len(Handler.requests)
+        resumed = run("/slow", path)
+        Handler.etag = '"fixture-v1"'
+        assert resumed["state"] == "completed", resumed
+        assert path.read_bytes() == DATA
+        assert len([r for r in Handler.requests[before:] if r[1] != "bytes=0-0"]) < 17, Handler.requests[before:]
+        path.unlink()
         # No validator at all: ranges still resume once the server's tail matches the partial's.
         for endpoint in ("/slow-no-validator", "/slow-no-validator-mutable"):
             path = directory / endpoint.removeprefix("/")

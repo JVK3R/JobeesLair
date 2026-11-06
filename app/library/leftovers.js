@@ -11,11 +11,14 @@
 // homebrew/ is a game, and Make Room offers it in the next tiers.
 
 import { COMPLETE } from '../state/download-queue.js';
+import { STAGING_SUFFIXES } from '../state/extraction-staging.js';
 
   var FOLDERS = ["downloads/images", "downloads/archives", "downloads/sets", "downloads/extracted", "downloads/files", "downloads/packages"];
   var SIDECAR = /\.(?:complete|complete\.tmp|part|resume|resume\.tmp|partial)$/;
   var TITLE_ID = /\b(CUSA|PPSA)\d{5}\b/;
-  var related = (a, b) => a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`) || a.replace(SIDECAR, "") === b;
+  // 0.5.6: an extraction's staging (<output>.extracting) is its job's too. 0.5.5 offered a running one as an orphan,
+  // and Make Room deleted it under the extraction (Spider-Man 2, 108 GB: "No such file or directory" after 52 minutes).
+  var related = (a, b) => a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`) || a.replace(SIDECAR, "") === b || STAGING_SUFFIXES.some((suffix) => a === b + suffix);
   function sizeOf(fs, path, budget = { left: 2e4 }) {
     let info;
     try {

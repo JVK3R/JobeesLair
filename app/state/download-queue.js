@@ -707,6 +707,16 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       }
       return ["debrid", "torrent", "manifest", "unavailable"].includes(kind) ? null : source2.browserUrl || source2.url || null;
     }
+    // 0.5.6: a link that fails the same way for every console, as a gone one does, for the shared list: a RAR set
+    // its host lists short of the last volume, found only once every part is down (36 such stops in the first day
+    // of 0.5.5's reports). The set's last listed part speaks for it, as its first source (link-health.js
+    // catalogLinks). A 7z that needs more memory is not one: 0.5.6 gives its dictionary the console's direct
+    // memory, so a refusal now says what this console had free, not what the link is.
+    function unusableLink(job2, error2) {
+      const reason = cause(error2.message);
+      if (job2.release.parts && /^Incomplete RAR archive or missing volume\.$/.test(reason)) return sharedLink(job2, job2.release.parts.at(-1)?.sources?.[0]);
+      return null;
+    }
     // 0.5.5 (GitHub issue #2): a PS5 package from a source that never said it was one (so the game page gave no
     // warning) installs whole on firmware above 11.60 and then won't start. Its install waits for the player, with
     // the reason; Install still starts it.
@@ -893,6 +903,8 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         // 0.5.5: a catalog link found gone goes to the shared list too.
         const gone = !expired && (refused || /HTTP (?:404|410)\b/.test(cause(error2.message))) ? sharedLink(job2, failedSource) : null;
         if (gone) reportOutcome(gone, false);
+        const unusable = !gone && !job2.cancelling && unusableLink(job2, error2);
+        if (unusable) reportOutcome(unusable, false);
         if (expired) console.log("[download-queue] the captured link expired while queued; asking for the check again");
         const browser = !refused && (expired || error2 instanceof BrowserRequired || /browser verification required/i.test(cause(error2.message)));
         const retried = job2.state !== "pausing" && !job2.cancelling && browser && active2.transferring && reresolve(job2);
@@ -1229,7 +1241,9 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       const follow = (progress) => {
         if (progress.total && progress.total !== job2.total) {
           job2.total = estimate = progress.total;
-          checkRoom(progress.total, progress.written || 0);
+          // 0.5.6: the archive's own size where the engine says it: `total` stops at the extraction's limit, the
+          // free space, so a game bigger than the room read "needs 356,4 GB, 356,4 GB free".
+          checkRoom(Math.max(progress.unpacked || 0, progress.total), progress.written || 0);
         }
         if (progress.phase !== "finishing") {
           report(progress.written || 0);
@@ -1655,10 +1669,39 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       if (typeof info.device !== "string" || typeof info.inode !== "string") throw new Error("Storage identity is unavailable. Update the runtime.");
       const identity = `${info.device}:${info.inode}`;
       if (job2.rootIdentity && job2.rootIdentity !== identity) {
-        if (job2.root !== "/data") throw new Error("Storage changed. Reconnect the original drive.");
+        if (job2.root !== "/data" && !sameDrive(job2)) throw new Error("Storage changed. Reconnect the original drive.");
+        console.log(`[download-queue] ${job2.id}: ${job2.root} has a new device number, same drive`);
         job2.rootIdentity = identity;
       }
+      if (job2.root !== "/data" && !job2.driveMark) job2.driveMark = driveMark(job2.root, true) ?? void 0;
       return identity;
+    }
+    // 0.5.6: an extended or USB drive is known by an id the queue writes on it, as well as by its device and
+    // inode. The console numbers a drive anew when it comes back (a restart, a replug), and every download on
+    // it then stopped at "Storage changed" for good, unable even to be deleted (seen since 0.5.0).
+    const DRIVE_MARK = ".jobeeslair-drive";
+    function driveMark(root2, create) {
+      const path = `${root2}/downloads/${DRIVE_MARK}`;
+      try {
+        const id = fs.exists(path) ? fs.readFile(path).trim() : "";
+        if (/^[a-z0-9]{8,40}$/.test(id)) return id;
+        if (!create) return null;
+        const made = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+        fs.mkdir(`${root2}/downloads`, { recursive: true });
+        fs.writeFile(path, made, { sync: true });
+        return made;
+      } catch (error2) {
+        console.log(`[download-queue] ${root2}: drive id not ${create ? "written" : "read"}: ${error2.message}`);
+        return null;
+      }
+    }
+    // The drive at a task's root is the one it used: its id says so, or for a task from before the id, the
+    // task's own files are there (a different drive at the same place has none of them).
+    function sameDrive(job2) {
+      if (job2.driveMark) return driveMark(job2.root, false) === job2.driveMark;
+      const own = ownedPaths(job2).flatMap((path) => [path, `${path}.part`, `${path}.resume`]);
+      if (job2.release.parts) own.push(setDirectory(job2));
+      return own.some((path) => fs.exists(path));
     }
     function partialFiles(job2) {
       storageIdentity(job2);
@@ -2393,7 +2436,17 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         // forgotten; rejects, files kept, when they could not safely go. Every step is logged.
         const deletion = (async () => {
           console.log(`[download-queue] delete ${job2.id}: requested (${job2.state})`);
-          storageIdentity(job2);
+          // 0.5.6: a task whose drive is gone or another one now is taken off the list, its files left where
+          // they are (nothing of it is on the drive here). It could not be deleted at all before.
+          try {
+            storageIdentity(job2);
+          } catch (error2) {
+            if (!/^Storage (?:changed|disconnected)/.test(error2.message)) throw error2;
+            console.log(`[download-queue] delete ${job2.id}: ${error2.message} Forgotten; nothing deleted`);
+            jobs = jobs.filter((item) => item !== job2);
+            change();
+            return { note: t("downloads.forgottenElsewhere") };
+          }
           // A move stopped part-way left a copy on the other drive: it goes first.
           if (job2.moving) await cancelMove(job2.id);
           const managed = job2.artifact.nextAction === "shadowmount" && platform === "ps5";

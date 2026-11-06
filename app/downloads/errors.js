@@ -3,7 +3,8 @@
 
 import { t } from '../i18n/core.js';
 
-  var STALE_PARTIAL = /partial file|checkpoint/i;
+  // 0.5.6: a finished file the engine can't vouch for any more ("no matching completion receipt") too.
+  var STALE_PARTIAL = /partial file|checkpoint|completion receipt/i;
   var TASK = /^\w+\.\w+ \/.*?: /;
   var cause = (message) => message.replace(TASK, "");
   // A set's volume to download again: cut short, or (0.5.0 Pre Release 3) a copy of another part, which a
@@ -58,7 +59,8 @@ import { t } from '../i18n/core.js';
       };
     }
     const known = CASES.find(([pattern, , , only]) => (!only || set) && pattern.test(message));
-    if (!known) return { title: message, action: t("errors.action.retryOrOtherSource") };
+    // 0.5.6: without its own full stop, which downloads.problem puts between it and the action ("package.. Retry").
+    if (!known) return { title: message.replace(/[.。।]\s*$/, ""), action: t("errors.action.retryOrOtherSource") };
     return { title: t(`errors.${known[1]}`), action: t(`errors.action.${known[2]}`), final: FINAL.includes(known[1]) };
   }
   var finalError = (error2, set = false) => Boolean(error2) && explainError(error2, set).final === true;

@@ -298,6 +298,59 @@ test('too little room for what the files unpack to stops the extraction at once,
   assert.ok(!fs.exists('/data/homebrew/Game.exfat'));
 });
 
+test("the room an extraction needs is the archive's own size, not the engine's total held to the free space (0.5.6)", async () => {
+  const fs = memoryFs();
+  const base = extractor(fs, { 'Game.exfat': 900 });
+  // NBA 2K27: the engine's total stops at its limit, the free space less a margin; `unpacked` is the archive's.
+  const archives = { ...base, extract(options) {
+    const inner = base.extract(options);
+    return { ...inner, subscribe(listener) { listener({ state: 'running', written: 0, total: options.maxBytes, unpacked: 3e12 }); return () => {}; } };
+  } };
+  const queue = queueWith({ fs, downloads: engine(fs), archives });
+  const job = await settle(queue, queue.enqueue(game, image('Game.zip', 500), '/data'));
+  const [, needs, free] = /^Not enough space on \/data: needs (.+), (.+) free$/.exec(job.error) ?? [];
+  assert.ok(needs && free && needs !== free, job.error);
+});
+
+test('a drive back under a new device number is the same one when its id or the download\'s own files say so; another can still be deleted (0.5.6)', async () => {
+  const fs = memoryFs();
+  fs.mkdir('/mnt/ext1/downloads/images');
+  const saved = (name, fields) => {
+    const release = image(name);
+    return { id: `PPSA01234/${name}`, gameId: 'PPSA01234', titleId: 'PPSA01234', title: 'Test Game', release, root: '/mnt/ext1',
+      artifact: DownloadFormats.artifact(release, '/mnt/ext1'), downloadDestination: `/mnt/ext1/downloads/images/${name}`, state: 'paused', written: 400, total: 1000, error: '', ...fields };
+  };
+  // From before the drive id: its partial file is there, so the drive is the one it used.
+  fs.file('/mnt/ext1/downloads/images/Mine.exfat.part', 400);
+  // Its drive had another id: this drive is not that one.
+  fs.file('/mnt/ext1/downloads/.jobeeslair-drive', 0, 'otherdrive1');
+  fs.file('/data/app/JobeesLair/downloads.json', 0, JSON.stringify({ version: 1, jobs: [
+    saved('Mine.exfat', { rootIdentity: '1:999' }),
+    saved('Theirs.exfat', { rootIdentity: '1:998', driveMark: 'firstdrive1' }),
+  ] }));
+  const queue = queueWith({ fs, downloads: engine(fs) });
+  queue.resume('PPSA01234/Mine.exfat');
+  const mine = await settle(queue, 'PPSA01234/Mine.exfat');
+  assert.equal(mine.state, 'downloaded', mine.error);
+  assert.equal(mine.driveMark, 'otherdrive1', 'it knows the drive by its id from now on');
+  queue.resume('PPSA01234/Theirs.exfat');
+  const theirs = await settle(queue, 'PPSA01234/Theirs.exfat');
+  assert.equal(theirs.error, 'Storage changed. Reconnect the original drive.');
+  const { note } = await queue.deleteFromDisk(theirs.id);
+  assert.equal(note, en['downloads.forgottenElsewhere']);
+  assert.deepEqual(queue.snapshot().map((job) => job.id), ['PPSA01234/Mine.exfat']);
+});
+
+test('a drive with no id gets one, written once (0.5.6)', async () => {
+  const fs = memoryFs();
+  fs.mkdir('/mnt/ext1');
+  const queue = queueWith({ fs, downloads: engine(fs) });
+  const job = await settle(queue, queue.enqueue(game, image('Game.exfat'), '/mnt/ext1'));
+  assert.equal(job.state, 'downloaded', job.error);
+  assert.match(fs.readFile('/mnt/ext1/downloads/.jobeeslair-drive'), /^[a-z0-9]{8,40}$/);
+  assert.equal(job.driveMark, fs.readFile('/mnt/ext1/downloads/.jobeeslair-drive'));
+});
+
 test('images an earlier build left one folder down move up when the queue loads, only while they wait to install', () => {
   const fs = memoryFs();
   const old = '/data/homebrew/Game.zip-extracted';
@@ -1759,6 +1812,16 @@ test('Make Room finds what no game needs: an unpacked archive, a leftover partia
   assert.equal(found.length, 6);
 });
 
+test('Make Room leaves a running extraction its staging, and offers one no download owns', () => {
+  const fs = memoryFs();
+  fs.file('/data/downloads/files/Big.binary', 900);
+  fs.file('/data/downloads/extracted/Big.binary.extracting/game/eboot.bin', 700);
+  fs.file('/data/downloads/extracted/Gone.binary.extracting/game/eboot.bin', 100);
+  const jobs = [{ id: 'a', title: 'Big', root: '/data', state: 'extracting', artifact: { nextAction: 'extraction-required', destination: '/data/downloads/files/Big.binary' }, downloadDestination: '/data/downloads/files/Big.binary', output: '/data/downloads/extracted/Big.binary', release: {} }];
+  const found = findLeftovers({ fs, roots: ['/data'], jobs });
+  assert.deepEqual(found.map((item) => [item.kind, item.path]), [['orphan', '/data/downloads/extracted/Gone.binary.extracting']]);
+});
+
 test('Make Room runs: downloads held until the drive has room, then let go; a failed step does not stop the rest; the waiting download starts', async () => {
   const log = [];
   let free = 10, holding = false, enqueued = null;
@@ -1841,12 +1904,12 @@ test('a set of images unpacked into one folder moves image by image, and the emp
   assert.deepEqual(state.manual, [`${usb}/Game.exfat`, `${usb}/Game-Update-1.05.exfat`]);
 });
 
-test('versions: 0.2.0 is newer than every 0.1.1 beta and 0.1.1, and the app now reports 0.5.5', async () => {
+test('versions: 0.2.0 is newer than every 0.1.1 beta and 0.1.1, and the app now reports 0.5.6', async () => {
   assert.equal(newer('v0.2.0', '0.1.1-beta.4'), true);
   assert.equal(newer('v0.2.0', '0.1.1'), true);
   assert.equal(newer('0.1.1-beta.4', '0.2.0'), false);
   const { VERSION, VERSION_LABEL } = await load('app/version.js');
-  assert.deepEqual([VERSION, VERSION_LABEL], ['0.5.5', '0.5.5']);
+  assert.deepEqual([VERSION, VERSION_LABEL], ['0.5.6', '0.5.6']);
 });
 
 
@@ -1865,8 +1928,11 @@ const releaseJson = (overrides = {}) => ({
   ...overrides,
 });
 
-test('versions: 0.5.0 is newer than 0.4.1 and every 0.5.0 pre-release, and older than 0.5.1; 0.5.5 is newer than 0.5.4', () => {
-  assert.equal(VERSION, '0.5.5');
+test('versions: 0.5.0 is newer than 0.4.1 and every 0.5.0 pre-release, and older than 0.5.1; 0.5.6 is newer than 0.5.5', () => {
+  assert.equal(VERSION, '0.5.6');
+  assert.equal(newer(VERSION, '0.5.5'), true, 'it is newer than 0.5.5');
+  assert.equal(newer('v0.5.6', VERSION), false, 'not to itself');
+  assert.equal(newer('v0.5.6', '0.5.6-pre.1'), true, '0.5.6 is offered to its testers');
   assert.equal(newer(VERSION, '0.5.4'), true, 'it is newer than 0.5.4');
   assert.equal(newer('v0.5.4', VERSION), false, 'so 0.5.4 is not offered to it');
   assert.equal(newer('v0.5.5', VERSION), false, 'not to itself');
@@ -1875,7 +1941,7 @@ test('versions: 0.5.0 is newer than 0.4.1 and every 0.5.0 pre-release, and older
   assert.equal(newer('v0.5.3', VERSION), false, 'so 0.5.3 is not offered to it');
   assert.equal(newer('v0.5.3', '0.5.3-pre.1'), true, '0.5.3 was offered to its testers');
   assert.equal(newer('v0.5.4', '0.5.4-pre.1'), true, '0.5.4 was offered to its testers');
-  assert.equal(contentVersionOf(VERSION), '01.005.005', 'the package version leaves the pre-release part out');
+  assert.equal(contentVersionOf(VERSION), '01.005.006', 'the package version leaves the pre-release part out');
   assert.equal(newer('v0.5.2', '0.5.2-pre.1'), true, '0.5.2 was offered to its pre-release testers');
   assert.equal(newer('0.5.2', '0.5.1'), true, 'and to 0.5.1');
   assert.equal(newer(VERSION, '0.5.0'), true, 'it is newer than 0.5.0');
@@ -2388,13 +2454,30 @@ test('settings: nothing in a render asks the console for its device info or user
   assert.match(themes, /var userName = \(\) => name;/);
 });
 
+test('the one thank-you (0.5.6): after the fifth finished download, once, with the count kept in settings.json', async () => {
+  const SETTINGS = '/download0/JobeesLair/settings.json';
+  globalThis.__stubFiles = new Map([[SETTINGS, JSON.stringify({ language: 'de' })]]);
+  try {
+    const { countFinished } = await load('app/state/thanks.js');
+    const said = Array.from({ length: 8 }, () => countFinished());
+    assert.deepEqual(said, [false, false, false, false, true, false, false, false]);
+    assert.deepEqual(JSON.parse(globalThis.__stubFiles.get(SETTINGS)), { language: 'de', thanked: true }, 'the other settings stay; the count goes');
+  } finally {
+    delete globalThis.__stubFiles;
+  }
+  const toast = readFileSync(path.join(repo, 'app/ui/DownloadToast.jsx'), 'utf8');
+  assert.match(toast, /if \(next\.kind === "complete" && countFinished\(\)\) thanks\.current = true;/, 'only a finished download counts');
+  assert.match(toast, /nav\.focusLater\("settings:support"\)/, 'R2 opens Settings on Support development');
+});
+
 test('settings: the support panel is opt-in, says nothing is locked, and its QR code reads as the page', () => {
   const settings = readFileSync(path.join(repo, 'app/ui/Settings.jsx'), 'utf8');
   assert.match(settings, /support \? \/\* @__PURE__ \*\/ \(0, jsx\)\(SupportPanel, \{ onClose:/, 'shown only once its row is opened');
   // Opening it gives it focus, so the whole code scrolls into view and stays there to be scanned.
   assert.match(settings, /if \(!support\) focusLater\("settings:support:qr"\)/);
   assert.match(settings, /focusKey: "settings:support:qr"/);
-  assert.match(settings, /https:\/\/buymeacoffee\.com\/jvk3r/);
+  // 0.5.6: the Ko-fi page itself, not Buy Me a Coffee.
+  assert.match(settings, /var SUPPORT_URL = "https:\/\/ko-fi\.com\/jvk3r"/);
   assert.match(en['settings.support.free'], /Nothing in Jobee'sLair is locked/);
   assert.match(en['settings.support.detail'], /Optional/);
   const png = readFileSync(path.join(repo, 'app/assets/support-qr.png'));
@@ -2834,6 +2917,23 @@ test('7z: one that needs more memory than the console has is refused before it d
   assert.ok(finalError(job.error), 'the card and the game page offer another source, not Retry');
 });
 
+test('a set its host lists short of the last volume goes to the shared list; a 7z refused for memory does not, it says what this console had free (0.5.6)', async () => {
+  const { onOutcome } = await load('app/state/link-health.js');
+  const heard = [];
+  const stop = onOutcome((link, ok) => heard.push([link, ok]));
+  const fs = memoryFs();
+  const queue = queueWith({ fs, downloads: engine(fs), archives: archived(fs, TOO_BIG), http: rangeServer() });
+  await settle(queue, queue.enqueue(game, image('Big.7z'), '/data'));
+  const short = { id: 'set', provider: 'host', filename: 'Game', parts: [1, 2].map((number) => ({ number, sources: [{ url: `https://example.com/Game.part${number}.rar`, sizeBytes: 100 }] })) };
+  const missing = { ...extractor(fs, {}), extract: (options) => task(() => { throw new Error(`Archives.extract ${options.destination}: Incomplete RAR archive or missing volume.`); }) };
+  const other = { ...game, id: 'PPSA05678', titleId: 'PPSA05678' };
+  const sets = queueWith({ fs, downloads: engine(fs), archives: missing });
+  const failed = await settle(sets, sets.enqueue(other, short, '/data'));
+  stop();
+  assert.equal(failed.state, 'failed');
+  assert.deepEqual(heard, [['https://example.com/Game.part2.rar', false]]);
+});
+
 test('7z: a host that redirects with a page of its own (VikingFile: a 302 and 2 KB of HTML) still has its end read', async () => {
   const fs = memoryFs();
   const downloads = engine(fs);
@@ -3216,18 +3316,18 @@ test('0.5.3: right-to-left, the bottom bar\'s section name moves to the right (t
   assert.match(screen, /rtl \? LATIN_IN_RTL : null\], children: app\.description/);
 });
 
-test('what\'s new: shown until seen once for 0.5.5; a player who saw none of 0.5.2\'s to 0.5.4\'s still learns the stats are on and where they turn off', async () => {
+test('what\'s new: shown until seen once for 0.5.6; a player who saw none of 0.5.2\'s to 0.5.5\'s still learns the stats are on and where they turn off', async () => {
   const { WHATS_NEW } = await load('app/state/whats-new.js');
-  assert.equal(WHATS_NEW, '0.5.5');
-  assert.match(en['whatsNew.title'], /0\.5\.5/);
+  assert.equal(WHATS_NEW, '0.5.6');
+  assert.match(en['whatsNew.title'], /0\.5\.6/);
   const source = readFileSync(path.join(repo, 'app/ui/WhatsNew.jsx'), 'utf8');
   const shown = [...source.matchAll(/title: "(whatsNew\.\w+)", detail: "(whatsNew\.\w+)"/g)].flatMap((match) => [match[1], match[2]]);
-  assert.deepEqual(shown, ['whatsNew.sharedLinks', 'whatsNew.sharedLinksDetail', 'whatsNew.retry', 'whatsNew.retryDetail', 'whatsNew.drive', 'whatsNew.driveDetail', 'whatsNew.nested', 'whatsNew.nestedDetail', 'whatsNew.online', 'whatsNew.onlineDetail']);
+  assert.deepEqual(shown, ['whatsNew.bigArchives', 'whatsNew.bigArchivesDetail', 'whatsNew.resume', 'whatsNew.resumeDetail', 'whatsNew.drives', 'whatsNew.drivesDetail', 'whatsNew.safer', 'whatsNew.saferDetail', 'whatsNew.online', 'whatsNew.onlineDetail']);
   for (const key of [...shown, 'whatsNew.done', 'whatsNew.openHomebrew', 'saver.wake', 'settings.screenSaver', 'downloads.aheadReady']) assert.ok(en[key], key);
-  // 0.5.2's online card takes the last place for a player who saw none of 0.5.2's to 0.5.4's panels (from 0.5.1, or a
+  // 0.5.2's online card takes the last place for a player who saw none of 0.5.2's to 0.5.5's panels (from 0.5.1, or a
   // new install).
-  assert.match(source, /itemsFor = \(seen\) => seen === "0\.5\.2" \|\| seen === "0\.5\.3" \|\| seen === "0\.5\.4" \? ITEMS : \[\.\.\.ITEMS\.slice\(0, 3\), ONLINE\]/);
-  for (const item of ['alert', 'restart', 'hardDrive', 'archive']) assert.match(readFileSync(path.join(repo, 'app/ui/Icon.jsx'), 'utf8'), new RegExp(`^    ${item}: \\[`, 'm'), `the ${item} icon`);
+  assert.match(source, /itemsFor = \(seen\) => seen === "0\.5\.2" \|\| seen === "0\.5\.3" \|\| seen === "0\.5\.4" \|\| seen === "0\.5\.5" \? ITEMS : \[\.\.\.ITEMS\.slice\(0, 3\), ONLINE\]/);
+  for (const item of ['archive', 'restart', 'hardDrive', 'circleCheck']) assert.match(readFileSync(path.join(repo, 'app/ui/Icon.jsx'), 'utf8'), new RegExp(`^    ${item}: \\[`, 'm'), `the ${item} icon`);
   assert.match(source, /useState\(\(\) => itemsFor\(lastWhatsNewSeen\(\)\)\)/);
   assert.match(en['whatsNew.onlineDetail'], /anonymous stats/);
   assert.match(en['whatsNew.onlineDetail'], /Settings → About/);

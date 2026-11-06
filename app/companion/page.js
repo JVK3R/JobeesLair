@@ -93,6 +93,7 @@ h2.label span{margin-inline-start:auto;color:var(--subtle);font-weight:500;font-
 .list{display:grid;gap:10px}
 .item{display:flex;gap:12px;align-items:center;padding:12px;width:100%;text-align:start;background:var(--panel);border:1px solid var(--line);border-radius:10px;color:inherit;cursor:pointer}
 .item:active{background:var(--panel2)}
+a.item{text-decoration:none}
 .item svg.chev{color:var(--subtle)}
 [dir=rtl] .item svg.chev{transform:scaleX(-1)}
 .thumb{width:56px;height:56px;border-radius:6px;object-fit:cover;background:var(--raise);flex:0 0 auto}
@@ -244,6 +245,7 @@ a.btn{text-decoration:none}
 <button class="item" id="openLibrary"><svg class="i" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg><div class="grow"><b data-s="phone.library.title"></b><div class="subtle" id="libraryNote" data-s="phone.library.note"></div></div><svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
 <button class="item" id="openFeeds"><svg class="i" viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg><div class="grow"><b data-s="phone.feeds.title"></b><div class="subtle" data-s="phone.feeds.note"></div></div><svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
 <button class="item" id="openSettings"><svg class="i" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"/></svg><div class="grow"><b data-s="phone.settings.title"></b><div class="subtle" data-s="phone.settings.note"></div></div><svg class="i chev" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+<a class="item" href="https://ko-fi.com/jvk3r" target="_blank" rel="noopener"><svg class="i" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg><div class="grow"><b data-s="phone.support.title"></b><div class="subtle" data-s="phone.support.note"></div></div><svg class="i chev" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg></a>
 </div>
 <h2 class="label"><span style="margin:0;color:var(--fg);font-size:17px;font-weight:700" data-s="phone.storage.title"></span></h2>
 <div class="drives" id="homeDrives"></div>

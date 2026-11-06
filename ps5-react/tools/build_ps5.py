@@ -158,7 +158,7 @@ def main():
                        if line.startswith("C_DEFINES ="))
     sources = [ROOT / "native/ps5/native_host.cpp", ROOT / "native/ps5/async_log.cpp", ROOT / "native/ps5/host_platform.cpp", ROOT / "native/ps5/video_output.cpp", ROOT / "native/ps5/time_compat.c", ROOT / "native/ps5/archive_compat.c", ROOT / "native/ps5/random_compat.c",
                ROOT / "native/ps5/filesystem_access.cpp",
-               ROOT / "native/ps5/elevation_transport.cpp",
+               ROOT / "native/ps5/elevation_transport.cpp", ROOT / "native/ps5/big_memory.cpp",
                ROOT / "native/shared/host_api.cpp", ROOT / "native/shared/removals.cpp", ROOT / "native/shared/copies.cpp", ROOT / "native/shared/disk_probes.cpp", ROOT / "native/shared/network.cpp",
                ROOT / "native/shared/network_api.cpp", ROOT / "native/shared/archives.cpp", ROOT / "native/shared/archive_preflight.cpp", ROOT / "native/shared/rar5_password.cpp", ROOT / "native/shared/archive_writer.cpp", ROOT / "native/shared/archive_api.cpp", ROOT / "native/shared/browser_capture_api.cpp", ROOT / "native/shared/lan.cpp", ROOT / "native/shared/lan_api.cpp", ROOT / "native/shared/http_server.cpp", ROOT / "native/shared/http_server_api.cpp", ROOT / "native/shared/keyboard_api.cpp", ROOT / "native/ps5/keyboard.cpp", ROOT / "native/ps5/browser_capture.cpp", ROOT / "native/shared/package_api.cpp", ROOT / "native/ps5/package_installer.cpp", ROOT / "native/ps5/payload_loader.cpp", ROOT / "native/ps5/relaunch.cpp", ROOT / "native/ps5/crash_log.cpp", ROOT / "native/ps5/utf8_locale.cpp", ROOT / "native/ps5/network_platform.cpp",
                ROOT / "native/shared/image_loader.cpp", ROOT / "native/shared/image_api.cpp",
@@ -227,7 +227,9 @@ def main():
     pie = BUILD / "llvm-pie.elf"
     wraps = ["malloc", "calloc", "realloc", "free", "posix_memalign", "malloc_usable_size",
              "sceSystemServiceHideSplashScreen", "sceKernelDebugOutText",
-             "nl_langinfo", "___mb_cur_max", "mbrtowc", "wcrtomb"]
+             "nl_langinfo", "___mb_cur_max", "mbrtowc", "wcrtomb",
+             # 7z dictionaries from direct memory (native/ps5/big_memory.cpp).
+             "lzma_raw_decoder"]
     if access_client:
         wraps += ["sceNetSocket", "sceNetSetsockopt", "sceNetConnect", "sceNetSend", "sceNetRecv"]
     run([sdk / "bin/prospero-lld", "-L", libs, "-T", native / "ps5-pie.ld", "--eh-frame-hdr",

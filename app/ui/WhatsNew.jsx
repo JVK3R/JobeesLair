@@ -17,19 +17,20 @@ import { colors, radius } from './colors.js';
 
   // After the store's reveal (index.jsx CURTAIN_MS) has finished.
   var DELAY_MS = 4500;
-  // 0.5.5's: dead links flagged for everyone, downloads that try again, the drive remembered, archives in archives.
-  // (0.5.4's: the PS5 keyboard, the phone companion, whether a game starts for other players, focus. 0.5.3's: PS5
-  // packages, Homebrew search, top games, "Device busy". 0.5.2's: online, Fix it, Homebrew keeps your saves, backports.)
+  // 0.5.6's: big 7z archives unpack, downloads resume, drives recognised, fewer false alarms. (0.5.5's: dead links
+  // flagged for everyone, downloads that try again, the drive remembered, archives in archives. 0.5.4's: the PS5
+  // keyboard, the phone companion, whether a game starts for other players, focus. 0.5.3's: PS5 packages, Homebrew
+  // search, top games, "Device busy". 0.5.2's: online, Fix it, Homebrew keeps your saves, backports.)
   var ITEMS = [
-    { icon: "alert", tone: "#38bdf8", title: "whatsNew.sharedLinks", detail: "whatsNew.sharedLinksDetail" },
-    { icon: "restart", tone: "#a78bfa", title: "whatsNew.retry", detail: "whatsNew.retryDetail" },
-    { icon: "hardDrive", tone: "#facc15", title: "whatsNew.drive", detail: "whatsNew.driveDetail" },
-    { icon: "archive", tone: "#4ade80", title: "whatsNew.nested", detail: "whatsNew.nestedDetail" }
+    { icon: "archive", tone: "#4ade80", title: "whatsNew.bigArchives", detail: "whatsNew.bigArchivesDetail" },
+    { icon: "restart", tone: "#a78bfa", title: "whatsNew.resume", detail: "whatsNew.resumeDetail" },
+    { icon: "hardDrive", tone: "#facc15", title: "whatsNew.drives", detail: "whatsNew.drivesDetail" },
+    { icon: "circleCheck", tone: "#38bdf8", title: "whatsNew.safer", detail: "whatsNew.saferDetail" }
   ];
-  // A player who saw none of 0.5.2's, 0.5.3's or 0.5.4's panels (an update from 0.5.1 or earlier, or a new install) still learns
+  // A player who saw none of 0.5.2's to 0.5.5's panels (an update from 0.5.1 or earlier, or a new install) still learns
   // there that the anonymous stats are on and where they turn off: 0.5.2's online card takes the last place.
   var ONLINE = { icon: "globe", tone: "#38bdf8", title: "whatsNew.online", detail: "whatsNew.onlineDetail" };
-  var itemsFor = (seen) => seen === "0.5.2" || seen === "0.5.3" || seen === "0.5.4" ? ITEMS : [...ITEMS.slice(0, 3), ONLINE];
+  var itemsFor = (seen) => seen === "0.5.2" || seen === "0.5.3" || seen === "0.5.4" || seen === "0.5.5" ? ITEMS : [...ITEMS.slice(0, 3), ONLINE];
   var text = (size, color, extra) => ({ fontFamily: "Exo2", fontSize: size, lineHeight: Math.round(size * 1.35), color, ...extra });
   function ButtonFace({ label, primary }) {
     const focused = useIsFocused();

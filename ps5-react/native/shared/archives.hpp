@@ -15,10 +15,12 @@ struct Request { std::vector<std::string> sources; std::string destination, pass
 // While extracting, `phase` is "extracting" until every entry is decoded, then "finishing" while the files
 // are flushed and synced and the set is published. `synced` of `sync_total` files are on disk then, both 0
 // where the writer cannot tell (inline writes, the RAR worker). `total` is what the files unpack to, once
-// known before they are written (the RAR worker reads it from every volume's headers), else 0.
+// known before they are written (the RAR worker reads it from every volume's headers), else 0. `total`
+// stops at the extraction's byte limit; `unpacked` is the archive's own figure, for saying how much room
+// it needs (0.5.6: "needs 356 GB, 356 GB free", both read from the limit, which is the free space).
 struct Snapshot {
   std::uint32_t id = 0; std::string state = "queued", error, destination, phase;
-  std::uint64_t written = 0, total = 0, entries = 0, synced = 0, sync_total = 0;
+  std::uint64_t written = 0, total = 0, unpacked = 0, entries = 0, synced = 0, sync_total = 0;
   std::vector<std::string> artifacts;
 };
 std::uint32_t enqueue(Request request, std::string& error);

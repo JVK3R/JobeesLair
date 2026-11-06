@@ -149,6 +149,17 @@ def main():
   with zipfile.ZipFile(app,"w") as z:z.writestr("PPSA01473-app/sce_sys/param.json","{}");z.writestr("PPSA01473-app/eboot.bin",DATA)
   assert run("zip-app",[app])[0]=="completed"
   open_to_all(root/"zip-app")
+  # 0.5.6: a game's own .pkg data (Hades II keeps hundreds) is no console package. The extraction goes
+  # through, and only a .pkg that opens as one ("\x7FCNT", "\x7FFIH") is named among the artifacts.
+  game=root/"pkg-data.zip"
+  with zipfile.ZipFile(game,"w") as z:
+   z.writestr("PPSA36082-app/eboot.bin",DATA)
+   for n in range(80):z.writestr(f"PPSA36082-app/Content/Packages/1080p/Asset{n}.pkg",b"SGG1"+bytes(60))
+   z.writestr("update.pkg",b"\x7fCNT"+bytes(60));z.writestr("ps5.pkg",b"\x7fFIH"+bytes(60))
+  os.environ["ARCHIVE_ARTIFACTS"]="1"
+  try:out=run("pkg-data",[game])
+  finally:del os.environ["ARCHIVE_ARTIFACTS"]
+  assert out[0]=="completed" and sorted(out[3].split("|")[1:])==["ps5.pkg","update.pkg"],out
   # A heap without room for an in-process extraction fails it cleanly, with nothing written.
   os.environ["ARCHIVE_NO_MEMORY"]="1"
   try:out=run("zip-no-memory",[zip])
@@ -386,6 +397,17 @@ def main():
   assert run("huge-7zip",[huge])[1:]==["0",TOO_BIG]
   encoded_huge=root/"encoded-huge.7z";encoded_huge.write_bytes(encode_7z_header(huge.read_bytes()))
   assert run("encoded-huge-7zip",[encoded_huge])[1:]==["0",TOO_BIG]
+  # Where the platform has memory outside the heap for LZMA dictionaries (the PS5's direct memory), a 7z's
+  # larger dictionary is held to that instead: admitted while it fits, refused once it does not. Other
+  # formats' windows stay on the heap budget.
+  os.environ["ARCHIVE_LZMA_ROOM"]=str(1<<30)
+  result=run("huge-7zip-room",[huge])
+  assert result[0]=="completed",result
+  assert (root/"huge-7zip-room/payload.bin").read_bytes()==DATA
+  assert run("encoded-huge-7zip-room",[encoded_huge])[0]=="completed"
+  os.environ["ARCHIVE_LZMA_ROOM"]=str(96<<20)
+  assert run("huge-7zip-small-room",[huge])[1:]==["0",TOO_BIG]
+  del os.environ["ARCHIVE_LZMA_ROOM"]
   # The same refusal before a download, from the ranges a server would send: the start header, the directory,
   # and for a compressed directory its packed bytes.
   def ranges(path):
@@ -399,6 +421,9 @@ def main():
   p.write_bytes(lzma.compress(tar.read_bytes(),format=lzma.FORMAT_XZ,filters=[{"id":lzma.FILTER_LZMA2,"dict_size":128<<20}]))
   assert run("xz-huge",[p])[1:]==["0",TOO_BIG]
   assert not (root/"xz-huge").exists() and not (root/"xz-huge.extracting").exists()
+  os.environ["ARCHIVE_LZMA_ROOM"]=str(1<<30)
+  assert run("xz-huge-room",[p])[1:]==["0",TOO_BIG]
+  del os.environ["ARCHIVE_LZMA_ROOM"]
   p=root/"lzma.zip"
   with zipfile.ZipFile(p,"w",compression=zipfile.ZIP_LZMA) as z:z.writestr("file.bin",DATA)
   assert run("zip-lzma",[p])[0]=="completed"

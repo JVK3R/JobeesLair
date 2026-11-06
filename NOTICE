@@ -1,0 +1,7 @@
+Jobee'sLair - https://github.com/JVK3R/JobeesLair - GPL-3.0-or-later (see LICENSE).
+
+Built with PS5 React (ps5-react/; its own notices are in ps5-react/NOTICE).
+
+Some code in app/ (the browser capture, its host list, parts of the download queue and of the source labels)
+began as code from Overdrive 1.0.6 by MyLuxy (https://github.com/MyLuxy/overdrive), whose capture adapts Orbit
+Store by saawant12 (GPL-3.0-or-later). Each of those files says where.

@@ -5,6 +5,7 @@
 
 #include "network.hpp"
 #include "archives.hpp"
+#include "big_memory.hpp"
 #include "packages.hpp"
 #include "removals.hpp"
 #include "copies.hpp"
@@ -737,6 +738,7 @@ int main() {
                   heap >> 20, flexible_before >> 20, flexible_after >> 20);
   else
     hui::sys::log("[PS5-REACT] heap: none, system malloc (flexible memory free %zu MiB)", flexible_before >> 20);
+  big_memory::install();
   launch_us = hui::sys::monotonic_us();
 #if PS5_REACT_VIDEO
   video::preload_platform_decoder();
