@@ -34,6 +34,7 @@ import { t } from '../i18n/core.js';
     // 0.5.5: TorBox's server failing (services/torbox.js MESSAGES) says so, not "server is busy".
     [/TorBox had a server error/, "torboxServer", "retryLater"],
     [/HTTP (404|410|403|401)\b/, "linkGone", "otherSource"],
+    [/DOWNLOAD_SERVER_ERROR\b/i, "serverBusy", "retryLater"],
     [/HTTP (429|5\d\d)\b/, "serverBusy", "retryLater"],
     [/resolve|connect|timeout|timed out|unreachable|receiving data|SSL|network/i, "noConnection", "checkConnection"],
     [/SHA|hash|verification|mismatch|changed the resource|truncated/i, "damaged", "restartFromZero"]
