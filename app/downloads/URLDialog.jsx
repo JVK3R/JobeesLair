@@ -20,7 +20,10 @@ import { FocusScope, Text, View } from '@ps5-react/core';
 import { colors, radius } from '../ui/colors.js';
 
   var MAX_TYPED = 2048;
-  function URLDialog({ title, detail: detail2, initial = "https://", submit, onClose, kind = "url" }) {
+  // `autoType` opens the system keyboard as the dialog appears, as the console does. The desktop preview's
+  // system keyboard is invisible and takes the keys its on-screen keyboard needs, so a dialog that has to be
+  // usable with the keyboard there passes false; the Type button still opens it for typing.
+  function URLDialog({ title, detail: detail2, initial = "https://", submit, onClose, kind = "url", autoType = true }) {
     const t2 = useT();
     const [value, setValue] = (0, useState)(initial);
     const [error2, setError] = (0, useState)("");
@@ -62,7 +65,7 @@ import { colors, radius } from '../ui/colors.js';
       });
     };
     (0, useEffect)(() => {
-      if (system) typeOnConsole(initial);
+      if (system && autoType) typeOnConsole(initial);
     }, []);
     return (
       // A modal: actions the keyboard leaves (L1/R1, Square outside it) stop here instead of reaching the page.
@@ -71,6 +74,9 @@ import { colors, radius } from '../ui/colors.js';
         return true;
       }, onAction: (action) => {
         if (action === "r2") done();
+        // The keyboard leaves Triangle free in url mode: it opens the system keyboard, which a dialog that
+        // showed its on-screen keyboard first (autoType false) needs to type at all.
+        else if (action === "triangle" && system) typeOnConsole();
         return true;
       }, children: /* @__PURE__ */ (0, jsx)(View, { style: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 50, alignItems: "center", justifyContent: "center", backgroundColor: `${colors.canvas}f2` }, children: /* @__PURE__ */ (0, jsxs)(View, { style: { width: 1380, gap: 30, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 48 }, children: [
         /* @__PURE__ */ (0, jsx)(Text, { style: { fontFamily: "Exo2", fontSize: 36, color: colors.fg, lineHeight: 48 }, children: title }),

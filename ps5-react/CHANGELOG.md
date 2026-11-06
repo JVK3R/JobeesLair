@@ -2,8 +2,12 @@
 
 ## Unreleased — the keyboard, live updates, symbols, right to left, Linux and keeping state
 
-Native ABI v24.
+Native ABI v25.
 
+- **A proxy for every request** (`Http.setProxy`): `http://`, `https://`, `socks5://` or `socks5h://` and a
+  host, with `user:pass@` for basic authentication, sends all native traffic through it — bounded HTTP, large
+  downloads and remote images, since they share the transport. `''` goes direct. It applies to connections made
+  after the call; the app's own update downloads too. Not yet hardware-tested on the console.
 - **The PS5's own keyboard** (`Keyboard`): `Keyboard.open({title, text, placeholder, maxLength, type, enter,
   multiline, password})` shows the system keyboard (libSceImeDialog) over the app, in the player's languages and
   input methods, and resolves with what was typed and how it closed. The host keeps the controller from the app

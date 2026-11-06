@@ -221,6 +221,25 @@ JSValue poll(JSContext* ctx, JSValueConst, int, JSValueConst*) {
   return out;
 }
 JSValue info(JSContext* ctx, JSValueConst, int, JSValueConst*) { return JS_NewString(ctx, network::version()); }
+// The app's proxy: http://, https://, socks5:// or socks5h:// and a host, optionally user:pass@.
+bool proxy_url(const std::string& value) {
+  const auto mark = value.find("://");
+  if (mark == std::string::npos || mark == 0 || value.size() > 512 || value.size() == mark + 3) return false;
+  const std::string scheme = value.substr(0, mark);
+  if (scheme != "http" && scheme != "https" && scheme != "socks5" && scheme != "socks5h") return false;
+  for (const unsigned char c : value)
+    if (c <= 0x20 || c == 0x7f) return false; // no spaces or control characters
+  return true;
+}
+// Every request the transport makes (HTTP, downloads, images) goes through the proxy; empty goes direct.
+JSValue set_proxy(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
+  std::string proxy;
+  if (!argc || !text(ctx, argv[0], proxy, 512))
+    return JS_ThrowTypeError(ctx, "network.setProxy: expected a proxy URL, or an empty string for none");
+  if (!proxy.empty() && !proxy_url(proxy))
+    return JS_ThrowTypeError(ctx, "network.setProxy: expected http://, https://, socks5:// or socks5h:// and a host, without spaces");
+  network::set_proxy(proxy); return JS_UNDEFINED;
+}
 // Bytes per second every file download shares; 0 lifts the cap.
 JSValue rate_limit(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
   double bytes = 0;
@@ -232,7 +251,7 @@ JSValue rate_limit(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv) {
 
 JSValue ps5_react_network_api(JSContext* ctx) {
   JSValue out = JS_NewObject(ctx);
-  for (const auto& item : {std::pair<const char*, JSCFunction*>{"download", &download}, {"request", &request}, {"cancel", &cancel}, {"poll", &poll}, {"version", &info}, {"setRateLimit", &rate_limit}})
+  for (const auto& item : {std::pair<const char*, JSCFunction*>{"download", &download}, {"request", &request}, {"cancel", &cancel}, {"poll", &poll}, {"version", &info}, {"setRateLimit", &rate_limit}, {"setProxy", &set_proxy}})
     JS_SetPropertyStr(ctx, out, item.first, JS_NewCFunction(ctx, item.second, item.first, 0));
   return out;
 }

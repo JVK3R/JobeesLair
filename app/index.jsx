@@ -41,6 +41,7 @@ import { startInstaller, startUpdateChecks } from './state/update.js';
 import { startOnline, watchInstalls } from './state/online.js';
 import { startSharedLinks } from './state/links.js';
 import { applySpeedLimit } from './state/speed-limit.js';
+import { applyProxy } from './state/proxy.js';
 import { installLogger } from './services/logger.js';
 import { VERSION } from './version.js';
 import { HOMEBREW_ONLY } from './edition.js';
@@ -62,6 +63,10 @@ import { AnnouncementBar, usePageGlide } from './ui/AnnouncementBar.jsx';
 import { useInterfaceHaptics } from './ui/haptics.js';
 import { useInterfaceSounds } from './ui/sounds.js';
 import './state/picture-route.js';
+
+  // The saved proxy (Settings, Downloads) goes to the native transport before the first request: feeds,
+  // cover art, the update check and the players' numbers all start from effects after this module loads.
+  applyProxy();
 
   function Screen({ screen: screen2 }) {
     const { openGame, pop, push } = useNavActions();

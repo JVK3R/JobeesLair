@@ -48,6 +48,10 @@ std::vector<Snapshot> poll();
 // Caps what file downloads receive together, in bytes per second; 0 lifts the cap. It applies at once,
 // to downloads already running too, except those marked unlimited.
 void set_rate_limit(std::uint64_t bytes_per_second);
+// Every request the transport makes (HTTP, downloads, images) goes through `proxy`: http://, https://,
+// socks5:// or socks5h:// followed by the host, with user:pass@ allowed. Empty goes direct. Connections
+// made after the call use it; a transfer already running keeps the one it started with.
+void set_proxy(const std::string& proxy);
 // True while a download to a file runs; image loading yields connections and memory to it.
 bool downloading();
 // True once start() succeeded: the platform's network stack (PS5: libSceNet) is up.

@@ -503,6 +503,12 @@ export const Http = {
       if (signal) signal.removeEventListener('abort', abort);
     }
   },
+  /** ABI v25: every native request made after this one (Http, Downloads, images) goes through `proxy`:
+   * `http://`, `https://`, `socks5://` or `socks5h://` and a host, `user:pass@` allowed; `''` goes direct.
+   * A transfer already running keeps the proxy it started with. Throws a TypeError for anything else. */
+  setProxy(proxy) {
+    host().network.setProxy(proxy == null ? '' : String(proxy));
+  },
 };
 
 /** Large binary files stay native; only progress and the completion result reach JavaScript. */
