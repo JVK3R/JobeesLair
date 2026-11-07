@@ -32,7 +32,7 @@ function fakeHttp(routes) {
 test('AllDebrid: the key goes in a Bearer header only; a link unlocks at once or after its delay', async () => {
   let polls = 0;
   const http = fakeHttp({
-    '/v4/user': reply(200, { status: 'success', data: { user: { username: 'jake', isPremium: true, premiumUntil: 1798761600 } } }),
+    '/v4/user': reply(200, { status: 'success', data: { user: { username: 'player', isPremium: true, premiumUntil: 1798761600 } } }),
     '/v4/link/unlock': (options) => options.body.includes('slow')
       ? reply(200, { status: 'success', data: { delayed: 42, filename: 'Game.rar' } })
       : reply(200, { status: 'success', data: { link: 'https://dl.alldebrid.com/x/Game.rar', filename: 'Game.rar', filesize: 1234 } }),
@@ -40,7 +40,7 @@ test('AllDebrid: the key goes in a Bearer header only; a link unlocks at once or
     '/v4.1/user/hosts': reply(200, { status: 'success', data: { hosts: { rapidgator: { name: 'rapidgator', domains: ['rapidgator.net', 'rg.to'], regexps: [], status: true }, dead: { name: 'dead', domains: ['dead.example'], regexps: [], status: false } } } }),
   });
   const api = createAllDebrid({ http, key: () => KEY });
-  assert.deepEqual(await api.me(), { premium: true, expiresAt: '2027-01-01', username: 'jake' });
+  assert.deepEqual(await api.me(), { premium: true, expiresAt: '2027-01-01', username: 'player' });
   assert.deepEqual(await api.resolve('https://rapidgator.net/file/1'), { url: 'https://dl.alldebrid.com/x/Game.rar', name: 'Game.rar', size: 1234 });
   assert.equal((await api.resolve('https://rapidgator.net/file/slow', { pollMs: 1 })).url, 'https://dl.alldebrid.com/y/Game.rar');
   assert.equal(polls, 2);

@@ -1,5 +1,5 @@
 // Opens the dashboard's first-time setup: a temporary password (default "password") that works for an hour and
-// only for the setup, where Jake picks his own password and adds his authenticator. Use it the first time, and if
+// only for the setup, where JVK3R picks his own password and adds his authenticator. Use it the first time, and if
 // the password or the phone with the authenticator is lost. Everyone signed in is signed out, the old password
 // and authenticator key stop working, and the session signing key is replaced (SESSION_KEY, never shown).
 //

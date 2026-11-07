@@ -753,7 +753,7 @@ import { normalizeIndex, roleOf } from './homebrew-index.js';
       fs.removeAsync(path, { background: true }).catch((error) => log(`${path} not deleted: ${error.message}`)).finally(() => deleting.delete(path));
     }
     // 0.5.3: a deletion the app was closed during stopped there, and what it had not reached stayed for good
-    // (PS5X360's whole folder, after a removal, on Jake's console). Deleted again once per launch, after the
+    // (PS5X360's whole folder, after a removal, on JVK3R's console). Deleted again once per launch, after the
     // drives are known (load's deferred work, then each rescan).
     const swept = /* @__PURE__ */ new Set();
     function sweepTrash() {

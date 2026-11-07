@@ -1,4 +1,4 @@
-// Jobee'sLair online's dashboard (0.5.2): one page, served by worker.js at /dashboard, for Jake only. Signing in
+// Jobee'sLair online's dashboard (0.5.2): one page, served by worker.js at /dashboard, for JVK3R only. Signing in
 // takes the password and the authenticator code; the session is a cookie this page's script can't read (the
 // password is never kept in the browser). The live numbers ask /v1/admin/live every 15 seconds; the rest asks
 // /v1/admin/summary?days=N (the range picked in the header) every five minutes. Its typeface is Exo 2 from

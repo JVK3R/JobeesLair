@@ -175,7 +175,7 @@ test('install: an app folder from a zip is placed under its title ID, replacing 
   for (const p of ['/data/homebrew/PPSA99001/eboot.bin', '/data/homebrew/PPSA99001/sce_sys/param.json', '/data/homebrew/PPSA99001/sce_sys', '/data/homebrew/PPSA99001']) assert.equal(world.fs.modes.get(p), 0o777, `${p} is open to everyone, as an FTP copy is: the console cannot start an app it can't execute`);
 });
 
-// 0.5.2, from PS5X360 on Jake's console: its 1.0.0 update swapped the folder and deleted the old one, saves and
+// 0.5.2, from PS5X360 on JVK3R's console: its 1.0.0 update swapped the folder and deleted the old one, saves and
 // all, but for a folder the emulator made that the app could not enter; what that left in the staging then
 // stopped every later update ("Existing extraction has no matching, valid completion receipt").
 const X360 = '/data/homebrew/PPSA50011';
@@ -340,7 +340,7 @@ test('update: a merge that fails partway moves everything back, so the version i
   assert.ok(!fs.exists(X360_WORK), 'the staging, with the replaced files, is tidied');
 });
 
-// 0.5.2: removing an app asks first when it saved things in its folder (Jake: "Ask first"); kept, they come back.
+// 0.5.2: removing an app asks first when it saved things in its folder (JVK3R: "Ask first"); kept, they come back.
 const EMU = '/data/homebrew/PPSA99001';
 function emuWorld() {
   const world = console2({ archivesHold: { 'Emu.zip': { 'Emu/eboot.bin': 'e', 'Emu/sce_sys/param.json': JSON.stringify({ titleId: 'PPSA99001' }), 'Emu/assets/ui.bin': 'ui' } } });
@@ -721,7 +721,7 @@ test('0.5.3: what an install cut off while it unpacked left (the extractor\'s st
 test('0.5.3: what a removal set aside and the app was closed before it was deleted goes at the next launch; kept saves stay', async () => {
   const world = console2({
     seed: {
-      // PS5X360 on Jake's console: removed, its folder moved aside, the app closed while it was being deleted.
+      // PS5X360 on JVK3R's console: removed, its folder moved aside, the app closed while it was being deleted.
       '/data/downloads/homebrew/.removed-1792989529034-PPSA50011/eboot.bin': 'x',
       '/data/downloads/homebrew/.removed-1792989529034-PPSA50011/saves/E000FE8300000000/Account': 'p',
       '/mnt/usb0/downloads/homebrew/.removed-5-Lineup-1.4.1.exfat': 'old image',
@@ -864,7 +864,7 @@ test('0.5.3: Cancel stops an install that waits for the extractor at once, and i
 });
 
 test("0.5.3: installing an app's package after its payload deletes the payload, which Remove would never find again", async () => {
-  // Jake's console: Spectrum Library's payload, then its Native package; removing it then left the payload behind.
+  // JVK3R's console: Spectrum Library's payload, then its Native package; removing it then left the payload behind.
   const dir = '/data/JobeesLair/payloads/p__spectrum';
   const files = [
     { name: 'SpectrumLibrary_1.4.8.elf', kind: 'payload', url: release('p/spectrum', 'SpectrumLibrary_1.4.8.elf'), size: 4096 },

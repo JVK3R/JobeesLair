@@ -1,4 +1,4 @@
-// Jobee'sLair online (0.5.2): the live count, announcements, and the anonymous stats behind Jake's dashboard. The
+// Jobee'sLair online (0.5.2): the live count, announcements, and the anonymous stats behind JVK3R's dashboard. The
 // other end is tools/online, a Cloudflare Worker at api.jobees.org.
 //
 // While it's open, the app asks for the count and the announcements once a minute, sending nothing about the console.

@@ -73,7 +73,7 @@ assert.equal(new Set(grid.map((game) => plain(game.title))).size, grid.length, '
 console.log(`OK: one card a game (${everything.length} -> ${oneEach(everything).length}); Top Rated opens with ${top.slice(0, 3).map((game) => game.title).join(', ')}`);
 
 // The sections (0.5.2, app/ui/sections.js): Browse is one L1 and R1 step to, between Discover and Top rated. It was
-// only a menu, and they stepped past it (Jake: "it never lets you select it, it just jumps over it").
+// only a menu, and they stepped past it (JVK3R: "it never lets you select it, it just jumps over it").
 const { BROWSE_SORT, TABS, sectionOf, stepFrom } = await import(pathToFileURL(path.join(repo, 'app/ui/sections.js')).href);
 assert.deepEqual(TABS.slice(0, 5), ['search', 'discover', 'catalog', 'top', 'new']);
 assert.equal(stepFrom('discover', true), 'catalog', 'R1 from Discover is Browse');

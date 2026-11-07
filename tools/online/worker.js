@@ -1,5 +1,5 @@
 // Jobee'sLair online (0.5.2): a Cloudflare Worker with a D1 database (schema.sql) behind the app's online features
-// (app/state/online.js) and Jake's dashboard.
+// (app/state/online.js) and JVK3R's dashboard.
 //
 //   POST /v1/ping    {id, version, edition, firmware, language, companion}: a console that shares stats, every five
 //                    minutes while the app is open. Answers {online, announcements: [{id, text, level, until}]}.
@@ -280,7 +280,7 @@ async function launchSummary(db, from) {
 
 // ---- The dashboard's sign-in ---------------------------------------------------------------------------------
 // The first time (and after reset-login.mjs), a temporary password works for an hour and opens only the setup:
-// Jake picks his own password and adds the authenticator (scan the QR code, type the code it shows). From then on,
+// JVK3R picks his own password and adds the authenticator (scan the QR code, type the code it shows). From then on,
 // signing in takes the password and a current 6-digit code (RFC 6238: HMAC-SHA-1, 30-second steps, the step
 // before and after accepted for a slow clock), each code once. A wrong password counts against its own address
 // only, in memory like a flood of events: ten in an hour turn that address away, so a stranger guessing locks out
@@ -454,7 +454,7 @@ async function setupKey(db, login) {
   return json({ key, size: matrix.size, cells });
 }
 
-// Setup, step 2: Jake's own password and the first code from the authenticator. Then the sign-in is his, a new
+// Setup, step 2: JVK3R's own password and the first code from the authenticator. Then the sign-in is his, a new
 // version (the setup session ends), and he's signed in for real.
 async function setupFinish(request, env, db, login, now) {
   if (await locked(db, now)) return json({ error: "Too many wrong tries. Sign-in is locked for up to an hour." }, 429);

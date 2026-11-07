@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS installs (
 CREATE INDEX IF NOT EXISTS installs_day ON installs (day);
 
 -- The dashboard's sign-in. reset-login.mjs writes a first-time password (good for an hour); the first sign-in
--- then sets Jake's own password and authenticator key from the dashboard.
+-- then sets JVK3R's own password and authenticator key from the dashboard.
 CREATE TABLE IF NOT EXISTS admin_login (
   slot INTEGER PRIMARY KEY CHECK (slot = 1),
   password TEXT NOT NULL,       -- pbkdf2$<iterations>$<salt>$<hash>, base64
