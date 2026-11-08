@@ -7,16 +7,20 @@
 //
 // Only the catalog's own link goes up, never a link the player typed in or the file link a host handed out, and
 // nothing about the console; only with stats on (state/online.js).
+//
+// 0.5.7 (PS4 Beta 6): the server's list comes as JLX1 (state/jlx.js), as the catalogs do; a plain one still reads.
 
 import { Http } from '@ps5-react/core';
 import { ONLINE_URL, online } from './online.js';
 import { savedList } from './saved.js';
+import { readJlxAsync } from './jlx.js';
 import { log } from '../services/logger.js';
 
   var MAX_LINKS = 5e3;
   var store = null;
   var dead = null;
   var listeners = /* @__PURE__ */ new Set();
+  var nextFrame = () => new Promise((resolve) => setTimeout(resolve, 0));
   function known() {
     if (dead) return dead;
     store ?? (store = savedList("shared-links.json", "shared dead links"));
@@ -35,7 +39,7 @@ import { log } from '../services/logger.js';
     try {
       const response = await http.request(`${url}/v1/links/dead`, { maxBytes: 2 * 1024 * 1024 });
       if (!response.ok) return log("links", `the shared dead links didn't come: HTTP ${response.status}`);
-      const answer = await response.json();
+      const answer = JSON.parse(await readJlxAsync(await response.text(), nextFrame));
       const list = Array.isArray(answer?.dead) ? answer.dead.filter((link) => typeof link === "string").slice(0, MAX_LINKS) : null;
       if (!list) return;
       known();

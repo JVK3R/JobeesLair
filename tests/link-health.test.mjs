@@ -444,3 +444,19 @@ test('a link other players found gone reads as dead, said as theirs, when this c
   assert.equal(heard, 1);
   assert.equal(health.overlay([host])[0], host, 'the list changing is seen at once');
 });
+
+// 0.5.7 (PS4 Beta 6): api.jobees.org's dead links come as JLX1 (state/jlx.js); a plain answer still reads, and an
+// answer that doesn't read keeps the list the console has.
+test('the shared dead links: a JLX1 answer reads, a plain one too, a broken one keeps the last list', async () => {
+  const { refreshShared, sharedDead } = await import(pathToFileURL(path.join(repo, 'app/state/shared-links.js')).href);
+  const { encodeJlx } = await import(pathToFileURL(path.join(repo, 'app/state/jlx.js')).href);
+  const answering = (text) => ({ request: async () => ({ ok: true, status: 200, headers: {}, text: async () => text }) });
+  const gone = 'https://1fichier.com/?gonegonegone';
+  await refreshShared({ http: answering(encodeJlx({ at: 1, dead: [gone] })), url: 'https://api.example' });
+  assert.equal(sharedDead(gone), true, 'JLX1');
+  await refreshShared({ http: answering(JSON.stringify({ at: 2, dead: ['https://1fichier.com/?other'] })), url: 'https://api.example' });
+  assert.equal(sharedDead('https://1fichier.com/?other'), true, 'plain JSON');
+  assert.equal(sharedDead(gone), false, 'the new list replaces the old');
+  await refreshShared({ http: answering('not a list'), url: 'https://api.example' });
+  assert.equal(sharedDead('https://1fichier.com/?other'), true, 'a broken answer keeps the last list');
+});
