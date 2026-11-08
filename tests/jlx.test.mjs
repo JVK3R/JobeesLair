@@ -1,7 +1,7 @@
 // 0.5.7: the JLX1 catalog file format (app/state/jlx.js).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const { encodeJlx, decodeJlx, isJlx, readJlx, readJlxAsync, JLX_MARK } = await import('../app/state/jlx.js');
@@ -43,7 +43,7 @@ test('the bundled releases and the live catalog are JLX1, and the data folders h
   const HOST_LINK = /https?:\/\/[^"\s]*(vikingfile|akirabox|1fichier|rootz|datanodes|mediafire|gofile|pixeldrain|filekeeper|link-vault)\./i;
   const GAME_FILE = /https?:\/\/archive\.org\/download\/[^"\s]+\.(pkg|ffpfsc|ffpfs|ffpkg|exfat|rar|7z|zip)\b/i;
   const tracked = execFileSync('git', ['ls-files', 'app/data', 'catalog', 'tests/fixtures'], { cwd: new URL('..', import.meta.url), encoding: 'utf8' }).split('\n').filter(Boolean);
-  const plain = tracked.filter((file) => {
+  const plain = tracked.filter((file) => existsSync(new URL(`../${file}`, import.meta.url))).filter((file) => {
     const text = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
     return HOST_LINK.test(text) || GAME_FILE.test(text);
   });
