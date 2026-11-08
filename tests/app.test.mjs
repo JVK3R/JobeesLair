@@ -1904,12 +1904,12 @@ test('a set of images unpacked into one folder moves image by image, and the emp
   assert.deepEqual(state.manual, [`${usb}/Game.exfat`, `${usb}/Game-Update-1.05.exfat`]);
 });
 
-test('versions: 0.2.0 is newer than every 0.1.1 beta and 0.1.1, and the app now reports 0.5.6', async () => {
+test('versions: 0.2.0 is newer than every 0.1.1 beta and 0.1.1, and the app now reports 0.5.7', async () => {
   assert.equal(newer('v0.2.0', '0.1.1-beta.4'), true);
   assert.equal(newer('v0.2.0', '0.1.1'), true);
   assert.equal(newer('0.1.1-beta.4', '0.2.0'), false);
   const { VERSION, VERSION_LABEL } = await load('app/version.js');
-  assert.deepEqual([VERSION, VERSION_LABEL], ['0.5.6', '0.5.6']);
+  assert.deepEqual([VERSION, VERSION_LABEL], ['0.5.7', '0.5.7']);
 });
 
 
@@ -1928,10 +1928,12 @@ const releaseJson = (overrides = {}) => ({
   ...overrides,
 });
 
-test('versions: 0.5.0 is newer than 0.4.1 and every 0.5.0 pre-release, and older than 0.5.1; 0.5.6 is newer than 0.5.5', () => {
-  assert.equal(VERSION, '0.5.6');
+test('versions: 0.5.0 is newer than 0.4.1 and every 0.5.0 pre-release, and older than 0.5.1; 0.5.7 is newer than 0.5.6', () => {
+  assert.equal(VERSION, '0.5.7');
+  assert.equal(newer(VERSION, '0.5.6'), true, 'it is newer than 0.5.6');
+  assert.equal(newer('v0.5.6', VERSION), false, 'so 0.5.6 is not offered to it');
+  assert.equal(newer('v0.5.7', VERSION), false, 'not to itself');
   assert.equal(newer(VERSION, '0.5.5'), true, 'it is newer than 0.5.5');
-  assert.equal(newer('v0.5.6', VERSION), false, 'not to itself');
   assert.equal(newer('v0.5.6', '0.5.6-pre.1'), true, '0.5.6 is offered to its testers');
   assert.equal(newer(VERSION, '0.5.4'), true, 'it is newer than 0.5.4');
   assert.equal(newer('v0.5.4', VERSION), false, 'so 0.5.4 is not offered to it');
@@ -1941,7 +1943,7 @@ test('versions: 0.5.0 is newer than 0.4.1 and every 0.5.0 pre-release, and older
   assert.equal(newer('v0.5.3', VERSION), false, 'so 0.5.3 is not offered to it');
   assert.equal(newer('v0.5.3', '0.5.3-pre.1'), true, '0.5.3 was offered to its testers');
   assert.equal(newer('v0.5.4', '0.5.4-pre.1'), true, '0.5.4 was offered to its testers');
-  assert.equal(contentVersionOf(VERSION), '01.005.006', 'the package version leaves the pre-release part out');
+  assert.equal(contentVersionOf(VERSION), '01.005.007', 'the package version leaves the pre-release part out');
   assert.equal(newer('v0.5.2', '0.5.2-pre.1'), true, '0.5.2 was offered to its pre-release testers');
   assert.equal(newer('0.5.2', '0.5.1'), true, 'and to 0.5.1');
   assert.equal(newer(VERSION, '0.5.0'), true, 'it is newer than 0.5.0');

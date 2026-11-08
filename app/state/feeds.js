@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react';
 import { MAX_MIRRORS, feedDocument, parseFeed, parseFeedAsync, stableKey, stableKeyAsync } from './feed-format.js';
 import { isoStamp } from './clock.js';
+import { readJlxAsync } from './jlx.js';
 import { DATA_DIR, LEGACY_DATA_DIR } from './data-dir.js';
 import { webURL } from './download-sources.js';
 import { savedList } from './saved.js';
@@ -25,6 +26,9 @@ import { FileSystem, Http } from '@ps5-react/core';
   // bundled catalog. Every console reads it like a feed the player added, without being listed in Settings,
   // so a game added there shows up in the store the next time Jobee'sLair starts.
   var LIVE_FEED = "https://raw.githubusercontent.com/JVK3R/JobeesLair/main/catalog/live.json";
+  // MODIFIED (0.5.7): the live catalog is published as JLX1 (state/jlx.js), at live.jlx; live.json is gone. LIVE_FEED
+  // stays its name, so its release ids (and the downloads started from them) are the same as before.
+  var LIVE_SOURCE = "https://raw.githubusercontent.com/JVK3R/JobeesLair/main/catalog/live.jlx";
   // The feeds read and refreshed: the live catalog first, then the player's.
   var allFeeds = () => [LIVE_FEED, ...feedList.get().filter((url) => url !== LIVE_FEED)];
   var DIR = `${DATA_DIR}/feeds`;
@@ -116,7 +120,7 @@ import { FileSystem, Http } from '@ps5-react/core';
   var mirrorsOf = (url) => [...new Set([...userMirrors(url), ...meta.get(url)?.mirrors ?? []])].filter((mirror) => mirror !== url);
   // The addresses a refresh tries, in order: the one that worked last, the feed's own, then its mirrors.
   function sourcesOf(url) {
-    const all = [url, ...mirrorsOf(url)];
+    const all = [url === LIVE_FEED ? LIVE_SOURCE : url, ...mirrorsOf(url)];
     const last = meta.get(url)?.from;
     return [...new Set(last && all.includes(last) ? [last, ...all] : all)];
   }
@@ -151,7 +155,8 @@ import { FileSystem, Http } from '@ps5-react/core';
     if (etag && known?.etag === etag && known.from === source) return { unchanged: true };
     let document2;
     try {
-      document2 = JSON.parse(await response.text());
+      // 0.5.7: a JLX1 feed (state/jlx.js) is decoded first, a few slices a frame; a plain one is read as it is.
+      document2 = JSON.parse(await readJlxAsync(await response.text(), nextFrame));
     } catch {
       throw new Error("Not JSON.");
     }

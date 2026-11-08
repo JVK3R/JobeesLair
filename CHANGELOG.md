@@ -4,6 +4,11 @@ What changed in each version of Jobee'sLair. Each release on
 [GitHub](https://github.com/JVK3R/JobeesLair/releases) carries the full notes, the files and their
 SHA-256 checksums.
 
+## 0.5.7 (2026-11-08)
+
+- **The store's catalog comes in a new format.** New games keep reaching the store between releases. 0.5.6 and
+  earlier stop receiving them and keep the games they already have, so update to keep the store current.
+
 ## 0.5.6 (2026-11-06)
 
 - **Big 7z archives unpack.** A 7z packed with 7-Zip's largest settings (an LZMA2 dictionary of 128 MiB to

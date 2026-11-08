@@ -3,7 +3,7 @@
   "titleId": "PPSA99472",
   "contentId": "UP9000-PPSA99472_00-JOBEESLAIRHB0000",
   "name": "Jobee'sLair Homebrew",
-  "version": "01.005.006",
+  "version": "01.005.007",
   "render": {
     "width": 1920,
     "height": 1080
@@ -48,6 +48,6 @@
   ],
   "filesystemAccess": "console",
   "networking": true,
-  "userAgent": "JobeesLair-Homebrew/0.5.6 (PS5)",
+  "userAgent": "JobeesLair-Homebrew/0.5.7 (PS5)",
   "timeoutSeconds": 0
 }

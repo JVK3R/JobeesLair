@@ -17,13 +17,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const { gameFormats } = await import(pathToFileURL(path.join(repo, 'app/state/formats.js')).href);
+const { readJlx } = await import(pathToFileURL(path.join(repo, 'app/state/jlx.js')).href);
 
 export function buildFormats(dir = path.join(repo, 'app/data/releases')) {
   const formats = {};
   for (const name of fs.readdirSync(dir).filter((file) => file.endsWith('.json')).sort()) {
     const id = name.slice(0, -5);
     const platform = /^PPSA/i.test(id) ? 'ps5' : /^CUSA/i.test(id) ? 'ps4' : undefined;
-    const kinds = gameFormats(JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')), platform);
+    const kinds = gameFormats(JSON.parse(readJlx(fs.readFileSync(path.join(dir, name), 'utf8'))), platform);
     if (kinds.length) formats[id] = kinds.join(' ');
   }
   return formats;
