@@ -12,20 +12,20 @@ const load = (rel) => import(pathToFileURL(path.join(repo, rel)).href);
 const en = (await load('app/i18n/locales/en.json')).default;
 (await load('app/i18n/core.js')).configure(() => en, en);
 const { VERSION } = await load('app/version.js');
-// The fake release is 0.5.7, past this build's 0.5.6 (and its pre-releases), so it counts as an update.
+// The fake release is 0.5.8, past this build's 0.5.7 (and its pre-releases), so it counts as an update.
 
-const staging = '/mnt/usb0/JobeesLair/update_staging/0.5.7';
-const asset = (name, size) => ({ url: `https://github.com/JVK3R/JobeesLair/releases/download/v0.5.7/${name}`, size, sha256: 'a'.repeat(64) });
-const latest = { version: '0.5.7', url: 'https://github.com/JVK3R/JobeesLair/releases/tag/v0.5.7', notes: 'Fixes.', published: '', assets: which === 'none' ? null : { image: asset('JobeesLair.exfat', 466616320), zip: asset('update.zip', 21421243) } };
+const staging = '/mnt/usb0/JobeesLair/update_staging/0.5.8';
+const asset = (name, size) => ({ url: `https://github.com/JVK3R/JobeesLair/releases/download/v0.5.8/${name}`, size, sha256: 'a'.repeat(64) });
+const latest = { version: '0.5.8', url: 'https://github.com/JVK3R/JobeesLair/releases/tag/v0.5.8', notes: 'Fixes.', published: '', assets: which === 'none' ? null : { image: asset('JobeesLair.exfat', 466616320), zip: asset('update.zip', 21421243) } };
 const saved = {
-  ready: { phase: 'ready', version: '0.5.7', staging, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: latest.assets?.image },
-  paused: { phase: 'downloading', version: '0.5.7', staging, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: latest.assets?.image },
-  failed: { phase: 'armed', version: '0.5.7', staging, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: latest.assets?.image },
+  ready: { phase: 'ready', version: '0.5.8', staging, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: latest.assets?.image },
+  paused: { phase: 'downloading', version: '0.5.8', staging, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: latest.assets?.image },
+  failed: { phase: 'armed', version: '0.5.8', staging, target: '/mnt/usb0/homebrew/JobeesLair.exfat', image: latest.assets?.image },
 }[which] ?? {};
 const files = new Map([
   ['/download0/JobeesLair/update-check.json', JSON.stringify({ checkedAt: Date.now(), latest })],
   ['/download0/JobeesLair/auto-update.json', JSON.stringify(saved)],
-  ['/data/JobeesLair/update/result.txt', which === 'failed' ? 'outcome=rolledback\nversion=0.5.7\nreason=the new version closed before it finished starting\n' : null],
+  ['/data/JobeesLair/update/result.txt', which === 'failed' ? 'outcome=rolledback\nversion=0.5.8\nreason=the new version closed before it finished starting\n' : null],
 ]);
 const sizes = new Map([[`${staging}/JobeesLair.exfat.staged`, 466616320]]);
 const writes = [];
