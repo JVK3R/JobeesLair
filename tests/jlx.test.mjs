@@ -5,6 +5,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const { encodeJlx, decodeJlx, isJlx, readJlx, readJlxAsync, JLX_MARK } = await import('../app/state/jlx.js');
+const { PS5_LIVE, PS5_NAMES } = await import('../tools/catalog/lists-dir.mjs');
 
 test('JLX1: any JSON comes back exactly, as printable ASCII with nothing readable left', async () => {
   const value = {
@@ -38,11 +39,13 @@ test('the bundled releases and the live catalog are JLX1, and the data folders h
     assert.ok(isJlx(text), `${name} is encoded`);
     assert.ok(Array.isArray(JSON.parse(readJlx(text))), `${name} decodes to its releases`);
   }
-  for (const name of ['live.jlx', 'names.jlx']) assert.ok(isJlx(readFileSync(new URL(`../catalog/${name}`, import.meta.url), 'utf8')), name);
+  // The live catalog lives in the lists clone (tools/catalog/lists-dir.mjs), not here: checked when the clone is there.
+  for (const file of [PS5_LIVE, PS5_NAMES]) if (existsSync(file)) assert.ok(isJlx(readFileSync(file, 'utf8')), file);
   // Every file git tracks under the data folders and catalog/ (cover pictures are fine).
   const HOST_LINK = /https?:\/\/[^"\s]*(vikingfile|akirabox|1fichier|rootz|datanodes|mediafire|gofile|pixeldrain|filekeeper|link-vault)\./i;
   const GAME_FILE = /https?:\/\/archive\.org\/download\/[^"\s]+\.(pkg|ffpfsc|ffpfs|ffpkg|exfat|rar|7z|zip)\b/i;
   const tracked = execFileSync('git', ['ls-files', 'app/data', 'catalog', 'tests/fixtures'], { cwd: new URL('..', import.meta.url), encoding: 'utf8' }).split('\n').filter(Boolean);
+  assert.deepEqual(tracked.filter((file) => /^catalog\/(live|names)\./.test(file)), [], 'the live catalog lives in the lists repository, not here');
   const plain = tracked.filter((file) => existsSync(new URL(`../${file}`, import.meta.url))).filter((file) => {
     const text = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
     return HOST_LINK.test(text) || GAME_FILE.test(text);

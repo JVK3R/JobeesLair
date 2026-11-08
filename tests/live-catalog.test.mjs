@@ -1,11 +1,15 @@
-// 0.5.1: the Pegasus catalog format, and the live catalog built from it (catalog/live.jlx, encoded since 0.5.7).
+// 0.5.1: the Pegasus catalog format, and the live catalog built from it (encoded since 0.5.7; since 0.5.7 too it lives in
+// JVK3R/JobeesLair-Lists as ps5/live.jlx, read here from that clone: tools/catalog/lists-dir.mjs). Without the clone
+// (CI's build), the tests of the live file itself are skipped.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const { parseFeed } = await import('../app/state/feed-format.js');
 const { readJlx } = await import('../app/state/jlx.js');
-const liveEncoded = () => readFileSync(new URL('../catalog/live.jlx', import.meta.url), 'utf8');
+const { PS5_LIVE } = await import('../tools/catalog/lists-dir.mjs');
+const liveEncoded = () => readFileSync(PS5_LIVE, 'utf8');
+const noLive = existsSync(PS5_LIVE) ? false : `no lists clone at ${PS5_LIVE}`;
 const liveText = () => readJlx(liveEncoded());
 
 const pegasus = {
@@ -52,7 +56,7 @@ test('a Pegasus catalog reads as a feed: games merged by title ID, parts kept to
   assert.ok(releases.every((release) => release.requiresBrowser));
 });
 
-test('the live catalog parses whole, within the console limits, with every multi-part set complete', () => {
+test('the live catalog parses whole, within the console limits, with every multi-part set complete', { skip: noLive }, () => {
   const raw = liveEncoded();
   assert.ok(raw.length <= 2 * 1024 * 1024, 'under the 2 MiB a feed may be, as the console fetches it');
   const document = JSON.parse(readJlx(raw));
@@ -68,7 +72,7 @@ test('the live catalog parses whole, within the console limits, with every multi
 
 // 0.5.3: 26 bundled games had no cover ("cover": null) and showed only their name where the picture goes (7 Days to
 // Die, Alien: Rogue Incursion...). The live catalog's own games take theirs from the PlayStation Store (artOf).
-test('every game has a picture: the bundled ones, and the ones only the live catalog lists', async () => {
+test('every game has a picture: the bundled ones, and the ones only the live catalog lists', { skip: noLive }, async () => {
   const { games } = await import('../app/data/catalog.js');
   assert.deepEqual(games.filter((game) => !game.art?.cover).map((game) => `${game.id} ${game.title}`), []);
   for (const game of games) {
@@ -82,7 +86,7 @@ test('every game has a picture: the bundled ones, and the ones only the live cat
 test('the app reads the live catalog without the player adding it, and keeps a place for it', () => {
   const source = readFileSync(new URL('../app/state/feeds.js', import.meta.url), 'utf8');
   assert.match(source, /LIVE_FEED = "https:\/\/raw\.githubusercontent\.com\/JVK3R\/JobeesLair\/main\/catalog\/live\.json"/, 'its name stays, so its release ids do');
-  assert.match(source, /LIVE_SOURCE = "https:\/\/raw\.githubusercontent\.com\/JVK3R\/JobeesLair\/main\/catalog\/live\.jlx"/, 'fetched encoded');
+  assert.match(source, /LIVE_SOURCE = "https:\/\/raw\.githubusercontent\.com\/JVK3R\/JobeesLair-Lists\/main\/ps5\/live\.jlx"/, 'fetched encoded, from the lists repository');
   assert.match(source, /for \(const url of allFeeds\(\)\) \{\n\s+const cache = readCache/);
   assert.match(source, /for \(const url of allFeeds\(\)\) await refreshFeed\(url\)/);
   assert.match(source, /MAX_FEEDS = 3/);
@@ -93,7 +97,7 @@ const { createSourceResolver, sourceKind, RESOLVED_KINDS } = await import('../ap
 const { hostStanding } = await import('../app/state/capture-hosts.js');
 const { feedDocument } = await import('../app/state/feed-format.js');
 
-test('the live catalog: AkiraBox and Rootz volumes are a set only when their files say so', () => {
+test('the live catalog: AkiraBox and Rootz volumes are a set only when their files say so', { skip: noLive }, () => {
   const document = JSON.parse(liveText());
   // ASTRO BOT (USA), while the catalogs list it: the refresh of 2026-11-02 dropped it, and a test of the code can't
   // ask the catalogs to keep a game.
@@ -133,7 +137,7 @@ test('Rootz: its page is resolved to the CDN file without the browser; a missing
   assert.equal(hostStanding(release), 'works', 'no capture history counts against a host that needs none');
 });
 
-test('store ratings: a feed carries them for any title, checked, and its cache keeps them', () => {
+test('store ratings: a feed carries them for any title, checked, and its cache keeps them', { skip: noLive }, () => {
   const feed = parseFeed({ version: 1, games: [], ratings: { PPSA21564: [4.77, 76635], CUSA00001: [6, 10], PPSA00002: [4, 1.5], bad: [4, 10] } }, 'https://example.com/feed.json');
   assert.deepEqual(feed.ratings, { PPSA21564: [4.77, 76635] });
   assert.deepEqual(parseFeed(feedDocument(feed), 'https://example.com/feed.json').ratings, feed.ratings);

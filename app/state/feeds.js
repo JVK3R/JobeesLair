@@ -26,9 +26,10 @@ import { FileSystem, Http } from '@ps5-react/core';
   // bundled catalog. Every console reads it like a feed the player added, without being listed in Settings,
   // so a game added there shows up in the store the next time Jobee'sLair starts.
   var LIVE_FEED = "https://raw.githubusercontent.com/JVK3R/JobeesLair/main/catalog/live.json";
-  // MODIFIED (0.5.7): the live catalog is published as JLX1 (state/jlx.js), at live.jlx; live.json is gone. LIVE_FEED
-  // stays its name, so its release ids (and the downloads started from them) are the same as before.
-  var LIVE_SOURCE = "https://raw.githubusercontent.com/JVK3R/JobeesLair/main/catalog/live.jlx";
+  // MODIFIED (0.5.7): the live catalog is published as JLX1 (state/jlx.js), as ps5/live.jlx in a repository of its
+  // own, apart from the app's releases; live.json is gone. LIVE_FEED stays its name, so its release ids (and the
+  // downloads started from them) are the same as before.
+  var LIVE_SOURCE = "https://raw.githubusercontent.com/JVK3R/JobeesLair-Lists/main/ps5/live.jlx";
   // The feeds read and refreshed: the live catalog first, then the player's.
   var allFeeds = () => [LIVE_FEED, ...feedList.get().filter((url) => url !== LIVE_FEED)];
   var DIR = `${DATA_DIR}/feeds`;

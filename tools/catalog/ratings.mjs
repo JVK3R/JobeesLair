@@ -1,4 +1,4 @@
-// Builds catalog/ratings.json and app/data/ratings.js: every game's PlayStation Store star rating, for the
+// Builds ps5/ratings.json in the lists clone (tools/catalog/lists-dir.mjs) and app/data/ratings.js: every game's PlayStation Store star rating, for the
 // Top Rated lane and the rating sort (state/catalog.js). Added in 0.5.1.
 //
 //   node tools/catalog/ratings.mjs          (from the repository root, Node 20+)
@@ -6,7 +6,7 @@
 // The store's catalog API names a title ID's concept with its star rating ({ score: "4.77", total: "76635" }),
 // one request a game, no key. Every game the app bundles and every game the live catalog lists is asked for
 // once; after that, the ratings older than STALE_DAYS are asked again, a slice a run, so the scheduled
-// workflow (.github/workflows/catalog-live.yml) keeps them current without asking for all of them each time.
+// workflow (JVK3R/JobeesLair-Lists) keeps them current without asking for all of them each time.
 // The live catalog carries the ratings too (tools/catalog/live-feed.mjs), so a console has new ones without
 // a new release.
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -14,8 +14,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
-const OUT = join(ROOT, 'catalog', 'ratings.json');
 const { readJlx } = await import(new URL('../../app/state/jlx.js', import.meta.url).href);
+const { PS5_LIVE, PS5_RATINGS: OUT } = await import(new URL('./lists-dir.mjs', import.meta.url).href);
 const BUNDLED = join(ROOT, 'app', 'data', 'ratings.js');
 const API = (id) => `https://m.np.playstation.com/api/catalog/v2/titles/${id}_00/concepts?country=US&language=en&age=999`;
 const STALE_DAYS = 14, REFRESH_PER_RUN = 400, WORKERS = 4;
@@ -28,7 +28,7 @@ const known = existsSync(OUT) ? JSON.parse(readFileSync(OUT, 'utf8')) : {};
 function ids() {
   const out = new Set([...readFileSync(join(ROOT, 'app/data/catalog.js'), 'utf8').matchAll(/"id": "((?:CUSA|PPSA)\d{5})"/g)].map((m) => m[1]));
   try {
-    for (const game of JSON.parse(readJlx(readFileSync(join(ROOT, 'catalog/live.jlx'), 'utf8'))).games) if (TITLE_ID.test(game.id)) out.add(game.id);
+    for (const game of JSON.parse(readJlx(readFileSync(PS5_LIVE, 'utf8'))).games) if (TITLE_ID.test(game.id)) out.add(game.id);
   } catch {}
   return [...out].sort();
 }
