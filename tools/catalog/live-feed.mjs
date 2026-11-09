@@ -1,4 +1,4 @@
-// Builds ps5/live.jlx in the lists clone (tools/catalog/lists-dir.mjs), the live catalog feed every Jobee'sLair reads at launch (state/feeds.js LIVE_SOURCE),
+// Builds ps5/live.jlx in the lists clone (tools/catalog/lists-dir.mjs), the live catalog feed every Jobee'sLair reads at launch (state/feeds.js LIVE_PATH),
 // from the public Pegasus catalogs (pegasus-dl.dev). Added in 0.5.1.
 //
 //   node tools/catalog/live-feed.mjs        (from the repository root, Node 20+)

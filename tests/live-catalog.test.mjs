@@ -86,7 +86,8 @@ test('every game has a picture: the bundled ones, and the ones only the live cat
 test('the app reads the live catalog without the player adding it, and keeps a place for it', () => {
   const source = readFileSync(new URL('../app/state/feeds.js', import.meta.url), 'utf8');
   assert.match(source, /LIVE_FEED = "https:\/\/raw\.githubusercontent\.com\/JVK3R\/JobeesLair\/main\/catalog\/live\.json"/, 'its name stays, so its release ids do');
-  assert.match(source, /LIVE_SOURCE = "https:\/\/raw\.githubusercontent\.com\/JVK3R\/JobeesLair-Lists\/main\/ps5\/live\.jlx"/, 'fetched encoded, from the lists repository');
+  assert.match(source, /LIVE_PATH = "ps5\/live\.jlx"/, 'fetched encoded');
+  assert.match(source, /liveSource = \(\) => listsAddress\(LIVE_PATH\)/, 'from the lists home (state/lists-home.js)');
   assert.match(source, /for \(const url of allFeeds\(\)\) \{\n\s+const cache = readCache/);
   assert.match(source, /for \(const url of allFeeds\(\)\) await refreshFeed\(url\)/);
   assert.match(source, /MAX_FEEDS = 3/);
