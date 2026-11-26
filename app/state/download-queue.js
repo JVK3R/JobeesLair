@@ -729,6 +729,10 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       job2.message = t("downloads.fpkgHeld");
       return true;
     }
+    // How many connections a download may open (adaptive, so up to this). TorBox allows 16 per IP across all of
+    // a user's downloads and asks download managers for 4 or fewer; more had its CDN refuse the console's address.
+    var TORBOX_CONNECTIONS = 4;
+    var connectionsFor = (job2) => job2.release?.debrid?.service === "torbox" ? TORBOX_CONNECTIONS : 64;
     async function execute(job2) {
       let task;
       let unsubscribe;
@@ -801,7 +805,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
         fs.mkdir(job2.artifact.directory, { recursive: true });
         fs.mkdir(job2.downloadDestination.slice(0, job2.downloadDestination.lastIndexOf("/")), { recursive: true });
         active2.transferring = true;
-        task = downloads.enqueue({ ...job2.options, rejectHtml: true, mirrors: void 0, connections: 64, adaptive: true, rangeBytes: 16 * 1024 * 1024, destination: job2.downloadDestination, storageRoot: job2.root, recoverCompleted: true });
+        task = downloads.enqueue({ ...job2.options, rejectHtml: true, mirrors: void 0, connections: connectionsFor(job2), adaptive: true, rangeBytes: 16 * 1024 * 1024, destination: job2.downloadDestination, storageRoot: job2.root, recoverCompleted: true });
         active2.task = task;
         // Most catalog releases do not say their size, so the check above had nothing to go on: once the
         // server does, the rest is checked against the drive once, before it fills (the partial file counts
@@ -1565,7 +1569,7 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
           const task = downloads.enqueue({
             ...part.options,
             rejectHtml: true,
-            connections: 64,
+            connections: connectionsFor(job2),
             adaptive: true,
             destination: part.destination,
             storageRoot: job2.root,
@@ -2333,6 +2337,10 @@ import { MARGIN2, spaceShortfall, stillNeeded } from './space.js';
       resume(id) {
         const job2 = find(id);
         if (job2.state !== "paused" && job2.state !== "failed") return;
+        // Through a debrid service, a fresh link: the one it gave can point at a server that stopped answering
+        // (TorBox's CDN refuses an address it holds over its limit). The partial stays; the engine resumes it
+        // by the file's ETag and size, not its URL.
+        if (job2.release?.debrid) delete job2.options;
         delete job2.reresolved;
         delete job2.retryAt;
         clearTimeout(retryTimers.get(job2.id));

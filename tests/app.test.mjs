@@ -160,11 +160,11 @@ function shadowMount(state) {
   };
 }
 
-function queueWith({ fs, downloads, archives, http, firmware, packages = null, onLaunch }) {
+function queueWith({ fs, downloads, archives, http, firmware, packages = null, onLaunch, sources }) {
   return createDownloadQueue({
     fs, downloads, http: http ?? shadowMount({ images: [], games: {} }), formats: DownloadFormats, dataDir: '/data/app', platform: 'ps5',
     notifications: { show() {} }, power: { keepAwake() {} }, linking: null,
-    sources: { resolve: async (release) => ({ url: release.url }) }, archives, packages, wait: async () => {},
+    sources: sources ?? { resolve: async (release) => ({ url: release.url }) }, archives, packages, wait: async () => {},
     firmware: firmware ?? (() => '13.60'), onLaunch,
   });
 }
@@ -189,6 +189,7 @@ test('a direct image downloads to downloads/images and moves into homebrew only 
   const id = queue.enqueue(game, image('Game.exfat'), '/data');
   const job = await settle(queue, id);
   assert.equal(downloads.requests[0].destination, '/data/downloads/images/Game.exfat');
+  assert.equal(downloads.requests[0].connections, 64, 'a plain download keeps its 64');
   assert.equal(job.state, 'downloaded');
   assert.equal(job.artifact.destination, '/data/homebrew/Game.exfat');
   assert.deepEqual(job.artifact.images, ['/data/homebrew/Game.exfat']);
@@ -3246,6 +3247,7 @@ test('parts sent through TorBox never open the browser: no capture ahead, every 
   assert.equal(browserCapture.asked.length, 0, 'the browser never opened');
   assert.deepEqual(resolved, ['https://vikingfile.com/f/part1', 'https://vikingfile.com/f/part2'], 'TorBox was asked for each part');
   assert.deepEqual(requests.map((request) => request.url), ['https://torbox.example/dl/1', 'https://torbox.example/dl/2'], "and each part came from TorBox's link");
+  assert.deepEqual(requests.map((request) => request.connections), [4, 4], 'TorBox: 4 connections, as it asks (16 per IP across downloads)');
   assert.ok(!states.has('awaiting-browser'));
 });
 
@@ -3563,6 +3565,31 @@ test('a PS5 package from a source that never said so waits on Install above 11.6
   const low = queueWith({ fs: old, downloads: engine(old), archives: extractor(old, { 'Game.pkg': 900 }), packages: older, firmware: () => '11.00' });
   job = await settle(low, low.enqueue(game, image('Game.zip', 500), '/data'));
   assert.equal(job.state, 'installed', 'it starts there');
+});
+
+test('TorBox: 4 connections, and Retry after a failure asks TorBox for a fresh link (its server may refuse the old one)', async () => {
+  const fs = memoryFs();
+  let links = 0;
+  const sources = { resolve: async () => ({ url: `https://nexus-${++links}.tb-cdn.example/dld/file` }) };
+  const base = engine(fs);
+  const downloads = { requests: base.requests, enqueue(options) {
+    if (base.requests.length === 0) {
+      base.requests.push(options);
+      return { subscribe: () => () => {}, done: Promise.reject(new Error('Could not connect to server (Failed to connect to nexus-1.tb-cdn.example port 443)')), cancel() {} };
+    }
+    return base.enqueue(options);
+  } };
+  const queue = queueWith({ fs, downloads, sources });
+  const release = { ...image('Game.exfat'), id: 'g~torbox', url: 'https://vikingfile.com/f/game', debrid: { service: 'torbox' } };
+  const id = queue.enqueue(game, release, '/data');
+  let job = await settle(queue, id);
+  assert.equal(job.state, 'failed', job.error);
+  assert.equal(downloads.requests[0].connections, 4, 'TorBox asks download managers for 4 or fewer');
+  queue.resume(id);
+  job = await settle(queue, id);
+  assert.equal(job.state, 'downloaded', job.error);
+  assert.equal(links, 2, 'TorBox was asked again');
+  assert.deepEqual(downloads.requests.map((request) => request.url), ['https://nexus-1.tb-cdn.example/dld/file', 'https://nexus-2.tb-cdn.example/dld/file']);
 });
 
 test('an install cut off by closing the app waits on Install at the next launch, and Install finishes it', async () => {
